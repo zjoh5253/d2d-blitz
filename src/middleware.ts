@@ -2,11 +2,6 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-const AUTH_COOKIE_NAME =
-  process.env.NODE_ENV === "production"
-    ? "__Secure-authjs.session-token"
-    : "authjs.session-token";
-
 const PUBLIC_ROUTES = ["/login", "/register"];
 const PUBLIC_PREFIXES = ["/api/auth"];
 
@@ -40,10 +35,15 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  const useSecureCookie = req.nextUrl.protocol === "https:";
+  const cookieName = useSecureCookie
+    ? "__Secure-authjs.session-token"
+    : "authjs.session-token";
+
   const token = await getToken({
     req,
     secret: process.env.AUTH_SECRET,
-    cookieName: AUTH_COOKIE_NAME,
+    cookieName,
   });
 
   if (!token) {

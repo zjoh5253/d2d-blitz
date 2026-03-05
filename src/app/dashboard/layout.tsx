@@ -39,16 +39,7 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {/* Mobile backdrop — blur overlay behind open sidebar */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-20 bg-foreground/40 backdrop-blur-sm lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-
-      {/* Sidebar — w-72 on desktop, slide-over on mobile */}
+      {/* Sidebar — handles its own mobile backdrop internally */}
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
