@@ -1,0 +1,799 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  EXECUTIVE
+  RECRUITER
+  MARKET_OWNER
+  FIELD_MANAGER
+  FIELD_REP
+  CALL_CENTER
+}
+
+enum LeadSource {
+  COLD
+  SOCIAL
+  REFERRAL
+  PAID
+}
+
+enum LeadStatus {
+  NEW
+  SCREENING
+  INTERVIEW
+  APPROVED
+  REJECTED
+  ONBOARDED
+}
+
+enum InterviewResult {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum BlitzStatus {
+  PLANNING
+  STAFFING
+  READY
+  ACTIVE
+  REVIEW
+  CLOSED
+}
+
+enum BlitzAssignmentStatus {
+  ASSIGNED
+  CONFIRMED
+  IN_TRANSIT
+  ACTIVE
+  DEPARTED
+  REMOVED
+}
+
+enum ExpenseCategory {
+  HOUSING
+  TRAVEL
+  OPERATIONAL
+  OTHER
+}
+
+enum GoBackStatus {
+  SCHEDULED
+  REVISITED
+  CONVERTED
+  CLOSED
+}
+
+enum SaleStatus {
+  SUBMITTED
+  PENDING_INSTALL
+  INSTALLED
+  VERIFIED
+  CANCELLED
+  DISPUTED
+}
+
+enum InstallRecordStatus {
+  MATCHED
+  UNMATCHED
+  DISPUTED
+}
+
+enum CommissionStatus {
+  ELIGIBLE
+  PENDING
+  ON_HOLD
+  PAID
+}
+
+enum PayoutBatchStatus {
+  DRAFT
+  REVIEWED
+  APPROVED
+  PAID
+}
+
+enum DeductionCategory {
+  HOUSING
+  TRAVEL
+  SHARED
+  REP_SPECIFIC
+}
+
+enum InboundLeadStatus {
+  NEW
+  CONTACTED
+  SUBMITTED
+  INSTALLED
+  VERIFIED
+}
+
+enum InboundSaleStatus {
+  SUBMITTED
+  PENDING_INSTALL
+  INSTALLED
+  VERIFIED
+  CANCELLED
+}
+
+enum CarrierStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum MarketStatus {
+  ACTIVE
+  INACTIVE
+  PLANNING
+}
+
+// ─── NextAuth Models ──────────────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─── Core Models ──────────────────────────────────────────────────────────────
+
+model GovernanceTier {
+  id                   String   @id @default(cuid())
+  name                 String
+  rank                 Int
+  minInstallRate       Float    @map("min_install_rate")
+  commissionMultiplier Float    @default(1.0) @map("commission_multiplier")
+  isDefault            Boolean  @default(false) @map("is_default")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  users             User[]
+  governancePeriods GovernancePeriod[]
+  commissionRecords CommissionRecord[]
+
+  @@map("governance_tiers")
+}
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  passwordHash     String?   @map("password_hash")
+  name             String?
+  phone            String?
+  role             Role
+  status           String    @default("ACTIVE")
+  governanceTierId String?   @map("governance_tier_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // NextAuth relations
+  accounts Account[]
+  sessions Session[]
+
+  // GovernanceTier relation
+  governanceTier GovernanceTier? @relation(fields: [governanceTierId], references: [id])
+
+  // Recruiter side of leads
+  recruitedLeads Lead[] @relation("RecruiterLeads")
+
+  // Field manager side of leads
+  managedLeads Lead[] @relation("FieldManagerLeads")
+
+  // Interviews conducted
+  interviews Interview[]
+
+  // Markets owned
+  ownedMarkets Market[]
+
+  // Blitzes managed
+  managedBlitzes Blitz[]
+
+  // Blitz assignments (as rep)
+  blitzAssignments BlitzAssignment[]
+
+  // Daily reports
+  dailyReports DailyReport[]
+
+  // Go-backs recorded
+  goBacksRecorded GoBack[]
+
+  // Sales made
+  sales Sale[]
+
+  // Install uploads
+  installUploads InstallUpload[]
+
+  // Exceptions resolved
+  resolvedExceptions InstallException[] @relation("ExceptionResolver")
+
+  // Commission records
+  commissionRecords CommissionRecord[]
+
+  // Deductions
+  deductions Deduction[]
+
+  // Payout lines
+  payoutLines PayoutLine[]
+
+  // Approved payout batches
+  approvedBatches PayoutBatch[]
+
+  // Governance periods
+  governancePeriods GovernancePeriod[]
+
+  // Compliance holds
+  complianceHolds ComplianceHold[] @relation("RepComplianceHolds")
+
+  // Compliance holds restored by this user
+  restoredComplianceHolds ComplianceHold[] @relation("ComplianceHoldRestorer")
+
+  // Inbound contact attempts (as agent)
+  inboundContactAttempts InboundContactAttempt[]
+
+  // Inbound sales (as agent)
+  inboundSalesAsAgent InboundSale[] @relation("InboundSaleAgent")
+
+  // Inbound sales (as affiliate)
+  inboundSalesAsAffiliate InboundSale[] @relation("InboundSaleAffiliate")
+
+  @@index([role])
+  @@index([status])
+  @@index([governanceTierId])
+  @@map("users")
+}
+
+model Lead {
+  id               String     @id @default(cuid())
+  name             String
+  phone            String
+  email            String?
+  source           LeadSource
+  status           LeadStatus @default(NEW)
+  recruiterId      String     @map("recruiter_id")
+  fieldManagerId   String?    @map("field_manager_id")
+  marketId         String?    @map("market_id")
+  notes            String?
+  travelCapable    Boolean    @map("travel_capable")
+  commitmentLevel  String?    @map("commitment_level")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  recruiter    User    @relation("RecruiterLeads", fields: [recruiterId], references: [id])
+  fieldManager User?   @relation("FieldManagerLeads", fields: [fieldManagerId], references: [id])
+  market       Market? @relation(fields: [marketId], references: [id])
+
+  interviews Interview[]
+
+  @@index([status])
+  @@index([source])
+  @@index([recruiterId])
+  @@index([fieldManagerId])
+  @@index([marketId])
+  @@map("leads")
+}
+
+model Interview {
+  id                     String          @id @default(cuid())
+  leadId                 String          @map("lead_id")
+  interviewerId          String          @map("interviewer_id")
+  cultureFit             Int             @map("culture_fit")
+  workEthic              Int             @map("work_ethic")
+  travelReadiness        Int             @map("travel_readiness")
+  performanceExpectations Int            @map("performance_expectations")
+  notes                  String?
+  result                 InterviewResult @default(PENDING)
+  date                   DateTime
+  createdAt              DateTime        @default(now()) @map("created_at")
+
+  lead        Lead @relation(fields: [leadId], references: [id])
+  interviewer User @relation(fields: [interviewerId], references: [id])
+
+  @@index([leadId])
+  @@index([interviewerId])
+  @@index([result])
+  @@map("interviews")
+}
+
+model Carrier {
+  id               String        @id @default(cuid())
+  name             String
+  revenuePerInstall Float        @map("revenue_per_install")
+  portalUrl        String?       @map("portal_url")
+  status           CarrierStatus @default(ACTIVE)
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  markets        Market[]
+  stackConfigs   StackConfig[]
+  sales          Sale[]
+  installUploads InstallUpload[]
+  installRecords InstallRecord[]
+  inboundSales   InboundSale[]
+
+  @@index([status])
+  @@map("carriers")
+}
+
+model Market {
+  id               String       @id @default(cuid())
+  name             String
+  carrierId        String       @map("carrier_id")
+  ownerId          String       @map("owner_id")
+  coverageArea     String?      @map("coverage_area")
+  competitionNotes String?      @map("competition_notes")
+  status           MarketStatus @default(ACTIVE)
+  createdAt        DateTime     @default(now()) @map("created_at")
+
+  carrier Carrier @relation(fields: [carrierId], references: [id])
+  owner   User    @relation(fields: [ownerId], references: [id])
+
+  blitzes      Blitz[]
+  leads        Lead[]
+  stackConfigs StackConfig[]
+
+  @@index([carrierId])
+  @@index([ownerId])
+  @@index([status])
+  @@map("markets")
+}
+
+model Blitz {
+  id          String      @id @default(cuid())
+  marketId    String      @map("market_id")
+  name        String
+  startDate   DateTime    @map("start_date")
+  endDate     DateTime    @map("end_date")
+  repCap      Int         @map("rep_cap")
+  housingPlan String?     @map("housing_plan")
+  status      BlitzStatus @default(PLANNING)
+  managerId   String      @map("manager_id")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  market  Market @relation(fields: [marketId], references: [id])
+  manager User   @relation(fields: [managerId], references: [id])
+
+  assignments   BlitzAssignment[]
+  expenses      BlitzExpense[]
+  dailyReports  DailyReport[]
+  goBacksRecorded GoBack[]
+  sales         Sale[]
+  deductions    Deduction[]
+  commissionRecords CommissionRecord[]
+
+  @@index([marketId])
+  @@index([managerId])
+  @@index([status])
+  @@index([startDate])
+  @@index([endDate])
+  @@map("blitzes")
+}
+
+model BlitzAssignment {
+  id                  String                @id @default(cuid())
+  blitzId             String                @map("blitz_id")
+  repId               String                @map("rep_id")
+  housingAssignment   String?               @map("housing_assignment")
+  travelCoordination  String?               @map("travel_coordination")
+  arrivalConfirmed    Boolean               @default(false) @map("arrival_confirmed")
+  status              BlitzAssignmentStatus @default(ASSIGNED)
+  createdAt           DateTime              @default(now()) @map("created_at")
+
+  blitz Blitz @relation(fields: [blitzId], references: [id])
+  rep   User  @relation(fields: [repId], references: [id])
+
+  @@index([blitzId])
+  @@index([repId])
+  @@index([status])
+  @@map("blitz_assignments")
+}
+
+model BlitzExpense {
+  id          String          @id @default(cuid())
+  blitzId     String          @map("blitz_id")
+  category    ExpenseCategory
+  amount      Float
+  description String
+  date        DateTime
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  blitz Blitz @relation(fields: [blitzId], references: [id])
+
+  @@index([blitzId])
+  @@index([category])
+  @@index([date])
+  @@map("blitz_expenses")
+}
+
+model DailyReport {
+  id                   String   @id @default(cuid())
+  repId                String   @map("rep_id")
+  blitzId              String   @map("blitz_id")
+  date                 DateTime
+  doorsKnocked         Int      @map("doors_knocked")
+  conversations        Int
+  goBacksRecorded      Int      @map("go_backs_recorded")
+  appointmentsScheduled Int     @map("appointments_scheduled")
+  salesCount           Int      @map("sales_count")
+  submittedAt          DateTime @default(now()) @map("submitted_at")
+
+  rep   User  @relation(fields: [repId], references: [id])
+  blitz Blitz @relation(fields: [blitzId], references: [id])
+
+  @@unique([repId, blitzId, date])
+  @@index([repId])
+  @@index([blitzId])
+  @@index([date])
+  @@map("daily_reports")
+}
+
+model GoBack {
+  id               String       @id @default(cuid())
+  repId            String       @map("rep_id")
+  blitzId          String       @map("blitz_id")
+  prospectName     String       @map("prospect_name")
+  prospectPhone    String?      @map("prospect_phone")
+  prospectAddress  String       @map("prospect_address")
+  status           GoBackStatus @default(SCHEDULED)
+  followUpDate     DateTime     @map("follow_up_date")
+  notes            String?
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  rep   User  @relation(fields: [repId], references: [id])
+  blitz Blitz @relation(fields: [blitzId], references: [id])
+
+  @@index([repId])
+  @@index([blitzId])
+  @@index([status])
+  @@index([followUpDate])
+  @@map("go_backs")
+}
+
+model Sale {
+  id                  String     @id @default(cuid())
+  repId               String     @map("rep_id")
+  blitzId             String     @map("blitz_id")
+  carrierId           String     @map("carrier_id")
+  customerName        String     @map("customer_name")
+  customerPhone       String     @map("customer_phone")
+  customerAddress     String     @map("customer_address")
+  customerEmail       String?    @map("customer_email")
+  installDate         DateTime   @map("install_date")
+  orderConfirmation   String?    @map("order_confirmation")
+  status              SaleStatus @default(SUBMITTED)
+  submittedAt         DateTime   @default(now()) @map("submitted_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
+
+  rep     User    @relation(fields: [repId], references: [id])
+  blitz   Blitz   @relation(fields: [blitzId], references: [id])
+  carrier Carrier @relation(fields: [carrierId], references: [id])
+
+  commissionRecord  CommissionRecord?
+  matchedInstallRecord InstallRecord? @relation("MatchedSale")
+  installExceptions InstallException[]
+
+  @@index([repId])
+  @@index([blitzId])
+  @@index([carrierId])
+  @@index([status])
+  @@index([installDate])
+  @@index([submittedAt])
+  @@map("sales")
+}
+
+model InstallUpload {
+  id             String   @id @default(cuid())
+  carrierId      String   @map("carrier_id")
+  uploadedById   String   @map("uploaded_by_id")
+  fileName       String   @map("file_name")
+  rowCount       Int      @map("row_count")
+  matchedCount   Int      @default(0) @map("matched_count")
+  unmatchedCount Int      @default(0) @map("unmatched_count")
+  uploadedAt     DateTime @default(now()) @map("uploaded_at")
+
+  carrier    Carrier @relation(fields: [carrierId], references: [id])
+  uploadedBy User    @relation(fields: [uploadedById], references: [id])
+
+  installRecords InstallRecord[]
+
+  @@index([carrierId])
+  @@index([uploadedById])
+  @@index([uploadedAt])
+  @@map("install_uploads")
+}
+
+model InstallRecord {
+  id              String              @id @default(cuid())
+  uploadId        String              @map("upload_id")
+  carrierId       String              @map("carrier_id")
+  externalId      String?             @map("external_id")
+  customerName    String              @map("customer_name")
+  customerAddress String              @map("customer_address")
+  installDate     DateTime            @map("install_date")
+  status          InstallRecordStatus @default(UNMATCHED)
+  matchedSaleId   String?             @unique @map("matched_sale_id")
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  upload      InstallUpload @relation(fields: [uploadId], references: [id])
+  carrier     Carrier       @relation(fields: [carrierId], references: [id])
+  matchedSale Sale?         @relation("MatchedSale", fields: [matchedSaleId], references: [id])
+
+  exceptions InstallException[]
+
+  @@index([uploadId])
+  @@index([carrierId])
+  @@index([status])
+  @@index([installDate])
+  @@map("install_records")
+}
+
+model InstallException {
+  id              String    @id @default(cuid())
+  installRecordId String    @map("install_record_id")
+  saleId          String?   @map("sale_id")
+  reason          String
+  resolution      String?
+  resolvedById    String?   @map("resolved_by_id")
+  resolvedAt      DateTime? @map("resolved_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  installRecord InstallRecord @relation(fields: [installRecordId], references: [id])
+  sale          Sale?         @relation(fields: [saleId], references: [id])
+  resolvedBy    User?         @relation("ExceptionResolver", fields: [resolvedById], references: [id])
+
+  @@index([installRecordId])
+  @@index([saleId])
+  @@index([resolvedById])
+  @@map("install_exceptions")
+}
+
+model StackConfig {
+  id                       String   @id @default(cuid())
+  carrierId                String   @map("carrier_id")
+  marketId                 String?  @map("market_id")
+  companyFloorPercent      Float    @map("company_floor_percent")
+  managerOverridePercent   Float    @map("manager_override_percent")
+  marketOwnerSpreadPercent Float    @map("market_owner_spread_percent")
+  effectiveDate            DateTime @map("effective_date")
+  createdAt                DateTime @default(now()) @map("created_at")
+
+  carrier Carrier @relation(fields: [carrierId], references: [id])
+  market  Market? @relation(fields: [marketId], references: [id])
+
+  @@index([carrierId])
+  @@index([marketId])
+  @@index([effectiveDate])
+  @@map("stack_configs")
+}
+
+model CommissionRecord {
+  id                String           @id @default(cuid())
+  saleId            String           @unique @map("sale_id")
+  repId             String           @map("rep_id")
+  blitzId           String           @map("blitz_id")
+  carrierPayout     Float            @map("carrier_payout")
+  companyFloor      Float            @map("company_floor")
+  managerOverride   Float            @map("manager_override")
+  repPay            Float            @map("rep_pay")
+  marketOwnerSpread Float            @map("market_owner_spread")
+  status            CommissionStatus @default(ELIGIBLE)
+  governanceTierId  String?          @map("governance_tier_id")
+  createdAt         DateTime         @default(now()) @map("created_at")
+
+  sale           Sale            @relation(fields: [saleId], references: [id])
+  rep            User            @relation(fields: [repId], references: [id])
+  blitz          Blitz           @relation(fields: [blitzId], references: [id])
+  governanceTier GovernanceTier? @relation(fields: [governanceTierId], references: [id])
+
+  @@index([repId])
+  @@index([blitzId])
+  @@index([status])
+  @@index([governanceTierId])
+  @@map("commission_records")
+}
+
+model Deduction {
+  id          String            @id @default(cuid())
+  repId       String            @map("rep_id")
+  blitzId     String            @map("blitz_id")
+  category    DeductionCategory
+  amount      Float
+  description String
+  date        DateTime
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  rep   User  @relation(fields: [repId], references: [id])
+  blitz Blitz @relation(fields: [blitzId], references: [id])
+
+  @@index([repId])
+  @@index([blitzId])
+  @@index([category])
+  @@index([date])
+  @@map("deductions")
+}
+
+model PayoutBatch {
+  id           String            @id @default(cuid())
+  period       String
+  status       PayoutBatchStatus @default(DRAFT)
+  approvedById String?           @map("approved_by_id")
+  approvedAt   DateTime?         @map("approved_at")
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  approvedBy User?        @relation(fields: [approvedById], references: [id])
+  payoutLines PayoutLine[]
+
+  @@index([status])
+  @@index([period])
+  @@index([approvedById])
+  @@map("payout_batches")
+}
+
+model PayoutLine {
+  id                  String  @id @default(cuid())
+  batchId             String  @map("batch_id")
+  repId               String  @map("rep_id")
+  grossPay            Float   @map("gross_pay")
+  totalDeductions     Float   @map("total_deductions")
+  netPay              Float   @map("net_pay")
+  complianceVerified  Boolean @default(false) @map("compliance_verified")
+  governanceChecked   Boolean @default(false) @map("governance_checked")
+
+  batch PayoutBatch @relation(fields: [batchId], references: [id])
+  rep   User        @relation(fields: [repId], references: [id])
+
+  @@index([batchId])
+  @@index([repId])
+  @@map("payout_lines")
+}
+
+model GovernancePeriod {
+  id                 String         @id @default(cuid())
+  repId              String         @map("rep_id")
+  month              Int
+  year               Int
+  submittedInstalls  Int            @map("submitted_installs")
+  verifiedInstalls   Int            @map("verified_installs")
+  installRate        Float          @map("install_rate")
+  tierId             String         @map("tier_id")
+  isStrike           Boolean        @default(false) @map("is_strike")
+  consecutiveStrikes Int            @default(0) @map("consecutive_strikes")
+  createdAt          DateTime       @default(now()) @map("created_at")
+
+  rep  User           @relation(fields: [repId], references: [id])
+  tier GovernanceTier @relation(fields: [tierId], references: [id])
+
+  @@unique([repId, month, year])
+  @@index([repId])
+  @@index([tierId])
+  @@index([year, month])
+  @@map("governance_periods")
+}
+
+model ComplianceHold {
+  id           String    @id @default(cuid())
+  repId        String    @map("rep_id")
+  reason       String
+  holdDate     DateTime  @map("hold_date")
+  restoredDate DateTime? @map("restored_date")
+  restoredById String?   @map("restored_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  rep         User  @relation("RepComplianceHolds", fields: [repId], references: [id])
+  restoredBy  User? @relation("ComplianceHoldRestorer", fields: [restoredById], references: [id])
+
+  @@index([repId])
+  @@index([restoredById])
+  @@index([holdDate])
+  @@map("compliance_holds")
+}
+
+model InboundLead {
+  id                 String            @id @default(cuid())
+  source             String
+  customerName       String            @map("customer_name")
+  customerPhone      String            @map("customer_phone")
+  customerEmail      String?           @map("customer_email")
+  status             InboundLeadStatus @default(NEW)
+  qualificationNotes String?           @map("qualification_notes")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  contactAttempts InboundContactAttempt[]
+  inboundSales    InboundSale[]
+
+  @@index([status])
+  @@index([source])
+  @@map("inbound_leads")
+}
+
+model InboundContactAttempt {
+  id          String   @id @default(cuid())
+  leadId      String   @map("lead_id")
+  agentId     String   @map("agent_id")
+  attemptDate DateTime @map("attempt_date")
+  outcome     String
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  lead  InboundLead @relation(fields: [leadId], references: [id])
+  agent User        @relation(fields: [agentId], references: [id])
+
+  @@index([leadId])
+  @@index([agentId])
+  @@index([attemptDate])
+  @@map("inbound_contact_attempts")
+}
+
+model InboundSale {
+  id                String           @id @default(cuid())
+  leadId            String           @map("lead_id")
+  agentId           String           @map("agent_id")
+  carrierId         String           @map("carrier_id")
+  customerName      String           @map("customer_name")
+  customerPhone     String           @map("customer_phone")
+  customerAddress   String           @map("customer_address")
+  customerEmail     String?          @map("customer_email")
+  installDate       DateTime         @map("install_date")
+  orderConfirmation String?          @map("order_confirmation")
+  status            InboundSaleStatus @default(SUBMITTED)
+  affiliateId       String?          @map("affiliate_id")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  lead      InboundLead @relation(fields: [leadId], references: [id])
+  agent     User        @relation("InboundSaleAgent", fields: [agentId], references: [id])
+  carrier   Carrier     @relation(fields: [carrierId], references: [id])
+  affiliate User?       @relation("InboundSaleAffiliate", fields: [affiliateId], references: [id])
+
+  @@index([leadId])
+  @@index([agentId])
+  @@index([carrierId])
+  @@index([affiliateId])
+  @@index([status])
+  @@index([installDate])
+  @@map("inbound_sales")
+}
