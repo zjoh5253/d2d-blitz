@@ -1,33 +1,422 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #ffffff;
-  --color-foreground: #0a0a0a;
-  --color-card: #ffffff;
-  --color-card-foreground: #0a0a0a;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #0a0a0a;
-  --color-primary: #171717;
-  --color-primary-foreground: #fafafa;
-  --color-secondary: #f5f5f5;
-  --color-secondary-foreground: #171717;
-  --color-muted: #f5f5f5;
-  --color-muted-foreground: #737373;
-  --color-accent: #f5f5f5;
-  --color-accent-foreground: #171717;
-  --color-destructive: #ef4444;
-  --color-destructive-foreground: #fafafa;
-  --color-border: #e5e5e5;
-  --color-input: #e5e5e5;
-  --color-ring: #171717;
-  --radius: 0.5rem;
-  --color-sidebar: #fafafa;
-  --color-sidebar-foreground: #0a0a0a;
-  --color-sidebar-border: #e5e5e5;
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
+  /* Typography — variables injected by next/font in layout.tsx */
+  --font-sans: var(--font-body), system-ui, -apple-system, sans-serif;
+  --font-heading: var(--font-display), var(--font-body), system-ui, sans-serif;
+
+  /* Primary - Electric Blue */
+  --color-primary: #3B82F6;
+  --color-primary-foreground: #FFFFFF;
+
+  /* Background - Cool subtle gray tint */
+  --color-background: #F8FAFC;
+  --color-foreground: #0F172A;
+
+  /* Cards - Clean white with depth */
+  --color-card: #FFFFFF;
+  --color-card-foreground: #0F172A;
+
+  /* Popover */
+  --color-popover: #FFFFFF;
+  --color-popover-foreground: #0F172A;
+
+  /* Secondary - Soft blue-gray */
+  --color-secondary: #F1F5F9;
+  --color-secondary-foreground: #334155;
+
+  /* Muted */
+  --color-muted: #F1F5F9;
+  --color-muted-foreground: #64748B;
+
+  /* Accent - Amber energy */
+  --color-accent: #FEF3C7;
+  --color-accent-foreground: #92400E;
+
+  /* Destructive - Rose */
+  --color-destructive: #F43F5E;
+  --color-destructive-foreground: #FFFFFF;
+
+  /* Borders & inputs */
+  --color-border: #E2E8F0;
+  --color-input: #E2E8F0;
+  --color-ring: #3B82F6;
+
+  /* Border radius */
+  --radius: 0.625rem;
+
+  /* Sidebar - Dark navy premium */
+  --color-sidebar: #0F172A;
+  --color-sidebar-foreground: #E2E8F0;
+  --color-sidebar-border: #1E293B;
+  --color-sidebar-accent: #1E293B;
+  --color-sidebar-accent-foreground: #F8FAFC;
+  --color-sidebar-primary: #3B82F6;
+  --color-sidebar-muted: #94A3B8;
+
+  /* Status colors */
+  --color-success: #10B981;
+  --color-success-foreground: #FFFFFF;
+  --color-warning: #F59E0B;
+  --color-warning-foreground: #FFFFFF;
+  --color-info: #06B6D4;
+  --color-info-foreground: #FFFFFF;
+
+  /* Animation timing */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ─────────────────────────────────────────
+   Base resets & global styles
+───────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  text-size-adjust: 100%;
 }
 
 body {
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'rlig' 1, 'calt' 1, 'kern' 1;
+  line-height: 1.6;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+/* ─────────────────────────────────────────
+   Custom scrollbar
+───────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Sidebar gets a darker scrollbar to match its navy bg */
+[data-sidebar] ::-webkit-scrollbar-thumb,
+aside ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+[data-sidebar] ::-webkit-scrollbar-thumb:hover,
+aside ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* ─────────────────────────────────────────
+   Focus ring
+───────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+/* ─────────────────────────────────────────
+   Text selection
+───────────────────────────────────────── */
+
+::selection {
+  background-color: #BFDBFE;
+  color: #1E3A5F;
+}
+
+/* ─────────────────────────────────────────
+   Keyframe animations
+───────────────────────────────────────── */
+
+/* Page content fade-in — smooth entrance for main content */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Sidebar slide-in from the left */
+@keyframes slide-in-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Sidebar slide-in from the right (for drawers/panels) */
+@keyframes slide-in-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Notification/badge pulse — attention-grabbing but subtle */
+@keyframes badge-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0);
+  }
+}
+
+/* Amber pulse variant for urgent/warning badges */
+@keyframes badge-pulse-amber {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+  }
+}
+
+/* Success pulse for achievement moments */
+@keyframes badge-pulse-success {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+}
+
+/* Skeleton shimmer for loading states */
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+/* Stagger-ready scale-up for cards/list items */
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Number counter roll — for stat cards */
+@keyframes count-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Leaderboard rank reveal */
+@keyframes rank-reveal {
+  from {
+    opacity: 0;
+    transform: translateX(-24px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+/* ─────────────────────────────────────────
+   Animation utility classes
+───────────────────────────────────────── */
+
+.animate-fade-in {
+  animation: fade-in 0.4s var(--ease-out-expo) both;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-from-left 0.35s var(--ease-out-expo) both;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-from-right 0.35s var(--ease-out-expo) both;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.3s var(--ease-spring) both;
+}
+
+.animate-count-up {
+  animation: count-up 0.5s var(--ease-out-expo) both;
+}
+
+.animate-rank-reveal {
+  animation: rank-reveal 0.45s var(--ease-spring) both;
+}
+
+/* Stagger delays for list animations */
+.animate-stagger-1 { animation-delay: 50ms; }
+.animate-stagger-2 { animation-delay: 100ms; }
+.animate-stagger-3 { animation-delay: 150ms; }
+.animate-stagger-4 { animation-delay: 200ms; }
+.animate-stagger-5 { animation-delay: 250ms; }
+.animate-stagger-6 { animation-delay: 300ms; }
+
+/* Badge/notification pulse variants */
+.animate-pulse-blue {
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+.animate-pulse-amber {
+  animation: badge-pulse-amber 2s ease-in-out infinite;
+}
+
+.animate-pulse-success {
+  animation: badge-pulse-success 2s ease-in-out infinite;
+}
+
+/* ─────────────────────────────────────────
+   Skeleton loading shimmer
+───────────────────────────────────────── */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #F1F5F9 0px,
+    #E2E8F0 40px,
+    #F1F5F9 80px
+  );
+  background-size: 400px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius);
+}
+
+/* Dark skeleton variant for navy sidebar context */
+.skeleton-dark {
+  background: linear-gradient(
+    90deg,
+    #1E293B 0px,
+    #334155 40px,
+    #1E293B 80px
+  );
+  background-size: 400px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius);
+}
+
+/* ─────────────────────────────────────────
+   Electric glow effect for primary actions
+   (CTA buttons, active nav items, KPI cards)
+───────────────────────────────────────── */
+
+.glow-blue {
+  box-shadow:
+    0 0 0 1px rgba(59, 130, 246, 0.2),
+    0 0 20px rgba(59, 130, 246, 0.12),
+    0 4px 16px rgba(59, 130, 246, 0.08);
+}
+
+.glow-amber {
+  box-shadow:
+    0 0 0 1px rgba(245, 158, 11, 0.2),
+    0 0 20px rgba(245, 158, 11, 0.12),
+    0 4px 16px rgba(245, 158, 11, 0.08);
+}
+
+.glow-success {
+  box-shadow:
+    0 0 0 1px rgba(16, 185, 129, 0.2),
+    0 0 20px rgba(16, 185, 129, 0.12),
+    0 4px 16px rgba(16, 185, 129, 0.08);
+}
+
+/* ─────────────────────────────────────────
+   Sidebar nav active state
+───────────────────────────────────────── */
+
+.sidebar-nav-active {
+  background-color: var(--color-sidebar-accent);
+  color: var(--color-sidebar-accent-foreground);
+  border-left: 2px solid var(--color-primary);
+  padding-left: calc(var(--spacing, 1rem) - 2px);
+}
+
+/* ─────────────────────────────────────────
+   Card hover lift — consistent interaction
+   feel across the dashboard
+───────────────────────────────────────── */
+
+.card-hover {
+  transition:
+    transform 0.2s var(--ease-smooth),
+    box-shadow 0.2s var(--ease-smooth);
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 8px 24px rgba(15, 23, 42, 0.08),
+    0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+/* ─────────────────────────────────────────
+   Gradient utility — electric blue brand
+───────────────────────────────────────── */
+
+.gradient-brand {
+  background: linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%);
+}
+
+.gradient-brand-amber {
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+}
+
+.gradient-mesh {
+  background:
+    radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.06) 0, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(245, 158, 11, 0.04) 0, transparent 50%),
+    var(--color-background);
 }

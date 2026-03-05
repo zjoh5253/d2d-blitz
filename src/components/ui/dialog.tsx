@@ -26,7 +26,7 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
-        className="fixed inset-0 bg-black/50"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm"
         onClick={() => onOpenChange(false)}
         aria-hidden="true"
       />
@@ -46,7 +46,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
       role="dialog"
       aria-modal="true"
       className={cn(
-        "relative z-50 grid w-full max-w-lg gap-4 rounded-xl border border-input bg-background p-6 shadow-lg",
+        "relative z-50 w-full max-w-lg overflow-hidden rounded-2xl border-0 bg-card shadow-2xl",
         className
       )}
       {...props}
@@ -54,7 +54,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
       {onClose && (
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 rounded-sm text-muted-foreground opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-ring"
+          className="absolute right-4 top-4 z-10 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           aria-label="Close"
         >
           <X className="h-4 w-4" />
@@ -72,7 +72,7 @@ const DialogHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)}
+    className={cn("flex flex-col space-y-1.5 p-6 pb-4", className)}
     {...props}
   />
 ))
@@ -84,7 +84,10 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h2
     ref={ref}
-    className={cn("text-lg font-semibold leading-none tracking-tight text-foreground", className)}
+    className={cn(
+      "font-heading text-lg font-semibold leading-none tracking-tight text-foreground",
+      className
+    )}
     {...props}
   />
 ))
@@ -108,7 +111,10 @@ const DialogFooter = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
+    className={cn(
+      "flex flex-col-reverse gap-2 bg-secondary/30 p-6 pt-4 sm:flex-row sm:justify-end sm:gap-2",
+      className
+    )}
     {...props}
   />
 ))

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { Trophy, Medal, Award, Star } from "lucide-react";
 
 type Period = "week" | "month" | "season" | "lifetime";
 
@@ -42,7 +43,109 @@ const RANK_STYLES = [
   "bg-orange-50 border-l-4 border-l-orange-300 dark:bg-orange-950/30",
 ];
 
-const RANK_BADGES = ["gold", "silver", "bronze"] as const;
+function getInitials(name: string): string {
+  const parts = name.trim().split(" ");
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+interface PodiumCardProps {
+  row: LeaderboardRow;
+  place: 1 | 2 | 3;
+}
+
+function PodiumCard({ row, place }: PodiumCardProps) {
+  const configs = {
+    1: {
+      ring: "ring-2 ring-[#F59E0B] shadow-lg shadow-amber-100",
+      avatarBg: "from-amber-400 to-amber-600",
+      avatarText: "text-white",
+      badge: "bg-amber-400 text-amber-950",
+      installColor: "text-amber-600",
+      icon: <Trophy className="h-4 w-4 text-amber-500" />,
+      label: "1st Place",
+      labelColor: "text-amber-600",
+      size: "h-16 w-16 text-xl",
+      padding: "p-5",
+    },
+    2: {
+      ring: "ring-2 ring-slate-300",
+      avatarBg: "from-slate-400 to-slate-600",
+      avatarText: "text-white",
+      badge: "bg-slate-300 text-slate-800",
+      installColor: "text-slate-600",
+      icon: <Medal className="h-4 w-4 text-slate-400" />,
+      label: "2nd Place",
+      labelColor: "text-slate-500",
+      size: "h-14 w-14 text-lg",
+      padding: "p-4",
+    },
+    3: {
+      ring: "ring-2 ring-[#CD7F32]",
+      avatarBg: "from-orange-400 to-orange-600",
+      avatarText: "text-white",
+      badge: "bg-orange-300 text-orange-900",
+      installColor: "text-orange-600",
+      icon: <Award className="h-4 w-4 text-orange-500" />,
+      label: "3rd Place",
+      labelColor: "text-orange-600",
+      size: "h-14 w-14 text-lg",
+      padding: "p-4",
+    },
+  };
+
+  const c = configs[place];
+
+  return (
+    <div
+      className={cn(
+        "bg-card border border-border rounded-2xl flex flex-col items-center text-center",
+        c.ring,
+        c.padding,
+        "animate-fade-in",
+        place === 1 ? "animate-stagger-1" : place === 2 ? "animate-stagger-2" : "animate-stagger-3"
+      )}
+    >
+      {/* Place label */}
+      <div className={cn("flex items-center gap-1.5 mb-3 text-xs font-semibold uppercase tracking-wide", c.labelColor)}>
+        {c.icon}
+        {c.label}
+      </div>
+
+      {/* Avatar circle */}
+      <div
+        className={cn(
+          "rounded-full flex items-center justify-center font-bold shrink-0 bg-gradient-to-br",
+          c.size,
+          c.avatarBg,
+          c.avatarText,
+          "mb-3 font-heading"
+        )}
+      >
+        {getInitials(row.repName)}
+      </div>
+
+      {/* Name */}
+      <p className="font-bold text-foreground font-heading text-base leading-tight mb-0.5">
+        {row.repName}
+      </p>
+
+      {/* Installs */}
+      <p className={cn("text-2xl font-bold font-heading tracking-tight", c.installColor)}>
+        {row.verifiedInstalls}
+      </p>
+      <p className="text-xs text-muted-foreground font-medium">verified installs</p>
+
+      {/* Tier badge */}
+      {row.tier && (
+        <span className="mt-3 inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+          <Star className="h-2.5 w-2.5" />
+          {row.tier}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function RankBadge({ rank }: { rank: number }) {
   if (rank === 1)
@@ -63,7 +166,7 @@ function RankBadge({ rank }: { rank: number }) {
         3
       </span>
     );
-  return <span className="text-sm font-medium text-muted-foreground">{rank}</span>;
+  return <span className="text-sm font-medium text-muted-foreground tabular-nums">{rank}</span>;
 }
 
 export default function LeaderboardPage() {
@@ -115,26 +218,67 @@ export default function LeaderboardPage() {
     _rowStyle: row.rank <= 3 ? RANK_STYLES[row.rank - 1] : "",
   })) as Record<string, unknown>[];
 
+  const top3 = rows.slice(0, 3);
+  const remaining = rows.filter((r) => r.rank > 3);
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Leaderboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Top performers by verified installs
-        </p>
+    <div className="space-y-8 max-w-6xl">
+
+      {/* Header row */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 animate-fade-in">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Trophy className="h-5 w-5 text-amber-500" />
+            <h1 className="text-3xl font-bold tracking-tight font-heading text-foreground">
+              Leaderboard
+            </h1>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Top performers ranked by verified installs
+          </p>
+        </div>
+
+        {/* Filters inline */}
+        <div className="flex gap-2 flex-wrap">
+          <Select
+            className="w-40"
+            value={marketId}
+            onChange={(e) => setMarketId(e.target.value)}
+          >
+            <option value="all">All Markets</option>
+            {markets.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            className="w-40"
+            value={blitzId}
+            onChange={(e) => setBlitzId(e.target.value)}
+          >
+            <option value="all">All Blitzes</option>
+            {blitzes.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
 
-      {/* Period Tabs */}
-      <div className="flex gap-2 flex-wrap">
+      {/* Period pill tabs */}
+      <div className="flex gap-1.5 flex-wrap animate-fade-in" style={{ animationDelay: "40ms" }}>
         {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
           <button
             key={p}
             onClick={() => setPeriod(p)}
             className={cn(
-              "rounded-lg px-4 py-2 text-sm font-medium transition-colors border",
+              "rounded-full px-4 py-1.5 text-sm font-semibold transition-all duration-150 border",
               period === p
-                ? "bg-primary text-primary-foreground border-primary"
-                : "border-input bg-background hover:bg-muted"
+                ? "bg-primary text-white border-primary shadow-sm"
+                : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5"
             )}
           >
             {PERIOD_LABELS[p]}
@@ -142,43 +286,27 @@ export default function LeaderboardPage() {
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-3 flex-wrap">
-        <Select
-          className="w-48"
-          value={marketId}
-          onChange={(e) => setMarketId(e.target.value)}
-        >
-          <option value="all">All Markets</option>
-          {markets.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </Select>
+      {/* Top 3 Podium — only rendered when rows are loaded and at least 1 exists */}
+      {!loading && top3.length > 0 && (
+        <div className="grid gap-4 sm:grid-cols-3">
+          {/* Reorder: 2nd | 1st | 3rd for visual podium effect */}
+          {top3[1] && <PodiumCard row={top3[1]} place={2} />}
+          {top3[0] && <PodiumCard row={top3[0]} place={1} />}
+          {top3[2] && <PodiumCard row={top3[2]} place={3} />}
+        </div>
+      )}
 
-        <Select
-          className="w-48"
-          value={blitzId}
-          onChange={(e) => setBlitzId(e.target.value)}
-        >
-          <option value="all">All Blitzes</option>
-          {blitzes.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </Select>
-      </div>
-
-      {/* Leaderboard Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            Rankings — {PERIOD_LABELS[period]}
+      {/* Rest of rankings table */}
+      <Card className="animate-fade-in overflow-hidden" style={{ animationDelay: "120ms" }}>
+        <CardHeader className="border-b border-border bg-muted/30 py-4">
+          <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <span className="h-5 w-5 rounded-md bg-primary/10 inline-flex items-center justify-center">
+              <Trophy className="h-3 w-3 text-primary" />
+            </span>
+            Full Rankings &mdash; {PERIOD_LABELS[period]}
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-0 pb-6">
+        <CardContent className="p-0 pb-4">
           <DataTable
             data={tableData}
             loading={loading}
@@ -196,16 +324,32 @@ export default function LeaderboardPage() {
                 render: (val, row) => {
                   const rank = (row as { rank: number }).rank;
                   return (
-                    <span
-                      className={cn(
-                        "font-medium",
-                        rank === 1 && "text-amber-600",
-                        rank === 2 && "text-slate-600",
-                        rank === 3 && "text-orange-600"
-                      )}
-                    >
-                      {val as string}
-                    </span>
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={cn(
+                          "h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
+                          rank === 1
+                            ? "bg-amber-100 text-amber-700"
+                            : rank === 2
+                              ? "bg-slate-100 text-slate-700"
+                              : rank === 3
+                                ? "bg-orange-100 text-orange-700"
+                                : "bg-muted text-muted-foreground"
+                        )}
+                      >
+                        {getInitials(val as string)}
+                      </div>
+                      <span
+                        className={cn(
+                          "font-semibold",
+                          rank === 1 && "text-amber-600",
+                          rank === 2 && "text-slate-600",
+                          rank === 3 && "text-orange-600"
+                        )}
+                      >
+                        {val as string}
+                      </span>
+                    </div>
                   );
                 },
               },
@@ -218,8 +362,8 @@ export default function LeaderboardPage() {
                   return (
                     <span
                       className={cn(
-                        "font-semibold",
-                        rank === 1 && "text-amber-600"
+                        "font-bold tabular-nums",
+                        rank === 1 ? "text-amber-600" : "text-foreground"
                       )}
                     >
                       {val as number}
@@ -227,18 +371,31 @@ export default function LeaderboardPage() {
                   );
                 },
               },
-              { key: "sales", label: "Total Sales", sortable: true },
+              {
+                key: "sales",
+                label: "Total Sales",
+                sortable: true,
+                render: (val) => (
+                  <span className="font-medium tabular-nums text-foreground">{val as number}</span>
+                ),
+              },
               {
                 key: "installRateDisplay",
                 label: "Install Rate",
                 sortable: false,
+                render: (val) => (
+                  <span className="font-medium text-muted-foreground">{val as string}</span>
+                ),
               },
               {
                 key: "tier",
                 label: "Tier",
                 render: (val) =>
                   val ? (
-                    <Badge variant="outline">{val as string}</Badge>
+                    <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-foreground">
+                      <Star className="h-2.5 w-2.5 text-amber-500" />
+                      {val as string}
+                    </span>
                   ) : (
                     <span className="text-muted-foreground text-sm">—</span>
                   ),
@@ -251,7 +408,7 @@ export default function LeaderboardPage() {
         </CardContent>
       </Card>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-muted-foreground animate-fade-in" style={{ animationDelay: "200ms" }}>
         Only reps who are compliant (no active holds) and not governance-suspended
         (fewer than 2 consecutive strikes) appear on the leaderboard.
       </p>

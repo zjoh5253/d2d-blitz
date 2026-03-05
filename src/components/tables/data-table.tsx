@@ -1,8 +1,9 @@
 "use client"
 
 import * as React from "react"
-import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react"
+import { ChevronUp, ChevronDown, ChevronsUpDown, Search, ChevronLeft, ChevronRight, Inbox } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { Card } from "@/components/ui/card"
 import {
   Table,
   TableBody,
@@ -45,10 +46,19 @@ function getNestedValue<T>(obj: T, key: string): unknown {
 
 function SkeletonRow({ cols }: { cols: number }) {
   return (
-    <TableRow>
+    <TableRow className="hover:bg-transparent">
       {Array.from({ length: cols }).map((_, i) => (
         <TableCell key={i}>
-          <div className="h-4 w-full animate-pulse rounded bg-muted" />
+          <div
+            className="h-4 rounded-md"
+            style={{
+              width: `${60 + (i % 3) * 15}%`,
+              background:
+                "linear-gradient(90deg, #F1F5F9 0px, #E2E8F0 40px, #F1F5F9 80px)",
+              backgroundSize: "400px 100%",
+              animation: "shimmer 1.4s ease-in-out infinite",
+            }}
+          />
         </TableCell>
       ))}
     </TableRow>
@@ -113,35 +123,43 @@ export function DataTable<T extends Record<string, unknown>>({
   }
 
   function SortIcon({ colKey }: { colKey: string }) {
-    if (sortKey !== colKey) return <ChevronsUpDown className="ml-1 inline h-3 w-3 text-muted-foreground" />
-    if (sortDir === "asc") return <ChevronUp className="ml-1 inline h-3 w-3" />
-    return <ChevronDown className="ml-1 inline h-3 w-3" />
+    if (sortKey !== colKey)
+      return <ChevronsUpDown className="ml-1.5 inline h-3.5 w-3.5 text-muted-foreground/60" />
+    if (sortDir === "asc")
+      return <ChevronUp className="ml-1.5 inline h-3.5 w-3.5 text-primary" />
+    return <ChevronDown className="ml-1.5 inline h-3.5 w-3.5 text-primary" />
   }
 
-  // Reset to page 1 on search change
+  // Reset to page 1 on search / sort change
   React.useEffect(() => {
     setCurrentPage(1)
   }, [search, sortKey, sortDir])
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {searchable && (
-        <Input
-          placeholder="Search..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-sm"
-        />
+        <div className="relative max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+          <Input
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
       )}
 
-      <div className="rounded-md border border-input">
+      <Card className="overflow-hidden p-0">
         <Table>
           <TableHeader>
-            <TableRow>
+            <TableRow className="hover:bg-transparent">
               {columns.map((col) => (
                 <TableHead
                   key={col.key}
-                  className={cn(col.sortable && "cursor-pointer select-none hover:text-foreground")}
+                  className={cn(
+                    col.sortable &&
+                      "cursor-pointer select-none hover:text-foreground"
+                  )}
                   onClick={col.sortable ? () => handleSort(col.key) : undefined}
                 >
                   {col.label}
@@ -152,13 +170,24 @@ export function DataTable<T extends Record<string, unknown>>({
           </TableHeader>
           <TableBody>
             {loading ? (
-              Array.from({ length: pageSize > 5 ? 5 : pageSize }).map((_, i) => (
-                <SkeletonRow key={i} cols={columns.length} />
-              ))
+              Array.from({ length: pageSize > 5 ? 5 : pageSize }).map(
+                (_, i) => <SkeletonRow key={i} cols={columns.length} />
+              )
             ) : paginatedData.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-                  {emptyMessage}
+              <TableRow className="hover:bg-transparent">
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-36 text-center"
+                >
+                  <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                    <div className="rounded-full bg-secondary p-3">
+                      <Inbox className="h-5 w-5" />
+                    </div>
+                    <p className="text-sm font-medium">{emptyMessage}</p>
+                    <p className="text-xs text-muted-foreground/60">
+                      Try adjusting your search or filters
+                    </p>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
@@ -181,27 +210,51 @@ export function DataTable<T extends Record<string, unknown>>({
             )}
           </TableBody>
         </Table>
-      </div>
+      </Card>
 
       {pagination && totalPages > 1 && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
-            Page {currentPage} of {totalPages} &mdash; {sortedData.length} result{sortedData.length !== 1 ? "s" : ""}
+            Page {currentPage} of {totalPages}{" "}
+            <span className="text-muted-foreground/60">&mdash;</span>{" "}
+            {sortedData.length} result{sortedData.length !== 1 ? "s" : ""}
           </span>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="rounded border border-input px-3 py-1 text-sm disabled:opacity-50 hover:bg-muted"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-sm transition-colors hover:bg-secondary disabled:pointer-events-none disabled:opacity-40"
+              aria-label="Previous page"
             >
-              Previous
+              <ChevronLeft className="h-4 w-4" />
             </button>
+
+            {/* Page number pills */}
+            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+              const page = i + 1
+              return (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={cn(
+                    "inline-flex h-8 w-8 items-center justify-center rounded-md border text-sm transition-colors",
+                    page === currentPage
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card hover:bg-secondary"
+                  )}
+                >
+                  {page}
+                </button>
+              )
+            })}
+
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="rounded border border-input px-3 py-1 text-sm disabled:opacity-50 hover:bg-muted"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-sm transition-colors hover:bg-secondary disabled:pointer-events-none disabled:opacity-40"
+              aria-label="Next page"
             >
-              Next
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
         </div>
