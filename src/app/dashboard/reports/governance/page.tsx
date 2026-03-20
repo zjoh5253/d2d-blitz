@@ -4,8 +4,17 @@ import * as React from "react";
 import { Users, ShieldAlert, Percent } from "lucide-react";
 import { StatCard } from "@/components/charts/stat-card";
 import { PieChart } from "@/components/charts/pie-chart";
-import { LineChart } from "@/components/charts/line-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  LineChart as RechartsLineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 import {
   Table,
   TableBody,
@@ -68,7 +77,14 @@ export default function GovernanceReportPage() {
 
   // Build trend lines from tier names
   const tierNames = data.tierDetails.map((t) => t.name);
-  const trendDataKey = tierNames[0] ?? "tier";
+  const TIER_COLORS = [
+    "hsl(var(--primary))",
+    "#10B981",
+    "#F59E0B",
+    "#EF4444",
+    "#8B5CF6",
+    "#06B6D4",
+  ];
 
   return (
     <div className="space-y-6">
@@ -106,25 +122,65 @@ export default function GovernanceReportPage() {
           valueKey="count"
           title="Reps by Tier"
         />
-        {data.tierTrend.length > 0 ? (
-          <LineChart
-            data={data.tierTrend as Record<string, unknown>[]}
-            xKey="period"
-            yKey={trendDataKey}
-            title="Tier Distribution Over Time"
-          />
-        ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Tier Distribution Over Time</CardTitle>
-            </CardHeader>
-            <CardContent>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Tier Distribution Over Time</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.tierTrend.length > 0 ? (
+              <ResponsiveContainer width="100%" height={260}>
+                <RechartsLineChart
+                  data={data.tierTrend as Record<string, unknown>[]}
+                  margin={{ top: 4, right: 16, left: 0, bottom: 4 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    className="stroke-border"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="period"
+                    tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={40}
+                    allowDecimals={false}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      fontSize: 12,
+                      color: "hsl(var(--foreground))",
+                    }}
+                  />
+                  <Legend iconType="circle" iconSize={8} />
+                  {tierNames.map((name, i) => (
+                    <Line
+                      key={name}
+                      type="monotone"
+                      dataKey={name}
+                      name={name}
+                      stroke={TIER_COLORS[i % TIER_COLORS.length]}
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  ))}
+                </RechartsLineChart>
+              </ResponsiveContainer>
+            ) : (
               <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground">
                 Not enough historical data yet.
               </div>
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Tier Breakdown Table */}

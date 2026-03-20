@@ -164,7 +164,7 @@ const NAV_GROUPS: NavGroup[] = [
       },
       {
         title: "Blitz P&L",
-        href: "/dashboard/reports/blitz-pnl",
+        href: "/dashboard/reports/blitz-profitability",
         icon: <BarChart3 className="size-[18px]" />,
         roles: ["ADMIN", "EXECUTIVE"],
       },
@@ -211,13 +211,13 @@ const NAV_GROUPS: NavGroup[] = [
       },
       {
         title: "Governance Config",
-        href: "/dashboard/admin/governance-config",
+        href: "/dashboard/admin/governance",
         icon: <Settings className="size-[18px]" />,
         roles: ["ADMIN"],
       },
       {
         title: "Stack Config",
-        href: "/dashboard/admin/stack-config",
+        href: "/dashboard/admin/stack",
         icon: <Settings className="size-[18px]" />,
         roles: ["ADMIN"],
       },

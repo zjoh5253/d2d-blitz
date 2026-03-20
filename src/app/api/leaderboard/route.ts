@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionFromRequest } from "@/lib/auth-mobile";
 import { db } from "@/lib/db";
 
 function getPeriodDates(period: string): { start: Date; end: Date } {
@@ -41,7 +41,7 @@ function getPeriodDates(period: string): { start: Date; end: Date } {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
+    const session = await getSessionFromRequest(request);
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

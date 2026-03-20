@@ -48,7 +48,7 @@ export function BlitzesClient({ blitzes }: BlitzesClientProps) {
       sortable: true,
       render: (_: unknown, row: Blitz) => (
         <Link
-          href={`/blitzes/${row.id}`}
+          href={`/dashboard/blitzes/${row.id}`}
           className="font-medium text-foreground hover:underline"
         >
           {row.name}
@@ -107,7 +107,7 @@ export function BlitzesClient({ blitzes }: BlitzesClientProps) {
       key: "id",
       label: "Actions",
       render: (_: unknown, row: Blitz) => (
-        <Link href={`/blitzes/${row.id}`}>
+        <Link href={`/dashboard/blitzes/${row.id}`}>
           <Button variant="ghost" size="sm">
             View
           </Button>

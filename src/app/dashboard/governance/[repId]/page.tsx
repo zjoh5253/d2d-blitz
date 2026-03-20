@@ -5,10 +5,9 @@ import { db } from "@/lib/db";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DataTable } from "@/components/tables/data-table";
 import { LineChart } from "@/components/charts/line-chart";
-import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, User } from "lucide-react";
+import { GovernancePeriodsTable } from "./governance-periods-table";
 
 export default async function RepGovernancePage({
   params,
@@ -97,9 +96,9 @@ export default async function RepGovernancePage({
         <Card>
           <CardContent className="p-6 space-y-2">
             <p className="text-sm text-muted-foreground">Current Tier</p>
-            <Badge variant="outline" className="text-base px-3 py-1">
+            <span className="inline-flex items-center rounded-md border border-border px-3 py-1 text-base font-medium">
               {rep.governanceTier?.name ?? "Unassigned"}
-            </Badge>
+            </span>
           </CardContent>
         </Card>
 
@@ -145,46 +144,7 @@ export default async function RepGovernancePage({
           <CardTitle className="text-base">Monthly Governance Periods</CardTitle>
         </CardHeader>
         <CardContent className="p-0 pb-6">
-          <DataTable
-            data={periodRows as Record<string, unknown>[]}
-            columns={[
-              { key: "period", label: "Month/Year", sortable: true },
-              { key: "submittedInstalls", label: "Submitted", sortable: true },
-              { key: "verifiedInstalls", label: "Verified", sortable: true },
-              { key: "installRate", label: "Install Rate", sortable: true },
-              {
-                key: "tier",
-                label: "Tier",
-                render: (val) => (
-                  <Badge variant="outline">{val as string}</Badge>
-                ),
-              },
-              {
-                key: "strike",
-                label: "Strike",
-                render: (val, row) => {
-                  const isStrike = val as boolean;
-                  const consec = (row as { consecutiveStrikes: number })
-                    .consecutiveStrikes;
-                  return isStrike ? (
-                    <Badge variant="destructive">
-                      Strike ({consec})
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="outline"
-                      className="text-emerald-600 border-emerald-600"
-                    >
-                      Clear
-                    </Badge>
-                  );
-                },
-              },
-            ]}
-            pagination
-            pageSize={12}
-            emptyMessage="No governance periods recorded yet."
-          />
+          <GovernancePeriodsTable data={periodRows as Record<string, unknown>[]} />
         </CardContent>
       </Card>
     </div>

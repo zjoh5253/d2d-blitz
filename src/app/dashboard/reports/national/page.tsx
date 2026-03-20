@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Users, CheckCircle, DollarSign, Activity, Map, TrendingUp } from "lucide-react";
+import { Users, CheckCircle, DollarSign, Activity, TrendingUp } from "lucide-react";
 import { LineChart } from "@/components/charts/line-chart";
 import { BarChart } from "@/components/charts/bar-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -170,33 +170,6 @@ export default function NationalReportPage() {
           />
         </div>
       </div>
-
-      {/* Map Placeholder */}
-      <Card className="animate-fade-in overflow-hidden" style={{ animationDelay: "160ms" }}>
-        <CardHeader className="border-b border-border bg-muted/30 py-4">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <div className="h-5 w-5 rounded-md bg-primary/10 inline-flex items-center justify-center">
-              <Map className="h-3 w-3 text-primary" />
-            </div>
-            Market Coverage Map
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="flex h-56 items-center justify-center bg-gradient-to-br from-blue-50/50 to-slate-50">
-            <div className="text-center">
-              <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-3">
-                <Map className="h-6 w-6 text-primary" />
-              </div>
-              <p className="text-sm font-semibold text-foreground">
-                Market Coverage Map
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Geographic visualization coming soon
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

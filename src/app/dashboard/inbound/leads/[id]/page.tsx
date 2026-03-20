@@ -76,7 +76,7 @@ export default async function InboundLeadDetailPage({
       {/* Header */}
       <div className="flex items-start gap-4">
         <Link
-          href="/inbound"
+          href="/dashboard/inbound"
           className="mt-1 text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -97,7 +97,7 @@ export default async function InboundLeadDetailPage({
         </div>
         {canConvert && (
           <Link
-            href={`/inbound/sales/new?leadId=${lead.id}`}
+            href={`/dashboard/inbound/sales/new?leadId=${lead.id}`}
             className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             Convert to Sale

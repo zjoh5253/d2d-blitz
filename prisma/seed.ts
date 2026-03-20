@@ -45,7 +45,7 @@ async function main() {
 
   const admin = await prisma.user.create({
     data: {
-      email: "admin@b2bblitz.com",
+      email: "admin@d2dblitz.com",
       passwordHash,
       name: "System Admin",
       phone: "555-000-0001",
@@ -55,7 +55,7 @@ async function main() {
 
   const executive = await prisma.user.create({
     data: {
-      email: "exec@b2bblitz.com",
+      email: "exec@d2dblitz.com",
       passwordHash,
       name: "Jane Executive",
       phone: "555-000-0002",
@@ -65,7 +65,7 @@ async function main() {
 
   const recruiter = await prisma.user.create({
     data: {
-      email: "recruiter@b2bblitz.com",
+      email: "recruiter@d2dblitz.com",
       passwordHash,
       name: "Bob Recruiter",
       phone: "555-000-0003",
@@ -75,7 +75,7 @@ async function main() {
 
   const marketOwner = await prisma.user.create({
     data: {
-      email: "marketowner@b2bblitz.com",
+      email: "marketowner@d2dblitz.com",
       passwordHash,
       name: "Carol Market",
       phone: "555-000-0004",
@@ -85,7 +85,7 @@ async function main() {
 
   const fieldManager = await prisma.user.create({
     data: {
-      email: "manager@b2bblitz.com",
+      email: "manager@d2dblitz.com",
       passwordHash,
       name: "Dave Manager",
       phone: "555-000-0005",
@@ -95,7 +95,7 @@ async function main() {
 
   const rep1 = await prisma.user.create({
     data: {
-      email: "rep1@b2bblitz.com",
+      email: "rep1@d2dblitz.com",
       passwordHash,
       name: "Eve Rep",
       phone: "555-000-0006",
@@ -106,7 +106,7 @@ async function main() {
 
   const rep2 = await prisma.user.create({
     data: {
-      email: "rep2@b2bblitz.com",
+      email: "rep2@d2dblitz.com",
       passwordHash,
       name: "Frank Rep",
       phone: "555-000-0007",
@@ -117,7 +117,7 @@ async function main() {
 
   const callCenter = await prisma.user.create({
     data: {
-      email: "callcenter@b2bblitz.com",
+      email: "callcenter@d2dblitz.com",
       passwordHash,
       name: "Grace Agent",
       phone: "555-000-0008",
@@ -335,14 +335,14 @@ async function main() {
 
   console.log("Seed data created successfully!");
   console.log("\nLogin credentials (all use password: password123):");
-  console.log("  Admin: admin@b2bblitz.com");
-  console.log("  Executive: exec@b2bblitz.com");
-  console.log("  Recruiter: recruiter@b2bblitz.com");
-  console.log("  Market Owner: marketowner@b2bblitz.com");
-  console.log("  Field Manager: manager@b2bblitz.com");
-  console.log("  Field Rep 1: rep1@b2bblitz.com");
-  console.log("  Field Rep 2: rep2@b2bblitz.com");
-  console.log("  Call Center: callcenter@b2bblitz.com");
+  console.log("  Admin: admin@d2dblitz.com");
+  console.log("  Executive: exec@d2dblitz.com");
+  console.log("  Recruiter: recruiter@d2dblitz.com");
+  console.log("  Market Owner: marketowner@d2dblitz.com");
+  console.log("  Field Manager: manager@d2dblitz.com");
+  console.log("  Field Rep 1: rep1@d2dblitz.com");
+  console.log("  Field Rep 2: rep2@d2dblitz.com");
+  console.log("  Call Center: callcenter@d2dblitz.com");
 }
 
 main()

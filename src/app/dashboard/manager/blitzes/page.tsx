@@ -191,7 +191,7 @@ export default async function ManagerBlitzesPage() {
                     </TableCell>
                     <TableCell>
                       <Link
-                        href={`/blitzes/${blitz.id}`}
+                        href={`/dashboard/blitzes/${blitz.id}`}
                         className="text-xs text-primary hover:underline"
                       >
                         View

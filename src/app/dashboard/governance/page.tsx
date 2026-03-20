@@ -7,10 +7,9 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/charts/stat-card";
 import { PieChart } from "@/components/charts/pie-chart";
-import { DataTable } from "@/components/tables/data-table";
-import { Badge } from "@/components/ui/badge";
 import { Users, AlertTriangle, Clock, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { GovernanceTable } from "./governance-table";
 
 export default async function GovernancePage() {
   const session = await auth();
@@ -116,59 +115,7 @@ export default async function GovernancePage() {
               <CardTitle className="text-base">Rep Governance Status</CardTitle>
             </CardHeader>
             <CardContent className="p-0 pb-6">
-              <DataTable
-                data={tableData as Record<string, unknown>[]}
-                columns={[
-                  {
-                    key: "name",
-                    label: "Rep Name",
-                    sortable: true,
-                    render: (val, row) => (
-                      <Link
-                        href={`/dashboard/governance/${(row as { id: string }).id}`}
-                        className="font-medium text-primary hover:underline"
-                      >
-                        {val as string}
-                      </Link>
-                    ),
-                  },
-                  {
-                    key: "tier",
-                    label: "Current Tier",
-                    render: (val) => (
-                      <Badge variant="outline">{val as string}</Badge>
-                    ),
-                  },
-                  { key: "installRate", label: "Install Rate", sortable: true },
-                  {
-                    key: "strikes",
-                    label: "Strikes",
-                    sortable: true,
-                    render: (val) => {
-                      const strikes = val as number;
-                      return (
-                        <span
-                          className={
-                            strikes >= 2
-                              ? "font-semibold text-destructive"
-                              : strikes === 1
-                                ? "font-semibold text-amber-500"
-                                : "text-muted-foreground"
-                          }
-                        >
-                          {strikes}
-                        </span>
-                      );
-                    },
-                  },
-                  { key: "lastReview", label: "Last Review" },
-                ]}
-                searchable
-                searchKeys={["name", "tier"]}
-                pagination
-                pageSize={10}
-                emptyMessage="No field reps found."
-              />
+              <GovernanceTable data={tableData as Record<string, unknown>[]} />
             </CardContent>
           </Card>
         </div>

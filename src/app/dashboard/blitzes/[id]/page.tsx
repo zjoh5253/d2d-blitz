@@ -78,7 +78,7 @@ export default async function BlitzPage({ params }: BlitzPageProps) {
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-            <Link href="/blitzes" className="hover:underline">
+            <Link href="/dashboard/blitzes" className="hover:underline">
               Blitzes
             </Link>
             <span>/</span>

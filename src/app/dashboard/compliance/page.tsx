@@ -5,9 +5,8 @@ import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/charts/stat-card";
-import { DataTable } from "@/components/tables/data-table";
-import { Badge } from "@/components/ui/badge";
 import { Users, ShieldCheck, ShieldAlert } from "lucide-react";
+import { ComplianceTable } from "./compliance-table";
 import { ComplianceActions } from "./compliance-actions";
 
 export default async function CompliancePage() {
@@ -91,62 +90,7 @@ export default async function CompliancePage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0 pb-6">
-          <DataTable
-            data={tableData as Record<string, unknown>[]}
-            columns={[
-              { key: "name", label: "Rep Name", sortable: true },
-              { key: "blitz", label: "Blitz" },
-              {
-                key: "status",
-                label: "Status",
-                sortable: true,
-                render: (val) =>
-                  val === "HELD" ? (
-                    <Badge variant="destructive">Held</Badge>
-                  ) : (
-                    <Badge
-                      variant="outline"
-                      className="text-emerald-600 border-emerald-600"
-                    >
-                      Compliant
-                    </Badge>
-                  ),
-              },
-              {
-                key: "holdReason",
-                label: "Hold Reason",
-                render: (val) => (
-                  <span className="text-sm text-muted-foreground truncate max-w-xs block">
-                    {(val as string | null) ?? "—"}
-                  </span>
-                ),
-              },
-              {
-                key: "holdDate",
-                label: "Hold Date",
-                render: (val) => (val as string | null) ?? "—",
-              },
-              {
-                key: "holdId",
-                label: "Actions",
-                render: (val, row) => {
-                  const holdId = val as string | null;
-                  if (!holdId) return null;
-                  return (
-                    <ComplianceActions
-                      holdId={holdId}
-                      repName={(row as { name: string }).name}
-                    />
-                  );
-                },
-              },
-            ]}
-            searchable
-            searchKeys={["name", "blitz", "status"]}
-            pagination
-            pageSize={15}
-            emptyMessage="No reps found."
-          />
+          <ComplianceTable data={tableData as Record<string, unknown>[]} />
         </CardContent>
       </Card>
     </div>

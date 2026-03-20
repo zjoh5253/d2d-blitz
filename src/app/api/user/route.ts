@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getSessionFromRequest } from '@/lib/auth-mobile';
 import { db } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth();
+    const session = await getSessionFromRequest(req);
     
     if (!session?.user?.id) {
       return NextResponse.json(
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const session = await auth();
+    const session = await getSessionFromRequest(req);
     
     if (!session?.user?.id) {
       return NextResponse.json(

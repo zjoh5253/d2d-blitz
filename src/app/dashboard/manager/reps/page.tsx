@@ -239,7 +239,7 @@ export default async function ManagerRepsPage() {
                       </TableCell>
                       <TableCell>
                         <Link
-                          href={`/reps/${rep.id}`}
+                          href={`/dashboard/governance/${rep.id}`}
                           className="text-xs text-primary hover:underline"
                         >
                           View

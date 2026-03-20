@@ -4,12 +4,10 @@ import { redirect } from "next/navigation"
 import Link from "next/link"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { DataTable } from "@/components/tables/data-table"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Plus } from "lucide-react"
-import { format } from "date-fns"
+import { SalesTable } from "./sales-table"
 
 type SaleStatus =
   | "SUBMITTED"
@@ -29,23 +27,6 @@ interface SaleRow {
   submittedAt: Date
   carrier: { name: string }
   blitz: { name: string }
-}
-
-function getSaleStatusVariant(
-  status: SaleStatus
-): "default" | "secondary" | "destructive" | "outline" {
-  switch (status) {
-    case "VERIFIED":
-      return "default"
-    case "INSTALLED":
-      return "secondary"
-    case "CANCELLED":
-      return "destructive"
-    case "DISPUTED":
-      return "destructive"
-    default:
-      return "outline"
-  }
 }
 
 export default async function RepSalesPage({
@@ -80,47 +61,6 @@ export default async function RepSalesPage({
     include: { carrier: true, blitz: true },
     orderBy: { submittedAt: "desc" },
   })
-
-  const columns = [
-    {
-      key: "customerName",
-      label: "Customer",
-      sortable: true,
-    },
-    {
-      key: "customerAddress",
-      label: "Address",
-      sortable: true,
-    },
-    {
-      key: "installDate",
-      label: "Install Date",
-      render: (value: unknown) =>
-        value instanceof Date ? format(value, "MMM d, yyyy") : String(value),
-      sortable: true,
-    },
-    {
-      key: "orderConfirmation",
-      label: "Order #",
-      render: (value: unknown) => (value ? String(value) : "—"),
-    },
-    {
-      key: "status",
-      label: "Status",
-      render: (value: unknown) => {
-        const s = value as SaleStatus
-        return <Badge variant={getSaleStatusVariant(s)}>{s}</Badge>
-      },
-      sortable: true,
-    },
-    {
-      key: "submittedAt",
-      label: "Submitted",
-      render: (value: unknown) =>
-        value instanceof Date ? format(value, "MMM d, yyyy") : String(value),
-      sortable: true,
-    },
-  ]
 
   const tableData = (sales as SaleRow[]).map((s) => ({
     ...s,
@@ -174,15 +114,7 @@ export default async function RepSalesPage({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <DataTable
-            data={tableData}
-            columns={columns}
-            searchable
-            searchKeys={["customerName", "customerAddress", "orderConfirmation"]}
-            pagination
-            pageSize={15}
-            emptyMessage="No sales found."
-          />
+          <SalesTable data={tableData} />
         </CardContent>
       </Card>
     </div>

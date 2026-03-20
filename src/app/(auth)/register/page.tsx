@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -42,17 +42,33 @@ const registerSchema = z
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
+/* ─── Stat formatting helpers ────────────────────────── */
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  return String(n);
+}
+
+function formatRevenue(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M+`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K+`;
+  return `$${n}`;
+}
+
 /* ─── Stat cards for hero panel ─────────────────────── */
 
-const stats = [
-  { value: "38", label: "Active Markets", icon: TrendingUp },
-  { value: "2.4K", label: "Field Reps", icon: Users },
-  { value: "$12M+", label: "Commissions Paid", icon: Trophy },
+type StatItem = { value: string; label: string; icon: React.ElementType };
+
+const DEFAULT_STATS: StatItem[] = [
+  { value: "\u2014", label: "Active Markets", icon: TrendingUp },
+  { value: "\u2014", label: "Field Reps", icon: Users },
+  { value: "\u2014", label: "Commissions Paid", icon: Trophy },
 ];
 
 /* ─── Decorative hero panel ──────────────────────────── */
 
-function HeroPanel() {
+function HeroPanel({ stats }: { stats: StatItem[] }) {
   return (
     <div
       className="hidden lg:flex lg:flex-col lg:justify-between relative overflow-hidden"
@@ -191,6 +207,28 @@ export default function RegisterPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [stats, setStats] = useState<StatItem[]>(DEFAULT_STATS);
+
+  useEffect(() => {
+    fetch("/api/public/stats")
+      .then((r) => r.json())
+      .then((data: { activeMarkets?: number; fieldReps?: number; totalRevenue?: number }) => {
+        if (
+          typeof data.activeMarkets === "number" &&
+          typeof data.fieldReps === "number" &&
+          typeof data.totalRevenue === "number"
+        ) {
+          setStats([
+            { value: formatCount(data.activeMarkets), label: "Active Markets", icon: TrendingUp },
+            { value: formatCount(data.fieldReps), label: "Field Reps", icon: Users },
+            { value: formatRevenue(data.totalRevenue), label: "Commissions Paid", icon: Trophy },
+          ]);
+        }
+      })
+      .catch(() => {
+        // leave default placeholder values on error
+      });
+  }, []);
 
   const {
     register,
@@ -235,7 +273,7 @@ export default function RegisterPage() {
     <div className="min-h-screen flex" style={{ background: "#F8FAFC" }}>
       {/* Left hero panel */}
       <div className="lg:w-[52%] xl:w-[55%] flex-shrink-0">
-        <HeroPanel />
+        <HeroPanel stats={stats} />
       </div>
 
       {/* Right form panel */}

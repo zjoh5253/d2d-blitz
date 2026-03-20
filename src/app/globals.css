@@ -305,6 +305,22 @@ aside ::-webkit-scrollbar-thumb:hover {
 .animate-stagger-5 { animation-delay: 250ms; }
 .animate-stagger-6 { animation-delay: 300ms; }
 
+/* Slide up — for scroll-triggered section entrances */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.5s var(--ease-out-expo) both;
+}
+
 /* Badge/notification pulse variants */
 .animate-pulse-blue {
   animation: badge-pulse 2s ease-in-out infinite;

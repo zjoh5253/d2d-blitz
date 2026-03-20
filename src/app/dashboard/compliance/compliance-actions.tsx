@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { ShieldCheck, RefreshCw } from "lucide-react";
 
 interface ComplianceActionsProps {
@@ -12,6 +13,7 @@ interface ComplianceActionsProps {
 
 export function ComplianceActions({ holdId, repName }: ComplianceActionsProps) {
   const router = useRouter();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
   async function runComplianceCheck() {
@@ -20,13 +22,11 @@ export function ComplianceActions({ holdId, repName }: ComplianceActionsProps) {
       const res = await fetch("/api/compliance/check", { method: "POST" });
       if (!res.ok) {
         const data = await res.json();
-        alert(data.error ?? "Failed to run compliance check");
+        toast({ title: "Error", description: data.error ?? "Failed to run compliance check", variant: "destructive" });
         return;
       }
       const data = await res.json();
-      alert(
-        `Compliance check complete.\nHolds created: ${data.holdsCreated}`
-      );
+      toast({ title: "Compliance check complete", description: `Holds created: ${data.holdsCreated}`, variant: "success" });
       router.refresh();
     } finally {
       setLoading(false);
@@ -46,7 +46,7 @@ export function ComplianceActions({ holdId, repName }: ComplianceActionsProps) {
       });
       if (!res.ok) {
         const data = await res.json();
-        alert(data.error ?? "Failed to restore hold");
+        toast({ title: "Error", description: data.error ?? "Failed to restore hold", variant: "destructive" });
         return;
       }
       router.refresh();

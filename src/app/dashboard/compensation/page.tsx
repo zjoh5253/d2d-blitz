@@ -113,14 +113,14 @@ export default async function CompensationPage() {
         </div>
         <div className="flex gap-3">
           <Link
-            href="/compensation/payouts"
+            href="/dashboard/compensation/payouts"
             className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             <DollarSign className="h-4 w-4" />
             Manage Payouts
           </Link>
           <Link
-            href="/compensation/config"
+            href="/dashboard/compensation/config"
             className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
           >
             <Settings className="h-4 w-4" />
@@ -151,7 +151,7 @@ export default async function CompensationPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Recent Commission Records</CardTitle>
           <Link
-            href="/compensation/payouts"
+            href="/dashboard/compensation/payouts"
             className="text-sm text-primary hover:underline"
           >
             View all payouts
@@ -241,7 +241,7 @@ export default async function CompensationPage() {
                     <TableRow key={batch.id}>
                       <TableCell className="font-medium text-sm">
                         <Link
-                          href={`/compensation/payouts/${batch.id}`}
+                          href={`/dashboard/compensation/payouts/${batch.id}`}
                           className="hover:underline text-primary"
                         >
                           {batch.period}

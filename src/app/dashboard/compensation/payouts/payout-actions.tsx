@@ -47,7 +47,7 @@ export function CreateBatchButton({ onCreated }: CreateBatchButtonProps) {
       if (onCreated) {
         onCreated(data.id);
       } else {
-        router.push(`/compensation/payouts/${data.id}`);
+        router.push(`/dashboard/compensation/payouts/${data.id}`);
       }
       router.refresh();
     } catch (err) {

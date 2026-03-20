@@ -184,7 +184,7 @@ export default async function ManagerGovernancePage() {
                       </TableCell>
                       <TableCell>
                         <Link
-                          href={`/reps/${rep.id}`}
+                          href={`/dashboard/governance/${rep.id}`}
                           className="text-xs text-primary hover:underline"
                         >
                           View
@@ -255,7 +255,7 @@ export default async function ManagerGovernancePage() {
                       </TableCell>
                       <TableCell>
                         <Link
-                          href={`/reps/${rep.id}`}
+                          href={`/dashboard/governance/${rep.id}`}
                           className="text-xs text-primary hover:underline"
                         >
                           View
@@ -329,7 +329,7 @@ export default async function ManagerGovernancePage() {
                       </TableCell>
                       <TableCell>
                         <Link
-                          href={`/reps/${rep.id}`}
+                          href={`/dashboard/governance/${rep.id}`}
                           className="text-xs text-primary hover:underline"
                         >
                           View

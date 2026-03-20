@@ -70,7 +70,7 @@ export default async function InboundSalesPage() {
           </p>
         </div>
         <Link
-          href="/inbound"
+          href="/dashboard/inbound"
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           &larr; Back to Leads
@@ -140,7 +140,7 @@ export default async function InboundSalesPage() {
                     </TableCell>
                     <TableCell>
                       <Link
-                        href={`/inbound/leads/${sale.leadId}`}
+                        href={`/dashboard/inbound/leads/${sale.leadId}`}
                         className="text-xs text-primary hover:underline"
                       >
                         View Lead

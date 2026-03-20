@@ -2,10 +2,9 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { db } from "@/lib/db"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/ui/status-badge"
-import { DataTable } from "@/components/tables/data-table"
+import { BlitzesTable } from "./blitzes-table"
 
 export const dynamic = "force-dynamic"
 
@@ -43,82 +42,13 @@ export default async function MarketDetailPage({ params }: PageProps) {
     0
   )
 
-  const blitzColumns = [
-    {
-      key: "name",
-      label: "Name",
-      sortable: true,
-      render: (_: unknown, row: (typeof m.blitzes)[0]) => (
-        <Link
-          href={`/blitzes/${row.id}`}
-          className="font-medium text-foreground hover:underline"
-        >
-          {row.name}
-        </Link>
-      ),
-    },
-    {
-      key: "startDate",
-      label: "Start",
-      sortable: true,
-      render: (val: unknown) =>
-        new Date(val as string).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        }),
-    },
-    {
-      key: "endDate",
-      label: "End",
-      render: (val: unknown) =>
-        new Date(val as string).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        }),
-    },
-    {
-      key: "repCap",
-      label: "Rep Cap",
-    },
-    {
-      key: "manager.name",
-      label: "Manager",
-      render: (_: unknown, row: (typeof m.blitzes)[0]) =>
-        row.manager.name ?? "—",
-    },
-    {
-      key: "status",
-      label: "Status",
-      render: (val: unknown) => <StatusBadge status={val as string} />,
-    },
-    {
-      key: "_count.assignments",
-      label: "Reps",
-      render: (_: unknown, row: (typeof m.blitzes)[0]) =>
-        row._count.assignments,
-    },
-    {
-      key: "id",
-      label: "",
-      render: (_: unknown, row: (typeof m.blitzes)[0]) => (
-        <Link href={`/blitzes/${row.id}`}>
-          <Button variant="ghost" size="sm">
-            View
-          </Button>
-        </Link>
-      ),
-    },
-  ]
-
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-            <Link href="/markets" className="hover:underline">
+            <Link href="/dashboard/markets" className="hover:underline">
               Markets
             </Link>
             <span>/</span>
@@ -202,22 +132,20 @@ export default async function MarketDetailPage({ params }: PageProps) {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Blitzes</h2>
-          <Link href={`/blitzes/new?marketId=${m.id}`}>
+          <Link href={`/dashboard/blitzes/new?marketId=${m.id}`}>
             <Button size="sm">New Blitz</Button>
           </Link>
         </div>
-        <DataTable
+        <BlitzesTable
           data={
             m.blitzes.map((b: BlitzItem) => ({
               ...b,
               startDate: b.startDate.toISOString(),
               endDate: b.endDate.toISOString(),
+              managerName: b.manager.name,
+              assignmentCount: b._count.assignments,
             })) as Record<string, unknown>[]
           }
-          columns={blitzColumns as Parameters<typeof DataTable>[0]["columns"]}
-          pagination
-          pageSize={10}
-          emptyMessage="No blitzes for this market yet."
         />
       </div>
     </div>

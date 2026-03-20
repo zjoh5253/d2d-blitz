@@ -89,12 +89,12 @@ export async function PUT(
       parsed.data;
 
     // If transitioning to ONBOARDED, create a FIELD_REP user
-    if (status === "ONBOARDED" && lead.status !== "ONBOARDED") {
+    if (status === "ONBOARDED" && lead.status !== "ONBOARDED" && lead.email) {
       const existingUser = await db.user.findUnique({
-        where: { email: lead.email ?? `${id}@placeholder.local` },
+        where: { email: lead.email },
       });
 
-      if (!existingUser && lead.email) {
+      if (!existingUser) {
         const tempPassword = Math.random().toString(36).slice(-10);
         const passwordHash = await bcrypt.hash(tempPassword, 12);
 
