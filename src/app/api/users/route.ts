@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (session.user.role !== "ADMIN" && session.user.role !== "EXECUTIVE") {
+    if (session.user.role !== "ADMIN" && session.user.role !== "EXECUTIVE" && session.user.role !== "FIELD_MANAGER") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

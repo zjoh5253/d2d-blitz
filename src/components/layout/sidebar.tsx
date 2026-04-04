@@ -20,6 +20,7 @@ import {
   Users,
   X,
   LayoutDashboard,
+  ClipboardList,
 } from "lucide-react";
 
 interface NavItem {
@@ -66,6 +67,12 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/dashboard/reps/daily-report",
         icon: <Activity className="size-[18px]" />,
         roles: ["ADMIN", "FIELD_MANAGER", "FIELD_REP"],
+      },
+      {
+        title: "Door Knocks",
+        href: "/dashboard/door-knocks",
+        icon: <ClipboardList className="size-[18px]" />,
+        roles: ["ADMIN", "FIELD_MANAGER"],
       },
       {
         title: "Go-Backs",

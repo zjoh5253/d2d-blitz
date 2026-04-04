@@ -124,6 +124,14 @@ enum InboundSaleStatus {
   CANCELLED
 }
 
+enum DoorKnockDisposition {
+  PENDING
+  NOT_HOME
+  GO_BACK
+  SOLD
+  NOT_INTERESTED
+}
+
 enum CarrierStatus {
   ACTIVE
   INACTIVE
@@ -270,6 +278,12 @@ model User {
   // Compliance holds restored by this user
   restoredComplianceHolds ComplianceHold[] @relation("ComplianceHoldRestorer")
 
+  // Door knock leads assigned to this rep
+  doorKnockLeads DoorKnockLead[] @relation("AssignedDoorKnockLeads")
+
+  // Door knock leads uploaded by this user
+  uploadedDoorKnockLeads DoorKnockLead[] @relation("UploadedDoorKnockLeads")
+
   // Inbound contact attempts (as agent)
   inboundContactAttempts InboundContactAttempt[]
 
@@ -402,6 +416,7 @@ model Blitz {
   sales         Sale[]
   deductions    Deduction[]
   commissionRecords CommissionRecord[]
+  doorKnockLeads DoorKnockLead[]
 
   @@index([marketId])
   @@index([managerId])
@@ -484,6 +499,8 @@ model GoBack {
 
   rep   User  @relation(fields: [repId], references: [id])
   blitz Blitz @relation(fields: [blitzId], references: [id])
+
+  doorKnockLead DoorKnockLead?
 
   @@index([repId])
   @@index([blitzId])
@@ -796,4 +813,39 @@ model InboundSale {
   @@index([status])
   @@index([installDate])
   @@map("inbound_sales")
+}
+
+// ─── Door Knock Leads ────────────────────────────────────────────────────────
+
+model DoorKnockLead {
+  id              String               @id @default(cuid())
+  firstName       String?              @map("first_name")
+  lastName        String?              @map("last_name")
+  streetNumber    String               @map("street_number")
+  streetName      String               @map("street_name")
+  city            String
+  state           String
+  zip             String
+  disposition     DoorKnockDisposition @default(PENDING)
+  notes           String?
+  assignedRepId   String?              @map("assigned_rep_id")
+  blitzId         String?              @map("blitz_id")
+  goBackId        String?              @unique @map("go_back_id")
+  uploadedById    String               @map("uploaded_by_id")
+  uploadBatchId   String?              @map("upload_batch_id")
+  resolvedAt      DateTime?            @map("resolved_at")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  assignedRep  User?   @relation("AssignedDoorKnockLeads", fields: [assignedRepId], references: [id])
+  uploadedBy   User    @relation("UploadedDoorKnockLeads", fields: [uploadedById], references: [id])
+  blitz        Blitz?  @relation(fields: [blitzId], references: [id])
+  goBack       GoBack? @relation(fields: [goBackId], references: [id])
+
+  @@index([assignedRepId])
+  @@index([blitzId])
+  @@index([disposition])
+  @@index([uploadBatchId])
+  @@index([uploadedById])
+  @@map("door_knock_leads")
 }
