@@ -1,8 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { encode, decode } from "next-auth/jwt";
 import { db } from "@/lib/db";
+import { checkRateLimit, getClientIp, refreshLimiter } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const rl = checkRateLimit(`refresh:${ip}`, refreshLimiter);
+
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: "Too many token refresh attempts. Please try again later.", retryAfter: rl.retryAfterSeconds },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(rl.retryAfterSeconds),
+          "X-RateLimit-Limit": String(rl.limit),
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(Math.ceil(rl.resetAt / 1000)),
+        },
+      }
+    );
+  }
+
   try {
     const { refreshToken } = await req.json();
 
