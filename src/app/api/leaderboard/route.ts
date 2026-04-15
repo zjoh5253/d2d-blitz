@@ -5,6 +5,14 @@ import { db } from "@/lib/db";
 function getPeriodDates(period: string): { start: Date; end: Date } {
   const now = new Date();
 
+  if (period === "day") {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(now);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+
   if (period === "week") {
     const day = now.getDay();
     const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday start
