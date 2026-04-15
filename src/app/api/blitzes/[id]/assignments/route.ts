@@ -21,6 +21,10 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    if (!["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"].includes(session.user?.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
     const { id } = await params
 
     const assignments = await db.blitzAssignment.findMany({
@@ -46,6 +50,10 @@ export async function POST(
     const session = await auth()
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    if (!["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"].includes(session.user?.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
     const { id } = await params

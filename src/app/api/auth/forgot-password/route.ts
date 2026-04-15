@@ -26,7 +26,8 @@ export async function POST(request: Request) {
     const { email } = parsed.data;
 
     // Rate limit check before any DB query
-    if (!checkRateLimit(`forgot-password:${email}`, LIMIT, WINDOW_MS)) {
+    const rl = checkRateLimit(`forgot-password:${email}`, { limit: LIMIT, windowMs: WINDOW_MS });
+    if (!rl.success) {
       return NextResponse.json(
         { error: "Too many requests. Please try again later." },
         { status: 429 }

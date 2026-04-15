@@ -21,7 +21,8 @@ export async function POST(request: Request) {
 
     const { email } = parsed.data;
 
-    if (!checkRateLimit(`resend-verification:${email}`, LIMIT, WINDOW_MS)) {
+    const rl = checkRateLimit(`resend-verification:${email}`, { limit: LIMIT, windowMs: WINDOW_MS });
+    if (!rl.success) {
       return NextResponse.json(
         { error: "Too many requests. Please try again later." },
         { status: 429 }

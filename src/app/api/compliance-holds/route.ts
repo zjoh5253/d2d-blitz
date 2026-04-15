@@ -10,8 +10,13 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const repId = searchParams.get("repId") ?? undefined;
+    const repIdParam = searchParams.get("repId") ?? undefined;
     const activeOnly = searchParams.get("activeOnly") === "true";
+
+    const MANAGER_ROLES = ["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"];
+    const isManager = MANAGER_ROLES.includes(session.user.role);
+    // Non-managers can only view their own compliance holds
+    const repId = isManager ? repIdParam : session.user.id;
 
     const holds = await db.complianceHold.findMany({
       where: {
