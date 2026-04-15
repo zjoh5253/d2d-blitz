@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/ui/status-badge"
 import { DataTable } from "@/components/tables/data-table"
 import { StaffingTab } from "./staffing-tab"
 import { ExpenseForm } from "./expense-form"
+import { TouchpointsTab } from "./touchpoints-tab"
 
 // Status transition map
 const STATUS_TRANSITIONS: Record<string, { next: string; label: string } | null> = {
@@ -53,6 +54,19 @@ interface Sale {
   commissionRecord: { repPay: number } | null
 }
 
+interface Touchpoint {
+  id: string
+  repId: string
+  blitzId: string
+  address: string
+  outcome: string
+  notes: string | null
+  latitude: number | null
+  longitude: number | null
+  timestamp: string
+  rep: { id: string; name: string | null; email: string }
+}
+
 interface BlitzTabsProps {
   blitz: {
     id: string
@@ -69,6 +83,7 @@ interface BlitzTabsProps {
     sales: Sale[]
   }
   availableReps: Rep[]
+  touchpoints: Touchpoint[]
 }
 
 function formatCurrency(val: number) {
@@ -83,7 +98,7 @@ function formatDate(val: string) {
   })
 }
 
-export function BlitzTabs({ blitz, availableReps }: BlitzTabsProps) {
+export function BlitzTabs({ blitz, availableReps, touchpoints }: BlitzTabsProps) {
   const router = useRouter()
   const [expenseOpen, setExpenseOpen] = React.useState(false)
   const [transitioning, setTransitioning] = React.useState(false)
@@ -203,6 +218,9 @@ export function BlitzTabs({ blitz, availableReps }: BlitzTabsProps) {
           </TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="pnl">P&L</TabsTrigger>
+          <TabsTrigger value="touchpoints">
+            Touchpoints ({touchpoints.length})
+          </TabsTrigger>
         </TabsList>
 
         {/* Overview */}
@@ -412,6 +430,15 @@ export function BlitzTabs({ blitz, availableReps }: BlitzTabsProps) {
               </div>
             )}
           </div>
+        </TabsContent>
+
+        {/* Touchpoints */}
+        <TabsContent value="touchpoints">
+          <TouchpointsTab
+            blitzId={blitz.id}
+            initialTouchpoints={touchpoints}
+            reps={blitz.assignments.map((a) => a.rep)}
+          />
         </TabsContent>
       </Tabs>
 
