@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { EmailVerificationBanner } from "@/components/layout/email-verification-banner";
 
 export default function DashboardLayout({
   children,
@@ -48,6 +49,10 @@ export default function DashboardLayout({
       {/* Main content area */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Topbar onMenuToggle={() => setSidebarOpen((prev) => !prev)} />
+
+        {session.user.emailVerified === false && session.user.email && (
+          <EmailVerificationBanner email={session.user.email} />
+        )}
 
         <main className="flex-1 overflow-y-auto p-6 lg:p-8 animate-fade-in">
           {children}

@@ -226,6 +226,15 @@ model User {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
+  // Email verification
+  emailVerified             Boolean   @default(false) @map("email_verified")
+  emailVerificationToken    String?   @unique @map("email_verification_token")
+  emailVerificationExpires  DateTime? @map("email_verification_expires")
+
+  // Password reset
+  passwordResetToken        String?   @unique @map("password_reset_token")
+  passwordResetExpires      DateTime? @map("password_reset_expires")
+
   // NextAuth relations
   accounts Account[]
   sessions Session[]

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { checkRateLimit, getClientIp, registerLimiter } from "@/lib/rate-limit";
+import { sendVerificationEmail } from "@/lib/email";
 
 const registerSchema = z.object({
   name: z.string().min(2),
@@ -55,6 +57,10 @@ export async function POST(request: NextRequest) {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
+    // Generate email verification token (24h TTL)
+    const emailVerificationToken = crypto.randomBytes(32).toString("hex");
+    const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
     // Create user with default FIELD_REP role
     await db.user.create({
       data: {
@@ -63,7 +69,14 @@ export async function POST(request: NextRequest) {
         phone: phone ?? null,
         passwordHash,
         role: "FIELD_REP",
+        emailVerificationToken,
+        emailVerificationExpires,
       },
+    });
+
+    // Fire-and-forget — don't fail registration if email delivery fails
+    sendVerificationEmail(email, emailVerificationToken).catch((err) => {
+      console.error("[register] failed to send verification email:", err);
     });
 
     return NextResponse.json({ success: true }, { status: 201 });
