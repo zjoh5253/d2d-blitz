@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth-mobile";
 import { db } from "@/lib/db";
+import { z } from "zod";
+import { parseQuery, optionalId, LeaderboardPeriodSchema } from "@/lib/validate";
+
+const leaderboardQuerySchema = z.object({
+  period: LeaderboardPeriodSchema.default("month"),
+  marketId: optionalId,
+  blitzId: optionalId,
+});
 
 function getPeriodDates(period: string): { start: Date; end: Date } {
   const now = new Date();
@@ -55,9 +63,13 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get("period") ?? "month";
-    const marketId = searchParams.get("marketId") ?? undefined;
-    const blitzId = searchParams.get("blitzId") ?? undefined;
+    const parsed = parseQuery(searchParams, leaderboardQuerySchema);
+
+    if (!parsed.success) {
+      return parsed.response;
+    }
+
+    const { period, marketId, blitzId } = parsed.data;
 
     const { start, end } = getPeriodDates(period);
 

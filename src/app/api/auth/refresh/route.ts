@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { encode, decode } from "next-auth/jwt";
 import { db } from "@/lib/db";
 import { checkRateLimit, getClientIp, refreshLimiter } from "@/lib/rate-limit";
+import { z } from "zod";
+
+const refreshSchema = z.object({
+  refreshToken: z.string().min(1),
+});
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
@@ -23,14 +28,17 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { refreshToken } = await req.json();
+    const body = await req.json();
+    const parsed = refreshSchema.safeParse(body);
 
-    if (!refreshToken) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Refresh token is required" },
-        { status: 401 }
+        { error: "Validation failed", issues: parsed.error.flatten() },
+        { status: 400 }
       );
     }
+
+    const { refreshToken } = parsed.data;
 
     let decoded;
     try {

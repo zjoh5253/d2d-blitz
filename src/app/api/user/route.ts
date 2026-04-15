@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/auth-mobile';
 import { db } from '@/lib/db';
+import { z } from 'zod';
+
+const updateUserSchema = z.object({
+  name: z.string().min(1).optional(),
+  email: z.string().email().optional(),
+}).refine(d => d.name || d.email, "At least one field required");
 
 export async function GET(req: NextRequest) {
   try {
@@ -55,15 +61,16 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { name, email } = body;
+    const parsed = updateUserSchema.safeParse(body);
 
-    // Validate input
-    if (email && !email.includes('@')) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Invalid email format' },
+        { error: 'Validation failed', issues: parsed.error.flatten() },
         { status: 400 }
       );
     }
+
+    const { name, email } = parsed.data;
 
     const updatedUser = await db.user.update({
       where: { id: session.user.id },

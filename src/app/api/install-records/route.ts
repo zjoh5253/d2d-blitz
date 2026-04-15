@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { z } from "zod";
+import { parseQuery, optionalId, InstallRecordStatusSchema } from "@/lib/validate";
+
+const installRecordsQuerySchema = z.object({
+  uploadId: optionalId,
+  status: InstallRecordStatusSchema.optional(),
+  carrierId: optionalId,
+});
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,14 +18,18 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const uploadId = searchParams.get("uploadId");
-    const status = searchParams.get("status");
-    const carrierId = searchParams.get("carrierId");
+    const parsed = parseQuery(searchParams, installRecordsQuerySchema);
+
+    if (!parsed.success) {
+      return parsed.response;
+    }
+
+    const { uploadId, status, carrierId } = parsed.data;
 
     const records = await db.installRecord.findMany({
       where: {
         ...(uploadId ? { uploadId } : {}),
-        ...(status ? { status: status as "MATCHED" | "UNMATCHED" | "DISPUTED" } : {}),
+        ...(status ? { status } : {}),
         ...(carrierId ? { carrierId } : {}),
       },
       orderBy: { createdAt: "desc" },

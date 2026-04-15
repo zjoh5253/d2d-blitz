@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { z } from "zod";
+import { parseQuery, optionalId } from "@/lib/validate";
+
+const complianceHoldsQuerySchema = z.object({
+  repId: optionalId,
+  activeOnly: z.string().optional(),
+});
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,8 +17,14 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const repIdParam = searchParams.get("repId") ?? undefined;
-    const activeOnly = searchParams.get("activeOnly") === "true";
+    const parsed = parseQuery(searchParams, complianceHoldsQuerySchema);
+
+    if (!parsed.success) {
+      return parsed.response;
+    }
+
+    const repIdParam = parsed.data.repId;
+    const activeOnly = parsed.data.activeOnly === "true";
 
     const MANAGER_ROLES = ["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"];
     const isManager = MANAGER_ROLES.includes(session.user.role);

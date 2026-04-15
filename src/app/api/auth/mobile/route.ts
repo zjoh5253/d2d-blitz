@@ -3,6 +3,12 @@ import bcrypt from "bcryptjs";
 import { encode } from "next-auth/jwt";
 import { db } from "@/lib/db";
 import { checkRateLimit, getClientIp, loginLimiter } from "@/lib/rate-limit";
+import { z } from "zod";
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
@@ -24,14 +30,17 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { email, password } = await req.json();
+    const body = await req.json();
+    const parsed = loginSchema.safeParse(body);
 
-    if (!email || !password) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Email and password are required" },
+        { error: "Validation failed", issues: parsed.error.flatten() },
         { status: 400 }
       );
     }
+
+    const { email, password } = parsed.data;
 
     const user = await db.user.findUnique({
       where: { email },
