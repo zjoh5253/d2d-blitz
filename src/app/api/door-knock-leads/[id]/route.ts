@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSessionFromRequest } from "@/lib/auth-mobile"
 import { db } from "@/lib/db"
 import type { DoorKnockDisposition } from "@prisma/client"
+import { z } from "zod"
+import { DoorKnockDispositionSchema } from "@/lib/validate"
 
 const VALID_DISPOSITIONS: DoorKnockDisposition[] = [
   "PENDING",
@@ -10,6 +12,12 @@ const VALID_DISPOSITIONS: DoorKnockDisposition[] = [
   "SOLD",
   "NOT_INTERESTED",
 ]
+
+const updateLeadSchema = z.object({
+  disposition: DoorKnockDispositionSchema.optional(),
+  notes: z.string().nullable().optional(),
+  goBackId: z.string().nullable().optional(),
+})
 
 export async function GET(
   request: NextRequest,
@@ -66,6 +74,14 @@ export async function PUT(
 
     const { id } = await params
     const body = await request.json()
+    const parsed = updateLeadSchema.safeParse(body)
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: parsed.error.flatten() },
+        { status: 400 }
+      )
+    }
 
     const lead = await db.doorKnockLead.findUnique({ where: { id } })
     if (!lead) {
@@ -81,22 +97,23 @@ export async function PUT(
     }
 
     const data: Record<string, unknown> = {}
+    const validatedBody = parsed.data
 
-    if (body.disposition && VALID_DISPOSITIONS.includes(body.disposition)) {
-      data.disposition = body.disposition
-      if (body.disposition !== "PENDING") {
+    if (validatedBody.disposition) {
+      data.disposition = validatedBody.disposition
+      if (validatedBody.disposition !== "PENDING") {
         data.resolvedAt = new Date()
       } else {
         data.resolvedAt = null
       }
     }
 
-    if (body.notes !== undefined) {
-      data.notes = body.notes || null
+    if (validatedBody.notes !== undefined) {
+      data.notes = validatedBody.notes || null
     }
 
-    if (body.goBackId !== undefined) {
-      data.goBackId = body.goBackId
+    if (validatedBody.goBackId !== undefined) {
+      data.goBackId = validatedBody.goBackId
     }
 
     const updated = await db.doorKnockLead.update({

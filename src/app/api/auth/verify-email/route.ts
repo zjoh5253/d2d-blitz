@@ -1,13 +1,21 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { z } from "zod";
+import { parseQuery } from "@/lib/validate";
+
+const verifyEmailQuerySchema = z.object({
+  token: z.string().min(1),
+});
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const token = searchParams.get("token");
+  const parsed = parseQuery(searchParams, verifyEmailQuerySchema);
 
-  if (!token) {
-    return NextResponse.json({ error: "Missing token." }, { status: 400 });
+  if (!parsed.success) {
+    return parsed.response;
   }
+
+  const { token } = parsed.data;
 
   const user = await db.user.findFirst({
     where: { emailVerificationToken: token },

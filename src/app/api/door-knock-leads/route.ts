@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSessionFromRequest } from "@/lib/auth-mobile"
 import { db } from "@/lib/db"
 import type { DoorKnockDisposition } from "@prisma/client"
+import { z } from "zod"
+import { parseQuery, optionalId, DoorKnockDispositionSchema } from "@/lib/validate"
 
 const VALID_DISPOSITIONS: DoorKnockDisposition[] = [
   "PENDING",
@@ -11,6 +13,15 @@ const VALID_DISPOSITIONS: DoorKnockDisposition[] = [
   "NOT_INTERESTED",
 ]
 
+const doorKnockLeadsQuerySchema = z.object({
+  assignedRepId: optionalId,
+  disposition: DoorKnockDispositionSchema.optional(),
+  blitzId: optionalId,
+  uploadBatchId: optionalId,
+  unassigned: z.string().optional(),
+  assigned: z.string().optional(),
+})
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getSessionFromRequest(request)
@@ -19,12 +30,13 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const assignedRepId = searchParams.get("assignedRepId")
-    const disposition = searchParams.get("disposition") as DoorKnockDisposition | null
-    const blitzId = searchParams.get("blitzId")
-    const uploadBatchId = searchParams.get("uploadBatchId")
-    const unassigned = searchParams.get("unassigned")
-    const assigned = searchParams.get("assigned")
+    const parsed = parseQuery(searchParams, doorKnockLeadsQuerySchema)
+
+    if (!parsed.success) {
+      return parsed.response
+    }
+
+    const { assignedRepId, disposition, blitzId, uploadBatchId, unassigned, assigned } = parsed.data
 
     const where: Record<string, unknown> = {}
 
@@ -41,7 +53,7 @@ export async function GET(request: NextRequest) {
       where.assignedRepId = { not: null }
     }
 
-    if (disposition && VALID_DISPOSITIONS.includes(disposition)) {
+    if (disposition) {
       where.disposition = disposition
     }
 
