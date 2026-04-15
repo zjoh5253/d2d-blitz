@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { notifyBlitzAssigned } from "@/lib/services/notifications"
 
 const assignmentCreateSchema = z.object({
   repId: z.string().min(1, "Rep is required"),
@@ -60,7 +61,7 @@ export async function POST(
     const { repId, housingAssignment, travelCoordination, arrivalConfirmed } = parsed.data
 
     // Check blitz exists
-    const blitz = await db.blitz.findUnique({ where: { id }, select: { id: true } })
+    const blitz = await db.blitz.findUnique({ where: { id }, select: { id: true, name: true } })
     if (!blitz) {
       return NextResponse.json({ error: "Blitz not found" }, { status: 404 })
     }
@@ -89,6 +90,13 @@ export async function POST(
         rep: { select: { id: true, name: true, email: true, role: true } },
       },
     })
+
+    // Fire-and-forget push notification (don't fail the request if this errors)
+    notifyBlitzAssigned({
+      repId,
+      blitzId: id,
+      blitzName: blitz.name,
+    }).catch((err) => console.error("[assignments POST] push notification failed:", err))
 
     return NextResponse.json(assignment, { status: 201 })
   } catch (error) {
