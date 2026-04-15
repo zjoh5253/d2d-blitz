@@ -132,6 +132,15 @@ enum DoorKnockDisposition {
   NOT_INTERESTED
 }
 
+enum TouchpointOutcome {
+  NO_ANSWER
+  NOT_INTERESTED
+  CALLBACK
+  PITCHED
+  SOLD
+  DO_NOT_KNOCK
+}
+
 enum CarrierStatus {
   ACTIVE
   INACTIVE
@@ -217,6 +226,15 @@ model User {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
+  // Email verification
+  emailVerified             Boolean   @default(false) @map("email_verified")
+  emailVerificationToken    String?   @unique @map("email_verification_token")
+  emailVerificationExpires  DateTime? @map("email_verification_expires")
+
+  // Password reset
+  passwordResetToken        String?   @unique @map("password_reset_token")
+  passwordResetExpires      DateTime? @map("password_reset_expires")
+
   // NextAuth relations
   accounts Account[]
   sessions Session[]
@@ -295,6 +313,9 @@ model User {
 
   // Push notification tokens
   devicePushTokens DevicePushToken[]
+
+  // Touchpoints logged by this rep
+  touchpoints Touchpoint[]
 
   @@index([role])
   @@index([status])
@@ -420,6 +441,7 @@ model Blitz {
   deductions    Deduction[]
   commissionRecords CommissionRecord[]
   doorKnockLeads DoorKnockLead[]
+  touchpoints    Touchpoint[]
 
   @@index([marketId])
   @@index([managerId])
@@ -866,4 +888,29 @@ model DevicePushToken {
   @@unique([userId, token])
   @@index([userId])
   @@map("device_push_tokens")
+}
+
+// ─── Touchpoints ─────────────────────────────────────────────────────────────
+
+model Touchpoint {
+  id        String            @id @default(cuid())
+  repId     String            @map("rep_id")
+  blitzId   String            @map("blitz_id")
+  address   String
+  outcome   TouchpointOutcome @default(NO_ANSWER)
+  notes     String?
+  latitude  Float?
+  longitude Float?
+  timestamp DateTime          @default(now())
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  rep   User  @relation(fields: [repId], references: [id])
+  blitz Blitz @relation(fields: [blitzId], references: [id])
+
+  @@index([repId])
+  @@index([blitzId])
+  @@index([outcome])
+  @@index([timestamp])
+  @@map("touchpoints")
 }

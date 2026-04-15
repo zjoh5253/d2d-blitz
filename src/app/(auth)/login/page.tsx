@@ -231,13 +231,21 @@ function LoginForm() {
 
       {/* Password */}
       <div className="space-y-1.5">
-        <Label
-          htmlFor="password"
-          className="text-sm font-medium"
-          style={{ color: "#334155" }}
-        >
-          Password
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label
+            htmlFor="password"
+            className="text-sm font-medium"
+            style={{ color: "#334155" }}
+          >
+            Password
+          </Label>
+          <Link
+            href="/forgot-password"
+            className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+          >
+            Forgot password?
+          </Link>
+        </div>
         <div className="relative">
           <Lock
             className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"

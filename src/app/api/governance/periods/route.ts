@@ -10,7 +10,12 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const repId = searchParams.get("repId") ?? undefined;
+    const repIdParam = searchParams.get("repId") ?? undefined;
+
+    const MANAGER_ROLES = ["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"];
+    const isManager = MANAGER_ROLES.includes(session.user.role);
+    // Non-managers (FIELD_REP, RECRUITER, CALL_CENTER) can only see their own records
+    const repId = isManager ? repIdParam : session.user.id;
     const month = searchParams.get("month")
       ? parseInt(searchParams.get("month")!)
       : undefined;
