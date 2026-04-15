@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { notifyCommissionPosted } from "@/lib/services/notifications";
 
 export async function POST() {
   try {
@@ -115,6 +116,16 @@ export async function POST() {
             governanceTierId: sale.rep.governanceTierId ?? null,
           },
         });
+
+        // Fire-and-forget push notification
+        notifyCommissionPosted({
+          repId: sale.repId,
+          blitzId: sale.blitzId,
+          blitzName: sale.blitz.name,
+          repPay,
+        }).catch((err) =>
+          console.error("[commissions/calculate] push notification failed:", err)
+        );
 
         created++;
       } catch (err) {

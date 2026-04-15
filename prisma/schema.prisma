@@ -293,6 +293,9 @@ model User {
   // Inbound sales (as affiliate)
   inboundSalesAsAffiliate InboundSale[] @relation("InboundSaleAffiliate")
 
+  // Push notification tokens
+  devicePushTokens DevicePushToken[]
+
   @@index([role])
   @@index([status])
   @@index([governanceTierId])
@@ -848,4 +851,19 @@ model DoorKnockLead {
   @@index([uploadBatchId])
   @@index([uploadedById])
   @@map("door_knock_leads")
+}
+
+model DevicePushToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String
+  platform  String   // "ios" | "android"
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, token])
+  @@index([userId])
+  @@map("device_push_tokens")
 }
