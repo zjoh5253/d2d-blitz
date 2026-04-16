@@ -27,6 +27,105 @@ export async function sendVerificationEmail(email: string, token: string) {
   });
 }
 
+export async function sendPayoutBatchCreatedEmail(params: {
+  to: string;
+  recipientName: string;
+  batchId: string;
+  period: string;
+  repCount: number;
+  totalPayout: number;
+  reconciliationRate: number;
+  matchedInstalls: number;
+  totalInstalls: number;
+  slaDeadline: Date;
+}) {
+  const batchUrl = `${APP_URL}/dashboard/payouts/${params.batchId}`;
+  const totalFormatted = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(params.totalPayout);
+  const reconPct = (params.reconciliationRate * 100).toFixed(1);
+  const slaStr = params.slaDeadline.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+  const reconBadge =
+    params.reconciliationRate >= 0.95
+      ? `<span style="color:#16a34a;font-weight:600">✓ ${reconPct}%</span>`
+      : `<span style="color:#dc2626;font-weight:600">⚠ ${reconPct}% — needs resolution before approval</span>`;
+
+  await resend.emails.send({
+    from: FROM,
+    to: params.to,
+    subject: `[Action Required] Payout batch ready for review — ${params.period}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+        <h2 style="color:#1e293b">Payout Batch Ready for Approval</h2>
+        <p>Hi ${params.recipientName},</p>
+        <p>A new payout batch has been created for period <strong>${params.period}</strong> and is awaiting your review.</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0">
+          <tr><td style="padding:8px 0;color:#6b7280">Reps included</td><td style="padding:8px 0;font-weight:600">${params.repCount}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280">Total net payout</td><td style="padding:8px 0;font-weight:600">${totalFormatted}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280">Install reconciliation</td><td style="padding:8px 0">${reconBadge} (${params.matchedInstalls}/${params.totalInstalls} installs matched)</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280">Approval SLA deadline</td><td style="padding:8px 0;font-weight:600;color:#d97706">${slaStr}</td></tr>
+        </table>
+        <a href="${batchUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">
+          Review &amp; Approve Batch
+        </a>
+        <p style="margin-top:24px;color:#6b7280;font-size:13px">
+          This batch must be approved by <strong>${slaStr}</strong> to meet the &lt;3 business day SLA.
+        </p>
+      </div>
+    `,
+  });
+}
+
+export async function sendPayoutSLAAlertEmail(params: {
+  to: string;
+  recipientName: string;
+  batchId: string;
+  period: string;
+  totalPayout: number;
+  slaDeadline: Date;
+  currentStatus: string;
+}) {
+  const batchUrl = `${APP_URL}/dashboard/payouts/${params.batchId}`;
+  const totalFormatted = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(params.totalPayout);
+  const slaStr = params.slaDeadline.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+
+  await resend.emails.send({
+    from: FROM,
+    to: params.to,
+    subject: `⚠ SLA BREACH: Payout batch for ${params.period} is overdue`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+        <h2 style="color:#dc2626">⚠ Payout SLA Breach</h2>
+        <p>Hi ${params.recipientName},</p>
+        <p>The payout batch for period <strong>${params.period}</strong> has not been approved within the required 2-business-day window.</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0">
+          <tr><td style="padding:8px 0;color:#6b7280">Current status</td><td style="padding:8px 0;font-weight:600">${params.currentStatus}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280">Total net payout</td><td style="padding:8px 0;font-weight:600">${totalFormatted}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280">SLA deadline was</td><td style="padding:8px 0;font-weight:600;color:#dc2626">${slaStr}</td></tr>
+        </table>
+        <a href="${batchUrl}" style="display:inline-block;padding:12px 24px;background:#dc2626;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">
+          Approve Now
+        </a>
+        <p style="margin-top:24px;color:#6b7280;font-size:13px">
+          Reps are waiting for payment. Please approve this batch immediately to meet your &lt;3 business day commitment.
+        </p>
+      </div>
+    `,
+  });
+}
+
 export async function sendPasswordResetEmail(email: string, token: string) {
   const webUrl = `${APP_URL}/reset-password?token=${token}`;
   // Deep link for mobile (d2dblitz://reset-password?token=...)
