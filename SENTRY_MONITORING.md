@@ -97,6 +97,54 @@ Add the following environment variables in Vercel project settings:
 
 ---
 
+## How to Read the API Error Rate Metric (Q2 KR: <1%)
+
+**Goal:** Keep the 5xx error rate across all API routes below 1% over any 1-hour rolling window.
+
+### Where to look
+
+1. **Sentry → Performance → Web Vitals / Transactions** (project: `d2d-blitz-web`)
+   - Transactions prefixed with `GET /api/` or `POST /api/` are your API routes.
+   - The **Error Rate** column shows `5xx responses / total requests × 100%`.
+
+2. **Sentry → Alerts** — you should have a metric alert rule named `"Web: API error rate >1% (1h)"`. If this alert fires, the threshold has been breached.
+
+### How to calculate it manually
+
+```
+Error Rate = (count of 5xx responses in last 1 hour) / (total API requests in last 1 hour) × 100
+```
+
+In Sentry Discover:
+```
+event.type:transaction transaction:/api/* http.status_code:>=500
+```
+Divide that count by the total count of the same transaction pattern (without the status filter).
+
+### How to set the <1% alert in Sentry
+
+1. Go to **Alerts → Create Alert Rule → Metrics**.
+2. Set dataset to **Transactions**.
+3. Filter: `transaction:/api/*` (all API routes).
+4. Metric: **Failure Rate** (Sentry built-in; counts 5xx as failures).
+5. Threshold: `> 1` (percent).
+6. Window: `60 minutes`.
+7. Action: Email `board@d2dblitz.com`.
+8. Name: `Web: API error rate >1% (1h)`.
+
+### Interpreting the metric during an incident
+
+| Error Rate | Severity | Action |
+|------------|----------|--------|
+| 0–0.5% | Healthy | Monitor normally |
+| 0.5–1% | Warning | Investigate in Sentry Issues — likely isolated failures |
+| 1–5% | Breached KR | Identify failing route(s), check recent deploys, consider rollback |
+| >5% | Critical | Alert fires; escalate to on-call immediately |
+
+**Tip:** Click into the failing transaction in Sentry Performance to see the stack trace, affected endpoints, and user count. Filter by `environment:production` to exclude staging noise.
+
+---
+
 ## Sentry Project Setup Checklist
 
 - [ ] Create Sentry organization at sentry.io
@@ -106,4 +154,5 @@ Add the following environment variables in Vercel project settings:
 - [ ] Create auth token and add to CI/CD secrets (`SENTRY_AUTH_TOKEN`)
 - [ ] Update `app.json` `SENTRY_ORG_PLACEHOLDER` with real org slug
 - [ ] Configure alert rules per thresholds above
+- [ ] Create `"Web: API error rate >1% (1h)"` metric alert (see instructions above)
 - [ ] Verify errors appear in Sentry after first deployment
