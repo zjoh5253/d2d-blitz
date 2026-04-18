@@ -1,83 +1,72 @@
 # D2D Blitz - Issues & Fix Tracking
 
-**Last Updated:** 2026-03-13  
+**Last Updated:** 2026-04-18
 **Status:** Active Development
 
 ---
 
-## 🔴 Critical Issues (Fix ASAP)
+## 🔴 Open Issues
 
-### 1. API Endpoints Missing/Inconsistent
+### API / Backend
+
 | Issue | Impact | Fix | Status |
 |-------|--------|-----|--------|
-| `POST /api/auth/login` returns 400 not 401 | Poor UX for error handling | Update to return 401 | 🔴 Pending |
-| `GET /api/user` doesn't exist | Cannot fetch user profile | Create endpoint | 🔴 Pending |
-| `POST /api/auth/register` behavior | Accepts duplicate emails silently? | Add validation | 🟡 Check |
+| Cron routes missing CRON_SECRET validation | `/api/cron/payout-batch` and `/api/cron/payout-sla-check` do not exist yet — automated payout batching and SLA enforcement is not implemented | Implement cron routes with `CRON_SECRET` header check before adding to scheduler | 🔴 Pending |
 
-### 2. Touchpoints Feature
+### Mobile
+
 | Issue | Impact | Fix | Status |
 |-------|--------|-----|--------|
-| Touchpoints admin page not deployed | Cannot manage customer touchpoints | Build & deploy | 🔴 Pending |
-| Touchpoints API missing | No backend for SMS/email automation | Create endpoints | 🔴 Pending |
-| No touchpoints DB schema | Cannot store touchpoint data | Add Prisma model | 🔴 Pending |
-
-### 3. Commission Enhancements
-| Issue | Impact | Fix | Status |
-|-------|--------|-----|--------|
-| Streak bonuses not in UI | Reps can't see streak progress | Add to dashboard | 🟡 Pending |
-| Scout premium not visible | Recruitment incentives hidden | Add to profile | 🟡 Pending |
-| Weekly pay calculations | No weekly payout view | Create reports page | 🟡 Pending |
-| Real-time commission preview | Reps can't see potential earnings | Add preview API | 🟡 Pending |
+| `Sale` type mismatch | Mobile defines `'PENDING'` / `'INSTALL_COMPLETED'` but backend uses `'PENDING_INSTALL'` / `'INSTALLED'` | Align mobile type with backend enum | 🔴 Pending |
+| Offline sync stub | `offlineStore.syncQueue()` exists but all API calls are commented out — offline queue never syncs | Implement actual API calls in sync loop | 🔴 Pending |
+| GPS session not persisted | `GPSTrackingScreen` does not save session data to the API (TODO at line 123) | Implement session save on stop | 🟡 Pending |
+| Leaderboard silent failure | `leaderboardStore` catch block sets `error: null` instead of the caught message | Set `error: err.message` in catch | 🟡 Pending |
 
 ---
 
 ## 🟡 Medium Priority
 
-### UI/UX Issues
-- [ ] **Mobile responsiveness** - Test all pages on mobile viewport
-- [ ] **Loading states** - Add skeleton loaders for data fetching
-- [ ] **Empty states** - Better messaging when no data exists
-- [ ] **Form validation** - Real-time validation feedback
-- [ ] **Error boundaries** - Catch and display errors gracefully
+### Mobile UX
+- [ ] **Offline mode** — Better offline queue management (sync stub is wired but non-functional)
+- [ ] **Push notifications** — Expo notifications configured but not fully wired to blitz events
 
-### Missing Pages
-- [ ] **Password reset flow** - Complete forgot password → email → reset
-- [ ] **Email verification** - Verify email after registration
-- [ ] **Profile settings** - Edit profile, change password, etc.
-- [ ] **Notification preferences** - Toggle email/push notifications
+### Web UX
+- [ ] **Loading states** — Add skeleton loaders for heavier data-fetching routes
+- [ ] **Error boundaries** — Catch and surface errors gracefully in Next.js page tree
 
-### API Improvements
-- [ ] **Rate limiting** - Add rate limits to auth endpoints
-- [ ] **Input sanitization** - Validate all inputs
-- [ ] **Error logging** - Log API errors for monitoring
-- [ ] **API versioning** - Consider /api/v1/ prefix
+### DevOps
+- [ ] **Staging environment** — Deploy previews for PRs (Vercel preview is available but not configured)
+- [ ] **Monitoring** — Error tracking (Sentry or equivalent) not set up
+- [ ] **Automated database backups** — No backup strategy documented
 
 ---
 
 ## 🟢 Low Priority / Nice to Have
 
-### Features
-- [ ] **Dark mode** - Toggle between light/dark themes
-- [ ] **Offline mode** - Better offline queue management
-- [ ] **PWA support** - Service worker, manifest, installable
-- [ ] **Push notifications** - Browser push for updates
-- [ ] **Analytics dashboard** - Usage metrics, conversion rates
-
-### DevOps
-- [ ] **Staging environment** - Deploy previews for PRs
-- [ ] **Automated backups** - Database backup strategy
-- [ ] **Monitoring** - Uptime monitoring, error tracking (Sentry)
-- [ ] **Performance budgets** - Bundle size limits
+- [ ] **Dark mode** — Toggle between light/dark themes
+- [ ] **PWA support** — Service worker, manifest, installable web app
+- [ ] **Advanced analytics dashboard** — Usage metrics, rep conversion rates
+- [ ] **API versioning** — Consider `/api/v1/` prefix for future stability
 
 ---
 
-## ✅ Recently Fixed
+## ✅ Resolved
 
-| Issue | Date Fixed | Commit |
-|-------|------------|--------|
-| API health endpoint missing | 2026-03-13 | 4f8af47 |
-| Leaderboard 404 error | 2026-03-13 | 4f8af47 |
-| Touchpoints 404 error | 2026-03-13 | 4f8af47 (redirect) |
+| Issue | Resolution | Notes |
+|-------|-----------|-------|
+| `POST /api/auth/login` returned 400 instead of 401 | Fixed — now returns **401** for invalid credentials, **400** for missing fields (correct REST semantics) | Audited 2026-04-18 |
+| `GET /api/user` endpoint missing | Implemented as `GET /api/users/me` — returns full profile with role and governance tier | Audited 2026-04-18 |
+| Touchpoints feature not deployed | Fully implemented — `GET /POST /api/touchpoints` with GPS, outcome tracking, and role-scoped access | Audited 2026-04-18 |
+| Touchpoints DB schema missing | Prisma model exists and is migrated | Audited 2026-04-18 |
+| Commission streak bonuses not in UI | Compensation page at `/dashboard/compensation` shows commissions and payout batches | Audited 2026-04-18 |
+| No leaderboard UI | `/dashboard/leaderboard` page with weekly/monthly/seasonal/lifetime rankings | Audited 2026-04-18 |
+| Mobile `LeaderboardScreen` hardcoded mock data | Now wired to `useLeaderboardStore` | Previously resolved |
+| Mobile `dashboardStore` uses mock data | Now calls `dashboardApi.getDashboardData()` | Previously resolved |
+| `spacing.xxl` missing in mobile theme | `LeaderboardScreen` uses `spacing['2xl']` which exists | Previously resolved |
+| Package name typo (`b2b-blitz`) | Fixed to `d2d-blitz` in `package.json` | DDB-37, 2026-04-18 |
+| Mobile `date-fns` misclassified as devDependency | Moved to `dependencies` (used in `src/utils/formatters.ts`) | DDB-37, 2026-04-18 |
+| API health endpoint missing | Added | 2026-03-13 — 4f8af47 |
+| Leaderboard 404 error | Fixed | 2026-03-13 — 4f8af47 |
 
 ---
 
@@ -86,58 +75,17 @@
 Run before every production deployment:
 
 ```bash
-# 1. Run API test suite
-node scripts/api-test-suite.js --base-url=https://d2d-blitz.vercel.app
-
-# 2. Run UI test checklist
-# See UI_TESTING_CHECKLIST.md
-
-# 3. Type check
+# Web app (d2d-blitz/)
 npm run typecheck
-
-# 4. Lint
 npm run lint
-
-# 5. Build test
 npm run build
+
+# Mobile (d2d-blitz-mobile/)
+npm run typecheck
+npm run lint
+npm run test
 ```
 
 ---
 
-## 🚀 Deployment Plan
-
-### Phase 1: Critical Fixes (This Week)
-- [ ] Fix login error response (400 → 401)
-- [ ] Create /api/user endpoint
-- [ ] Deploy touchpoints feature
-- [ ] Add commission UI components
-
-### Phase 2: Polish (Next Week)
-- [ ] Mobile responsiveness pass
-- [ ] Loading states & empty states
-- [ ] Form validation improvements
-- [ ] Error boundaries
-
-### Phase 3: Advanced Features (Future)
-- [ ] Push notifications
-- [ ] Advanced analytics
-- [ ] PWA support
-- [ ] Offline-first mobile app
-
----
-
-## 🧪 Testing
-
-### Automated Tests
-- ✅ API test suite (11/13 passing)
-- ⏳ UI E2E tests (planned)
-- ⏳ Unit tests (planned)
-
-### Manual Testing
-- ✅ UI testing checklist
-- ⏳ Mobile device testing
-- ⏳ Cross-browser testing
-
----
-
-*Document maintained by Carl (OpenClaw)*
+*Last reconciled by D2DBlitzLead agent — 2026-04-18*
