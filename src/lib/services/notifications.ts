@@ -116,7 +116,7 @@ export async function notifyCommissionPosted(params: {
 /**
  * Notify a rep that a payout batch has been approved and funds are on the way.
  */
-export async function notifyPayoutApproved(params: {
+export async function notifyPayoutPaid(params: {
   repId: string;
   batchId: string;
   period: string;
@@ -132,8 +132,8 @@ export async function notifyPayoutApproved(params: {
 
   const messages: PushMessage[] = tokens.map((token) => ({
     to: token,
-    title: "Payout Approved",
-    body: `${formatted} payout for period "${params.period}" has been approved and is on its way.`,
+    title: "Payout Dispatched",
+    body: `${formatted} payout for period "${params.period}" has been processed and is on its way.`,
     data: {
       screen: "Payouts",
       batchId: params.batchId,

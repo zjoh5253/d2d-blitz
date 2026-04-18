@@ -702,7 +702,7 @@ model Deduction {
 
 model PayoutBatch {
   id                String            @id @default(cuid())
-  period            String
+  period            String            @unique
   status            PayoutBatchStatus @default(DRAFT)
   approvedById      String?           @map("approved_by_id")
   approvedAt        DateTime?         @map("approved_at")
@@ -718,7 +718,6 @@ model PayoutBatch {
   auditLogs   PayoutBatchAuditLog[]
 
   @@index([status])
-  @@index([period])
   @@index([approvedById])
   @@map("payout_batches")
 }
