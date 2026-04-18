@@ -6,7 +6,7 @@ declare module "next-auth" {
       id: string;
       role: string;
       emailVerified: boolean;
-    } & DefaultSession["user"];
+    } & Omit<NonNullable<DefaultSession["user"]>, "emailVerified">;
   }
 
   interface User {

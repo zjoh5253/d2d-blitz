@@ -146,7 +146,7 @@ describe("sales/[id]", () => {
 
   describe("GET", () => {
     it("returns 401 when unauthenticated", async () => {
-      vi.mocked(auth).mockResolvedValue(null)
+      vi.mocked(auth).mockResolvedValue(null as any)
       const res = await salesGET(
         makeRequest("http://localhost/api/sales/sale-1", "GET") as any,
         makeParams("sale-1"),
@@ -202,7 +202,7 @@ describe("sales/[id]", () => {
 
   describe("PUT", () => {
     it("returns 401 when unauthenticated", async () => {
-      vi.mocked(auth).mockResolvedValue(null)
+      vi.mocked(auth).mockResolvedValue(null as any)
       const res = await salesPUT(
         makeRequest("http://localhost/api/sales/sale-1", "PUT", {
           customerName: "Updated",
@@ -360,7 +360,7 @@ describe("blitzes/[id]", () => {
 
   describe("GET", () => {
     it("returns 401 when unauthenticated", async () => {
-      vi.mocked(auth).mockResolvedValue(null)
+      vi.mocked(auth).mockResolvedValue(null as any)
       const res = await blitzesGET(
         makeRequest("http://localhost/api/blitzes/blitz-1", "GET"),
         makeParams("blitz-1"),
@@ -393,7 +393,7 @@ describe("blitzes/[id]", () => {
 
   describe("PUT", () => {
     it("returns 401 when unauthenticated", async () => {
-      vi.mocked(auth).mockResolvedValue(null)
+      vi.mocked(auth).mockResolvedValue(null as any)
       const res = await blitzesPUT(
         makeRequest("http://localhost/api/blitzes/blitz-1", "PUT", {
           name: "Updated",
@@ -460,7 +460,7 @@ describe("blitzes/[id]", () => {
 
   describe("DELETE", () => {
     it("returns 401 when unauthenticated", async () => {
-      vi.mocked(auth).mockResolvedValue(null)
+      vi.mocked(auth).mockResolvedValue(null as any)
       const res = await blitzesDELETE(
         makeRequest("http://localhost/api/blitzes/blitz-1", "DELETE"),
         makeParams("blitz-1"),
@@ -530,7 +530,7 @@ describe("install-records/[id]", () => {
 
   describe("GET", () => {
     it("returns 401 when unauthenticated", async () => {
-      vi.mocked(auth).mockResolvedValue(null)
+      vi.mocked(auth).mockResolvedValue(null as any)
       const res = await installRecordsGET(
         makeRequest("http://localhost/api/install-records/rec-1", "GET") as any,
         makeParams("rec-1"),
@@ -563,7 +563,7 @@ describe("install-records/[id]", () => {
 
   describe("PUT", () => {
     it("returns 401 when unauthenticated", async () => {
-      vi.mocked(auth).mockResolvedValue(null)
+      vi.mocked(auth).mockResolvedValue(null as any)
       const res = await installRecordsPUT(
         makeRequest("http://localhost/api/install-records/rec-1", "PUT", {
           status: "MATCHED",
@@ -718,7 +718,7 @@ describe("carriers/[id]", () => {
 
   describe("GET", () => {
     it("returns 401 when unauthenticated", async () => {
-      vi.mocked(auth).mockResolvedValue(null)
+      vi.mocked(auth).mockResolvedValue(null as any)
       const res = await carriersGET(
         makeRequest("http://localhost/api/carriers/carrier-1", "GET") as any,
         makeParams("carrier-1"),
@@ -761,7 +761,7 @@ describe("carriers/[id]", () => {
 
   describe("PUT", () => {
     it("returns 401 when unauthenticated", async () => {
-      vi.mocked(auth).mockResolvedValue(null)
+      vi.mocked(auth).mockResolvedValue(null as any)
       const res = await carriersPUT(
         makeRequest("http://localhost/api/carriers/carrier-1", "PUT", {
           name: "Updated",
@@ -856,7 +856,7 @@ describe("carriers/[id]", () => {
 
   describe("DELETE", () => {
     it("returns 401 when unauthenticated", async () => {
-      vi.mocked(auth).mockResolvedValue(null)
+      vi.mocked(auth).mockResolvedValue(null as any)
       const res = await carriersDELETE(
         makeRequest("http://localhost/api/carriers/carrier-1", "DELETE") as any,
         makeParams("carrier-1"),
@@ -909,7 +909,7 @@ describe("markets/[id]", () => {
 
   describe("GET", () => {
     it("returns 401 when unauthenticated", async () => {
-      vi.mocked(auth).mockResolvedValue(null)
+      vi.mocked(auth).mockResolvedValue(null as any)
       const res = await marketsGET(
         makeRequest("http://localhost/api/markets/market-1", "GET"),
         makeParams("market-1"),
@@ -942,7 +942,7 @@ describe("markets/[id]", () => {
 
   describe("PUT", () => {
     it("returns 401 when unauthenticated", async () => {
-      vi.mocked(auth).mockResolvedValue(null)
+      vi.mocked(auth).mockResolvedValue(null as any)
       const res = await marketsPUT(
         makeRequest("http://localhost/api/markets/market-1", "PUT", {
           name: "Updated",
@@ -1024,7 +1024,7 @@ describe("markets/[id]", () => {
 
   describe("DELETE", () => {
     it("returns 401 when unauthenticated", async () => {
-      vi.mocked(auth).mockResolvedValue(null)
+      vi.mocked(auth).mockResolvedValue(null as any)
       const res = await marketsDELETE(
         makeRequest("http://localhost/api/markets/market-1", "DELETE"),
         makeParams("market-1"),
