@@ -7,6 +7,8 @@ import { parseQuery, optionalId } from "@/lib/validate";
 const complianceHoldsQuerySchema = z.object({
   repId: optionalId,
   activeOnly: z.string().optional(),
+  // YYYY-MM format, e.g. "2024-03"
+  period: z.string().regex(/^\d{4}-\d{2}$/).optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -25,16 +27,27 @@ export async function GET(request: NextRequest) {
 
     const repIdParam = parsed.data.repId;
     const activeOnly = parsed.data.activeOnly === "true";
+    const period = parsed.data.period;
 
     const MANAGER_ROLES = ["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"];
     const isManager = MANAGER_ROLES.includes(session.user.role);
     // Non-managers can only view their own compliance holds
     const repId = isManager ? repIdParam : session.user.id;
 
+    let periodFilter: { gte: Date; lt: Date } | undefined;
+    if (period) {
+      const [year, month] = period.split("-").map(Number);
+      periodFilter = {
+        gte: new Date(year, month - 1, 1),
+        lt: new Date(year, month, 1),
+      };
+    }
+
     const holds = await db.complianceHold.findMany({
       where: {
         ...(repId ? { repId } : {}),
         ...(activeOnly ? { restoredDate: null } : {}),
+        ...(periodFilter ? { holdDate: periodFilter } : {}),
       },
       include: {
         rep: { select: { id: true, name: true, email: true } },
