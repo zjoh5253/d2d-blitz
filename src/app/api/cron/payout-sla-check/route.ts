@@ -10,15 +10,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkPayoutBatchSLA } from "@/lib/services/payout";
 import { sendPayoutSLAAlertEmail } from "@/lib/email";
+import { validateCronRequest } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authError = validateCronRequest(request);
+  if (authError) return authError;
 
   try {
     const alertedBatchIds = await checkPayoutBatchSLA();
