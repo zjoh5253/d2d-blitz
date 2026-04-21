@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { captureServerEvent } from "@/lib/posthog"
 
 const blitzCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -75,6 +76,13 @@ export async function POST(request: Request) {
         market: { include: { carrier: true } },
         manager: { select: { id: true, name: true, email: true } },
       },
+    })
+
+    captureServerEvent(session.user.id, "blitz_created", {
+      blitz_id: blitz.id,
+      blitz_name: blitz.name,
+      market_id: blitz.marketId,
+      rep_cap: blitz.repCap,
     })
 
     return NextResponse.json(blitz, { status: 201 })

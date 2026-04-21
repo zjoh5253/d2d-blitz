@@ -3,6 +3,7 @@ import { getSessionFromRequest } from "@/lib/auth-mobile";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import { parseQuery, optionalId, LeaderboardPeriodSchema } from "@/lib/validate";
+import { captureServerEvent } from "@/lib/posthog";
 
 const leaderboardQuerySchema = z.object({
   period: LeaderboardPeriodSchema.default("month"),
@@ -153,6 +154,13 @@ export async function GET(request: NextRequest) {
       })
       .sort((a, b) => b.verifiedInstalls - a.verifiedInstalls)
       .map((row, idx) => ({ ...row, rank: idx + 1 }));
+
+    captureServerEvent(session.user.id, "leaderboard_viewed", {
+      period,
+      market_id: marketId ?? null,
+      blitz_id: blitzId ?? null,
+      result_count: rows.length,
+    })
 
     return NextResponse.json({ period, rows });
   } catch (error) {

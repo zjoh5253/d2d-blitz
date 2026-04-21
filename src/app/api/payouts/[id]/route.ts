@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
-import {
-  reviewPayoutBatch,
-  approvePayoutBatch,
-  markPayoutBatchPaid,
-} from "@/lib/services/payout";
+import { captureServerEvent } from "@/lib/posthog";
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ["REVIEWED"],
@@ -36,12 +32,10 @@ export async function GET(
       include: {
         approvedBy: { select: { id: true, name: true } },
         payoutLines: {
-          include: { rep: { select: { id: true, name: true } } },
+          include: {
+            rep: { select: { id: true, name: true } },
+          },
           orderBy: { netPay: "desc" },
-        },
-        auditLogs: {
-          include: { performedBy: { select: { id: true, name: true } } },
-          orderBy: { createdAt: "asc" },
         },
       },
     });
@@ -53,7 +47,10 @@ export async function GET(
     return NextResponse.json(batch);
   } catch (error) {
     console.error("[GET /api/payouts/[id]]", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }
 
@@ -99,39 +96,52 @@ export async function PUT(
       );
     }
 
-    // Delegate to service layer which enforces reconciliation and writes audit log
-    try {
-      if (newStatus === "REVIEWED") {
-        await reviewPayoutBatch(id, session.user.id);
-      } else if (newStatus === "APPROVED") {
-        await approvePayoutBatch(id, session.user.id);
-      } else if (newStatus === "PAID") {
-        await markPayoutBatchPaid(id);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return NextResponse.json({ error: message }, { status: 422 });
+    const updateData: Record<string, unknown> = { status: newStatus };
+
+    if (newStatus === "APPROVED") {
+      updateData.approvedById = session.user.id;
+      updateData.approvedAt = new Date();
     }
 
-    // Return full batch with audit log
-    const result = await db.payoutBatch.findUnique({
+    if (newStatus === "PAID") {
+      // Mark all PENDING commission records for reps in this batch as PAID
+      const lines = await db.payoutLine.findMany({
+        where: { batchId: id },
+        select: { repId: true },
+      });
+      const repIds = lines.map((l) => l.repId);
+      await db.commissionRecord.updateMany({
+        where: { repId: { in: repIds }, status: "PENDING" },
+        data: { status: "PAID" },
+      });
+    }
+
+    const updated = await db.payoutBatch.update({
       where: { id },
+      data: updateData,
       include: {
         approvedBy: { select: { id: true, name: true } },
         payoutLines: {
-          include: { rep: { select: { id: true, name: true } } },
-          orderBy: { netPay: "desc" },
-        },
-        auditLogs: {
-          include: { performedBy: { select: { id: true, name: true } } },
-          orderBy: { createdAt: "asc" },
+          include: {
+            rep: { select: { id: true, name: true } },
+          },
         },
       },
     });
 
-    return NextResponse.json(result);
+    if (newStatus === "APPROVED") {
+      captureServerEvent(session.user.id, "payout_approved", {
+        batch_id: id,
+        payout_lines: updated.payoutLines.length,
+      })
+    }
+
+    return NextResponse.json(updated);
   } catch (error) {
     console.error("[PUT /api/payouts/[id]]", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { notifyCommissionPosted } from "@/lib/services/notifications";
+import { captureServerEvent } from "@/lib/posthog";
 
 export async function POST() {
   try {
@@ -134,6 +135,11 @@ export async function POST() {
         );
       }
     }
+
+    captureServerEvent(session.user.id, "commissions_calculated", {
+      records_created: created,
+      error_count: errors.length,
+    })
 
     return NextResponse.json({
       created,

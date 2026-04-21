@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { userCreateSchema } from "@/lib/validators/common";
 import bcrypt from "bcryptjs";
+import { captureServerEvent } from "@/lib/posthog";
 
 export async function GET(request: NextRequest) {
   try {
@@ -98,6 +99,11 @@ export async function POST(request: NextRequest) {
         updatedAt: true,
       },
     });
+
+    captureServerEvent(session.user.id, "rep_signup", {
+      new_user_id: user.id,
+      new_user_role: user.role,
+    })
 
     return NextResponse.json(user, { status: 201 });
   } catch (error) {
