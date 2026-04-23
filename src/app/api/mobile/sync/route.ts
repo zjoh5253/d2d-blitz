@@ -128,7 +128,7 @@ async function processCreateDailyReport(
     resourceId = existing.id;
   } else {
     const report = await db.dailyReport.create({
-      data: { repId, blitzId, date: reportDate, doorsKnocked, conversations, goBacksRecorded, appointmentsScheduled, salesCount },
+      data: { repId, blitzId, date: reportDate, doorsKnocked, conversations, goBacksRecorded: goBacksRecorded ?? 0, appointmentsScheduled: appointmentsScheduled ?? 0, salesCount: salesCount ?? 0 },
     });
     resourceId = report.id;
   }
