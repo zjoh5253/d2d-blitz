@@ -41,8 +41,5 @@ export default withSentryConfig(nextConfig, {
     disable: process.env.NODE_ENV !== "production",
   },
 
-  // Hide source maps from the client bundle
-  hideSourceMaps: true,
-
   disableLogger: true,
 });

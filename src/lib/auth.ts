@@ -60,7 +60,8 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
       if (token) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
-        session.user.emailVerified = token.emailVerified as boolean;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (session.user as any).emailVerified = token.emailVerified;
       }
       return session;
     },
