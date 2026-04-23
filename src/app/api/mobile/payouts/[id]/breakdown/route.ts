@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth-mobile";
 import { db } from "@/lib/db";
+import type { CommissionStatus } from "@prisma/client";
 
 const DEDUCTION_CATEGORY_LABELS: Record<string, string> = {
   HOUSING: "Housing cost",
@@ -59,7 +60,7 @@ export async function GET(
     }
 
     // Determine which commission status to look for based on batch status
-    const commissionStatuses =
+    const commissionStatuses: CommissionStatus[] =
       batch.status === "PAID" ? ["PAID"] : ["PENDING"];
 
     // Fetch commission records for this rep in this batch.
