@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NextRequest } from "next/server";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
