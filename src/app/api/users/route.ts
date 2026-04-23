@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         email,
         phone: phone || null,
         role,
-        status,
+        status: status as "ACTIVE" | "INACTIVE" | undefined,
         passwordHash,
       },
       select: {

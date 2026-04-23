@@ -58,6 +58,11 @@ enum BlitzAssignmentStatus {
   REMOVED
 }
 
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum ExpenseCategory {
   HOUSING
   TRAVEL
@@ -221,7 +226,7 @@ model User {
   name             String?
   phone            String?
   role             Role
-  status           String    @default("ACTIVE")
+  status           UserStatus @default(ACTIVE)
   governanceTierId String?   @map("governance_tier_id")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
@@ -467,6 +472,8 @@ model BlitzAssignment {
   @@index([blitzId])
   @@index([repId])
   @@index([status])
+  // Partial unique index: blitz_assignments_one_active_per_rep ON (rep_id) WHERE status NOT IN ('DEPARTED','REMOVED')
+  // Added via raw SQL migration (Prisma does not support partial unique indexes in schema.prisma).
   @@map("blitz_assignments")
 }
 

@@ -77,7 +77,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         email,
         phone: phone || null,
         role,
-        status,
+        status: status as "ACTIVE" | "INACTIVE" | undefined,
       },
       select: userSelect,
     });
