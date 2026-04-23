@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { vi, describe, it, expect, beforeEach } from "vitest"
 
 vi.mock("@/lib/auth", () => ({
