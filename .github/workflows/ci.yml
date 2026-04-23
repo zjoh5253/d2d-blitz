@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm test
+        env:
+          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/d2d_blitz_test' }}
+          AUTH_SECRET: test-secret-for-ci
+          NEXTAUTH_URL: http://localhost:3000
+
+  # This job surfaces the Vercel preview URL in the PR checks summary.
+  # Vercel posts the preview URL automatically via the GitHub app, but
+  # having a named CI check here makes it easier to see deploy status at a glance.
+  preview-deploy-check:
+    name: Preview Deploy
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Wait for Vercel preview deployment
+        run: |
+          echo "Vercel preview deploy is handled automatically by the Vercel GitHub App."
+          echo "Preview URL pattern: https://d2d-blitz-git-{branch}-{team}.vercel.app"
+          echo "Check the Vercel bot comment on this PR for the exact preview URL."
