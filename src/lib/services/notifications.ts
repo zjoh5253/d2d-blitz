@@ -112,3 +112,35 @@ export async function notifyCommissionPosted(params: {
 
   await sendExpoPushMessages(messages);
 }
+
+/**
+ * Notify a rep that a payout batch has been approved and funds are on the way.
+ */
+export async function notifyPayoutPaid(params: {
+  repId: string;
+  batchId: string;
+  period: string;
+  netPay: number;
+}): Promise<void> {
+  const tokens = await getTokensForUser(params.repId);
+  if (tokens.length === 0) return;
+
+  const formatted = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(params.netPay);
+
+  const messages: PushMessage[] = tokens.map((token) => ({
+    to: token,
+    title: "Payout Dispatched",
+    body: `${formatted} payout for period "${params.period}" has been processed and is on its way.`,
+    data: {
+      screen: "Payouts",
+      batchId: params.batchId,
+    },
+    sound: "default",
+    channelId: "commissions",
+  }));
+
+  await sendExpoPushMessages(messages);
+}

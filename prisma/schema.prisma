@@ -292,6 +292,9 @@ model User {
   // Approved payout batches
   approvedBatches PayoutBatch[]
 
+  // Payout batch audit logs
+  payoutBatchAuditLogs PayoutBatchAuditLog[]
+
   // Governance periods
   governancePeriods GovernancePeriod[]
 
@@ -705,20 +708,42 @@ model Deduction {
 }
 
 model PayoutBatch {
-  id           String            @id @default(cuid())
-  period       String
-  status       PayoutBatchStatus @default(DRAFT)
-  approvedById String?           @map("approved_by_id")
-  approvedAt   DateTime?         @map("approved_at")
-  createdAt    DateTime          @default(now()) @map("created_at")
+  id                String            @id @default(cuid())
+  period            String            @unique
+  status            PayoutBatchStatus @default(DRAFT)
+  approvedById      String?           @map("approved_by_id")
+  approvedAt        DateTime?         @map("approved_at")
+  totalInstalls     Int               @default(0) @map("total_installs")
+  matchedInstalls   Int               @default(0) @map("matched_installs")
+  reconciliationRate Float            @default(0) @map("reconciliation_rate")
+  slaDeadline       DateTime?         @map("sla_deadline")
+  slaAlertedAt      DateTime?         @map("sla_alerted_at")
+  createdAt         DateTime          @default(now()) @map("created_at")
 
-  approvedBy User?        @relation(fields: [approvedById], references: [id])
+  approvedBy  User?                @relation(fields: [approvedById], references: [id])
   payoutLines PayoutLine[]
+  auditLogs   PayoutBatchAuditLog[]
 
   @@index([status])
-  @@index([period])
   @@index([approvedById])
   @@map("payout_batches")
+}
+
+model PayoutBatchAuditLog {
+  id             String    @id @default(cuid())
+  batchId        String    @map("batch_id")
+  action         String
+  performedById  String?   @map("performed_by_id")
+  totalPayout    Float?    @map("total_payout")
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  batch       PayoutBatch @relation(fields: [batchId], references: [id])
+  performedBy User?       @relation(fields: [performedById], references: [id])
+
+  @@index([batchId])
+  @@index([performedById])
+  @@map("payout_batch_audit_logs")
 }
 
 model PayoutLine {
