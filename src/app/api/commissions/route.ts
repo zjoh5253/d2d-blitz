@@ -27,9 +27,15 @@ export async function GET(request: NextRequest) {
 
     const { repId, blitzId, status } = parsed.data;
 
+    // Non-manager roles can only see their own commissions
+    const MANAGER_ROLES = ["ADMIN", "EXECUTIVE", "MARKET_OWNER", "FIELD_MANAGER"];
+    const effectiveRepId = MANAGER_ROLES.includes(session.user.role)
+      ? repId
+      : session.user.id;
+
     const commissions = await db.commissionRecord.findMany({
       where: {
-        ...(repId ? { repId } : {}),
+        ...(effectiveRepId ? { repId: effectiveRepId } : {}),
         ...(blitzId ? { blitzId } : {}),
         ...(status ? { status } : {}),
       },

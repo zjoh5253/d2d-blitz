@@ -23,6 +23,11 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const ALLOWED_ROLES = ["ADMIN", "EXECUTIVE", "MARKET_OWNER", "FIELD_MANAGER"];
+    if (!ALLOWED_ROLES.includes(session.user?.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
     const { assignmentId } = await params
     const body = await request.json()
     const parsed = assignmentUpdateSchema.safeParse(body)
@@ -63,6 +68,11 @@ export async function DELETE(
     const session = await auth()
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const ALLOWED_ROLES = ["ADMIN", "EXECUTIVE", "MARKET_OWNER", "FIELD_MANAGER"];
+    if (!ALLOWED_ROLES.includes(session.user?.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
     const { assignmentId } = await params
