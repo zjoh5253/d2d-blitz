@@ -39,6 +39,17 @@ jobs:
           AUTH_SECRET: test-secret-for-ci
           NEXTAUTH_URL: http://localhost:3000
 
+      - name: Build
+        run: npm run build
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/d2d_blitz_ci
+          AUTH_SECRET: build-secret-for-ci
+          NEXTAUTH_URL: http://localhost:3000
+          NEXT_PUBLIC_POSTHOG_KEY: phx_build_placeholder
+          NEXT_PUBLIC_POSTHOG_HOST: https://us.i.posthog.com
+          NEXT_PUBLIC_SENTRY_DSN: ""
+          SENTRY_DSN: ""
+
   # This job surfaces the Vercel preview URL in the PR checks summary.
   # Vercel posts the preview URL automatically via the GitHub app, but
   # having a named CI check here makes it easier to see deploy status at a glance.
