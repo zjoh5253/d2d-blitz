@@ -22,6 +22,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const ALLOWED_ROLES = ["CALL_CENTER", "ADMIN", "EXECUTIVE", "FIELD_MANAGER"];
+    if (!ALLOWED_ROLES.includes(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const leadId = searchParams.get("leadId");
 
@@ -52,6 +57,11 @@ export async function POST(request: NextRequest) {
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const ALLOWED_ROLES = ["CALL_CENTER", "ADMIN", "EXECUTIVE", "FIELD_MANAGER"];
+    if (!ALLOWED_ROLES.includes(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const body = await request.json();

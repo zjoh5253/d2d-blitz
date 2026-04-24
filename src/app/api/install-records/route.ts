@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import { parseQuery, optionalId, InstallRecordStatusSchema } from "@/lib/validate";
+import { captureApiError } from "@/lib/sentry";
 
 const installRecordsQuerySchema = z.object({
   uploadId: optionalId,
@@ -15,6 +16,11 @@ export async function GET(request: NextRequest) {
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const ALLOWED_ROLES = ["ADMIN", "EXECUTIVE", "MARKET_OWNER", "FIELD_MANAGER"];
+    if (!ALLOWED_ROLES.includes(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -47,6 +53,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(records);
   } catch (error) {
     console.error("[GET /api/install-records]", error);
+    captureApiError(error, "[GET /api/install-records]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

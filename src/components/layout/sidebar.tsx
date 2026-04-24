@@ -139,6 +139,12 @@ const NAV_GROUPS: NavGroup[] = [
         icon: <ShieldAlert className="size-[18px]" />,
         roles: ["ADMIN", "EXECUTIVE"],
       },
+      {
+        title: "Report Rates",
+        href: "/dashboard/compliance/daily-reports",
+        icon: <ClipboardCheck className="size-[18px]" />,
+        roles: ["ADMIN", "EXECUTIVE", "FIELD_MANAGER"],
+      },
     ],
   },
   {

@@ -253,6 +253,9 @@ model User {
   // Field manager side of leads
   managedLeads Lead[] @relation("FieldManagerLeads")
 
+  // Leads where this user was created via onboarding
+  onboardedLeads Lead[] @relation("OnboardedLeads")
+
   // Interviews conducted
   interviews Interview[]
 
@@ -341,15 +344,17 @@ model Lead {
   recruiterId      String     @map("recruiter_id")
   fieldManagerId   String?    @map("field_manager_id")
   marketId         String?    @map("market_id")
+  onboardedUserId  String?    @map("onboarded_user_id")
   notes            String?
   travelCapable    Boolean    @map("travel_capable")
   commitmentLevel  String?    @map("commitment_level")
   createdAt        DateTime   @default(now()) @map("created_at")
   updatedAt        DateTime   @updatedAt @map("updated_at")
 
-  recruiter    User    @relation("RecruiterLeads", fields: [recruiterId], references: [id])
-  fieldManager User?   @relation("FieldManagerLeads", fields: [fieldManagerId], references: [id])
-  market       Market? @relation(fields: [marketId], references: [id])
+  recruiter      User    @relation("RecruiterLeads", fields: [recruiterId], references: [id])
+  fieldManager   User?   @relation("FieldManagerLeads", fields: [fieldManagerId], references: [id])
+  market         Market? @relation(fields: [marketId], references: [id])
+  onboardedUser  User?   @relation("OnboardedLeads", fields: [onboardedUserId], references: [id])
 
   interviews Interview[]
 
@@ -358,6 +363,7 @@ model Lead {
   @@index([recruiterId])
   @@index([fieldManagerId])
   @@index([marketId])
+  @@index([onboardedUserId])
   @@map("leads")
 }
 

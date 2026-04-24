@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { db } from "@/lib/db";
 import { checkRateLimit, getClientIp, registerLimiter } from "@/lib/rate-limit";
 import { sendVerificationEmail } from "@/lib/email";
+import { captureApiError } from "@/lib/sentry";
 
 const registerSchema = z.object({
   name: z.string().min(2),
@@ -82,6 +83,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {
     console.error("[register] error:", error);
+    captureApiError(error, "[register] error");
     return NextResponse.json(
       { error: "Internal server error. Please try again." },
       { status: 500 }

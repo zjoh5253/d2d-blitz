@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { z } from "zod"
 import { parseISO } from "date-fns"
+import { captureApiError } from "@/lib/sentry"
 type SaleStatus =
   | "SUBMITTED"
   | "PENDING_INSTALL"
@@ -78,6 +79,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     return NextResponse.json(sale)
   } catch (error) {
     console.error("[GET /api/sales/[id]]", error)
+    captureApiError(error, "[GET /api/sales/[id]]")
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -155,6 +157,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json(updated)
   } catch (error) {
     console.error("[PUT /api/sales/[id]]", error)
+    captureApiError(error, "[PUT /api/sales/[id]]")
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

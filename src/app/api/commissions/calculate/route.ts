@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { notifyCommissionPosted } from "@/lib/services/notifications";
 import { captureServerEvent } from "@/lib/posthog";
+import { captureApiError } from "@/lib/sentry";
 
 export async function POST() {
   try {
@@ -148,6 +149,7 @@ export async function POST() {
     });
   } catch (error) {
     console.error("[POST /api/commissions/calculate]", error);
+    captureApiError(error, "[POST /api/commissions/calculate]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

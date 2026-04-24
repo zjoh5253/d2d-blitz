@@ -3,6 +3,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { notifyBlitzAssigned } from "@/lib/services/notifications"
+import { captureApiError } from "@/lib/sentry"
 
 const assignmentCreateSchema = z.object({
   repId: z.string().min(1, "Rep is required"),
@@ -38,6 +39,7 @@ export async function GET(
     return NextResponse.json(assignments)
   } catch (error) {
     console.error("[assignments GET]", error)
+    captureApiError(error, "[assignments GET]")
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -52,7 +54,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"].includes(session.user?.role)) {
+    if (!["ADMIN", "EXECUTIVE", "MARKET_OWNER", "FIELD_MANAGER"].includes(session.user?.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -109,6 +111,7 @@ export async function POST(
     return NextResponse.json(assignment, { status: 201 })
   } catch (error) {
     console.error("[assignments POST]", error)
+    captureApiError(error, "[assignments POST]")
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

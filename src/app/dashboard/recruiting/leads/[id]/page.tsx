@@ -7,7 +7,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, User, Phone, Mail, Calendar } from "lucide-react";
+import { ArrowLeft, User, Phone, Mail, Calendar, Zap, ExternalLink } from "lucide-react";
 import { LeadActions } from "./lead-actions";
 
 type LeadStatus =
@@ -55,6 +55,20 @@ export default async function LeadDetailPage({
       recruiter: { select: { id: true, name: true, email: true } },
       fieldManager: { select: { id: true, name: true } },
       market: { select: { id: true, name: true } },
+      onboardedUser: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          blitzAssignments: {
+            where: { status: { notIn: ["DEPARTED", "REMOVED"] } },
+            include: {
+              blitz: { select: { id: true, name: true, status: true, startDate: true, endDate: true } },
+            },
+            take: 1,
+          },
+        },
+      },
       interviews: {
         orderBy: { date: "desc" },
         include: {
@@ -187,6 +201,70 @@ export default async function LeadDetailPage({
           />
         </CardContent>
       </Card>
+
+      {/* Blitz Assignment (only shown after onboarding) */}
+      {lead.status === "ONBOARDED" && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Zap className="h-4 w-4 text-primary" />
+              Blitz Assignment
+            </CardTitle>
+            {lead.onboardedUser && (
+              <Link href={`/dashboard/reps/${lead.onboardedUser.id}`}>
+                <Button size="sm" variant="outline" className="gap-1.5">
+                  <ExternalLink className="h-3 w-3" />
+                  Rep Profile
+                </Button>
+              </Link>
+            )}
+          </CardHeader>
+          <CardContent>
+            {!lead.onboardedUser ? (
+              <p className="text-sm text-muted-foreground">
+                No user account linked. Set an email on this lead before onboarding to auto-create a rep account.
+              </p>
+            ) : lead.onboardedUser.blitzAssignments.length === 0 ? (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  {lead.onboardedUser.name ?? lead.onboardedUser.email} has not been assigned to a blitz yet.
+                </p>
+                <Link href="/dashboard/blitzes">
+                  <Button size="sm" className="gap-1.5">
+                    <Zap className="h-3 w-3" />
+                    Assign to Blitz
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              (() => {
+                const assignment = lead.onboardedUser.blitzAssignments[0];
+                return (
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">{assignment.blitz.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(assignment.blitz.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        {" – "}
+                        {new Date(assignment.blitz.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{assignment.status}</Badge>
+                      <Link href={`/dashboard/blitzes/${assignment.blitz.id}`}>
+                        <Button size="sm" variant="outline" className="gap-1.5">
+                          <ExternalLink className="h-3 w-3" />
+                          View Blitz
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })()
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Interview History */}
       <Card>

@@ -33,6 +33,20 @@ export async function GET(
         recruiter: { select: { id: true, name: true, email: true } },
         fieldManager: { select: { id: true, name: true } },
         market: { select: { id: true, name: true } },
+        onboardedUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            blitzAssignments: {
+              where: { status: { notIn: ["DEPARTED", "REMOVED"] } },
+              include: {
+                blitz: { select: { id: true, name: true, status: true, startDate: true, endDate: true } },
+              },
+              take: 1,
+            },
+          },
+        },
         interviews: {
           orderBy: { date: "desc" },
           include: {
@@ -88,17 +102,20 @@ export async function PUT(
     const { status, fieldManagerId, marketId, notes, commitmentLevel, travelCapable } =
       parsed.data;
 
-    // If transitioning to ONBOARDED, create a FIELD_REP user
+    // If transitioning to ONBOARDED, create a FIELD_REP user and link them
+    let onboardedUserId: string | undefined;
     if (status === "ONBOARDED" && lead.status !== "ONBOARDED" && lead.email) {
       const existingUser = await db.user.findUnique({
         where: { email: lead.email },
       });
 
-      if (!existingUser) {
+      if (existingUser) {
+        onboardedUserId = existingUser.id;
+      } else {
         const tempPassword = Math.random().toString(36).slice(-10);
         const passwordHash = await bcrypt.hash(tempPassword, 12);
 
-        await db.user.create({
+        const newUser = await db.user.create({
           data: {
             name: lead.name,
             email: lead.email,
@@ -108,6 +125,7 @@ export async function PUT(
             passwordHash,
           },
         });
+        onboardedUserId = newUser.id;
       }
     }
 
@@ -115,6 +133,7 @@ export async function PUT(
       where: { id },
       data: {
         ...(status ? { status } : {}),
+        ...(onboardedUserId ? { onboardedUserId } : {}),
         ...(fieldManagerId !== undefined
           ? { fieldManagerId: fieldManagerId || null }
           : {}),
@@ -129,6 +148,7 @@ export async function PUT(
         recruiter: { select: { id: true, name: true } },
         fieldManager: { select: { id: true, name: true } },
         market: { select: { id: true, name: true } },
+        onboardedUser: { select: { id: true, name: true, email: true, blitzAssignments: { where: { status: { notIn: ["DEPARTED", "REMOVED"] } }, include: { blitz: { select: { id: true, name: true, status: true, startDate: true, endDate: true } } }, take: 1 } } },
       },
     });
 

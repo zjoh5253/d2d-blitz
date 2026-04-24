@@ -3,6 +3,7 @@ import { getSessionFromRequest } from "@/lib/auth-mobile";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import { parseQuery, optionalId, CommissionStatusSchema } from "@/lib/validate";
+import { captureApiError } from "@/lib/sentry";
 
 const commissionsQuerySchema = z.object({
   repId: optionalId,
@@ -26,9 +27,15 @@ export async function GET(request: NextRequest) {
 
     const { repId, blitzId, status } = parsed.data;
 
+    // Non-manager roles can only see their own commissions
+    const MANAGER_ROLES = ["ADMIN", "EXECUTIVE", "MARKET_OWNER", "FIELD_MANAGER"];
+    const effectiveRepId = MANAGER_ROLES.includes(session.user.role)
+      ? repId
+      : session.user.id;
+
     const commissions = await db.commissionRecord.findMany({
       where: {
-        ...(repId ? { repId } : {}),
+        ...(effectiveRepId ? { repId: effectiveRepId } : {}),
         ...(blitzId ? { blitzId } : {}),
         ...(status ? { status } : {}),
       },
@@ -48,6 +55,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(commissions);
   } catch (error) {
     console.error("[GET /api/commissions]", error);
+    captureApiError(error, "[GET /api/commissions]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
