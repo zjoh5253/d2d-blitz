@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import { parseQuery, optionalId, InstallRecordStatusSchema } from "@/lib/validate";
+import { captureApiError } from "@/lib/sentry";
 
 const installRecordsQuerySchema = z.object({
   uploadId: optionalId,
@@ -47,6 +48,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(records);
   } catch (error) {
     console.error("[GET /api/install-records]", error);
+    captureApiError(error, "[GET /api/install-records]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

@@ -3,6 +3,7 @@ import { getSessionFromRequest } from "@/lib/auth-mobile"
 import { db } from "@/lib/db"
 import { z } from "zod"
 import { parseISO, subDays, startOfDay, endOfDay } from "date-fns"
+import { captureApiError } from "@/lib/sentry"
 type SaleStatus =
   | "SUBMITTED"
   | "PENDING_INSTALL"
@@ -84,6 +85,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(sales)
   } catch (error) {
     console.error("[GET /api/sales]", error)
+    captureApiError(error, "[GET /api/sales]")
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -173,6 +175,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(sale, { status: 201 })
   } catch (error) {
     console.error("[POST /api/sales]", error)
+    captureApiError(error, "[POST /api/sales]")
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

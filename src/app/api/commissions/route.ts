@@ -3,6 +3,7 @@ import { getSessionFromRequest } from "@/lib/auth-mobile";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import { parseQuery, optionalId, CommissionStatusSchema } from "@/lib/validate";
+import { captureApiError } from "@/lib/sentry";
 
 const commissionsQuerySchema = z.object({
   repId: optionalId,
@@ -48,6 +49,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(commissions);
   } catch (error) {
     console.error("[GET /api/commissions]", error);
+    captureApiError(error, "[GET /api/commissions]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

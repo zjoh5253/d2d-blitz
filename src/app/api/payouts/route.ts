@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
+import { captureApiError } from "@/lib/sentry";
 
 const createBatchSchema = z.object({
   period: z.string().min(1, "period is required"),
@@ -35,6 +36,7 @@ export async function GET() {
     return NextResponse.json(batches);
   } catch (error) {
     console.error("[GET /api/payouts]", error);
+    captureApiError(error, "[GET /api/payouts]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -139,6 +141,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(batch, { status: 201 });
   } catch (error) {
     console.error("[POST /api/payouts]", error);
+    captureApiError(error, "[POST /api/payouts]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

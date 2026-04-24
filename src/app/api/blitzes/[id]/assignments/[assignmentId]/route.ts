@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { captureApiError } from "@/lib/sentry"
 
 const assignmentUpdateSchema = z.object({
   status: z
@@ -49,6 +50,7 @@ export async function PUT(
     return NextResponse.json(assignment)
   } catch (error) {
     console.error("[assignments/[assignmentId] PUT]", error)
+    captureApiError(error, "[assignments/[assignmentId] PUT]")
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -70,6 +72,7 @@ export async function DELETE(
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[assignments/[assignmentId] DELETE]", error)
+    captureApiError(error, "[assignments/[assignmentId] DELETE]")
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

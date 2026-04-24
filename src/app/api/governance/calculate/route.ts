@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
+import { captureApiError } from "@/lib/sentry";
 
 const calculateSchema = z.object({
   month: z.coerce.number().int().min(1).max(12),
@@ -175,6 +176,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("[POST /api/governance/calculate]", error);
+    captureApiError(error, "[POST /api/governance/calculate]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

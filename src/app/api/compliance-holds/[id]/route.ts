@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { captureApiError } from "@/lib/sentry";
 
 async function restoreHold(
   user: { id: string; role: string },
@@ -50,6 +51,7 @@ export async function PUT(
     return restoreHold(session.user, id, ["ADMIN", "EXECUTIVE", "FIELD_MANAGER"]);
   } catch (error) {
     console.error("[PUT /api/compliance-holds/[id]]", error);
+    captureApiError(error, "[PUT /api/compliance-holds/[id]]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -70,6 +72,7 @@ export async function PATCH(
     return restoreHold(session.user, id, ["ADMIN", "EXECUTIVE"]);
   } catch (error) {
     console.error("[PATCH /api/compliance-holds/[id]]", error);
+    captureApiError(error, "[PATCH /api/compliance-holds/[id]]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
