@@ -10,6 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { CommissionStatus } from "@prisma/client";
 import { getSessionFromRequest } from "@/lib/auth-mobile";
 import { db } from "@/lib/db";
 
@@ -59,7 +60,7 @@ export async function GET(
     }
 
     // Determine which commission status to look for based on batch status
-    const commissionStatuses =
+    const commissionStatuses: CommissionStatus[] =
       batch.status === "PAID" ? ["PAID"] : ["PENDING"];
 
     // Fetch commission records for this rep in this batch.
