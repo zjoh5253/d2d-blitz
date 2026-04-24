@@ -3,13 +3,11 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import { captureServerEvent } from "@/lib/posthog";
-
-const STATUS_TRANSITIONS: Record<string, string[]> = {
-  DRAFT: ["REVIEWED"],
-  REVIEWED: ["APPROVED"],
-  APPROVED: ["PAID"],
-  PAID: [],
-};
+import {
+  reviewPayoutBatch,
+  approvePayoutBatch,
+  markPayoutBatchPaid,
+} from "@/lib/services/payout";
 
 const updateSchema = z.object({
   status: z.enum(["DRAFT", "REVIEWED", "APPROVED", "PAID"]),
@@ -31,6 +29,9 @@ export async function GET(
       where: { id },
       include: {
         approvedBy: { select: { id: true, name: true } },
+        auditLogs: {
+          orderBy: { createdAt: "asc" },
+        },
         payoutLines: {
           include: {
             rep: { select: { id: true, name: true } },
@@ -86,54 +87,37 @@ export async function PUT(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const allowed = STATUS_TRANSITIONS[batch.status] ?? [];
-    if (!allowed.includes(newStatus)) {
-      return NextResponse.json(
-        {
-          error: `Cannot transition from ${batch.status} to ${newStatus}. Allowed: ${allowed.join(", ") || "none"}`,
-        },
-        { status: 409 }
-      );
+    let updated;
+    try {
+      if (newStatus === "REVIEWED") {
+        updated = await reviewPayoutBatch(id, session.user.id);
+      } else if (newStatus === "APPROVED") {
+        updated = await approvePayoutBatch(id, session.user.id);
+      } else if (newStatus === "PAID") {
+        updated = await markPayoutBatchPaid(id);
+      } else {
+        return NextResponse.json(
+          { error: `Transition to ${newStatus} is not supported` },
+          { status: 409 }
+        );
+      }
+    } catch (serviceError) {
+      const message =
+        serviceError instanceof Error
+          ? serviceError.message
+          : "Service error";
+      return NextResponse.json({ error: message }, { status: 409 });
     }
-
-    const updateData: Record<string, unknown> = { status: newStatus };
 
     if (newStatus === "APPROVED") {
-      updateData.approvedById = session.user.id;
-      updateData.approvedAt = new Date();
-    }
-
-    if (newStatus === "PAID") {
-      // Mark all PENDING commission records for reps in this batch as PAID
       const lines = await db.payoutLine.findMany({
         where: { batchId: id },
-        select: { repId: true },
+        select: { id: true },
       });
-      const repIds = lines.map((l) => l.repId);
-      await db.commissionRecord.updateMany({
-        where: { repId: { in: repIds }, status: "PENDING" },
-        data: { status: "PAID" },
-      });
-    }
-
-    const updated = await db.payoutBatch.update({
-      where: { id },
-      data: updateData,
-      include: {
-        approvedBy: { select: { id: true, name: true } },
-        payoutLines: {
-          include: {
-            rep: { select: { id: true, name: true } },
-          },
-        },
-      },
-    });
-
-    if (newStatus === "APPROVED") {
       captureServerEvent(session.user.id, "payout_approved", {
         batch_id: id,
-        payout_lines: updated.payoutLines.length,
-      })
+        payout_lines: lines.length,
+      });
     }
 
     return NextResponse.json(updated);

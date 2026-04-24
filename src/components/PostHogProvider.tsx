@@ -49,7 +49,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
       capture_pageview: false, // handled manually via PostHogPageView
       capture_pageleave: true,
       session_recording: {
-        maskAllInputs: false,
+        maskAllInputs: true,
       },
       autocapture: true,
       loaded(ph) {
