@@ -491,10 +491,9 @@ describe("GET /api/payouts/[id]", () => {
   })
 })
 
-// TODO(DDB-57): These tests need updating after DDB-17 refactored the payout
-// service to use $transaction + audit logs. The route now delegates to service
-// functions instead of calling db.payoutBatch.update directly.
-describe.skip("PUT /api/payouts/[id]", () => {
+// Route uses direct db calls (no $transaction), posthog is a no-op when
+// NEXT_PUBLIC_POSTHOG_KEY is unset in tests.
+describe("PUT /api/payouts/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
