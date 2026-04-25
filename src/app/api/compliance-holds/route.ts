@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import { parseQuery, optionalId } from "@/lib/validate";
+import { captureApiError } from "@/lib/sentry";
 
 const complianceHoldsQuerySchema = z.object({
   repId: optionalId,
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(holds);
   } catch (error) {
     console.error("[GET /api/compliance-holds]", error);
+    captureApiError(error, "[GET /api/compliance-holds]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

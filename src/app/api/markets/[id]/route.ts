@@ -60,6 +60,11 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const ALLOWED_ROLES = ["ADMIN", "EXECUTIVE"];
+    if (!ALLOWED_ROLES.includes(session.user?.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
     const { id } = await params
     const body = await request.json()
     const parsed = marketUpdateSchema.safeParse(body)
@@ -100,6 +105,11 @@ export async function DELETE(
     const session = await auth()
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const ALLOWED_ROLES = ["ADMIN", "EXECUTIVE"];
+    if (!ALLOWED_ROLES.includes(session.user?.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
     const { id } = await params

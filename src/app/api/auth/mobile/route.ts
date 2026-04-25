@@ -4,6 +4,7 @@ import { encode } from "next-auth/jwt";
 import { db } from "@/lib/db";
 import { checkRateLimit, getClientIp, loginLimiter } from "@/lib/rate-limit";
 import { z } from "zod";
+import { captureApiError } from "@/lib/sentry";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -101,6 +102,7 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     console.error("Mobile login error:", error);
+    captureApiError(error, "Mobile login error");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

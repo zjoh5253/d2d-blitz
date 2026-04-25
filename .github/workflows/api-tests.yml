@@ -3,8 +3,6 @@ name: API Test Suite
 on:
   push:
     branches: [main, develop]
-  pull_request:
-    branches: [main]
 
 jobs:
   test-api:

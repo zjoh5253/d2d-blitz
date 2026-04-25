@@ -3,6 +3,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { captureServerEvent } from "@/lib/posthog"
+import { captureApiError } from "@/lib/sentry"
 
 const blitzCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -39,6 +40,7 @@ export async function GET(request: Request) {
     return NextResponse.json(blitzes)
   } catch (error) {
     console.error("[blitzes GET]", error)
+    captureApiError(error, "[blitzes GET]")
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -48,6 +50,11 @@ export async function POST(request: Request) {
     const session = await auth()
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const ALLOWED_ROLES = ["ADMIN", "EXECUTIVE", "MARKET_OWNER"];
+    if (!ALLOWED_ROLES.includes(session.user?.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
     const body = await request.json()
@@ -88,6 +95,7 @@ export async function POST(request: Request) {
     return NextResponse.json(blitz, { status: 201 })
   } catch (error) {
     console.error("[blitzes POST]", error)
+    captureApiError(error, "[blitzes POST]")
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

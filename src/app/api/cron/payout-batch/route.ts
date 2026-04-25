@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { createPayoutBatch } from "@/lib/services/payout";
 import { sendPayoutBatchCreatedEmail } from "@/lib/email";
 import { validateCronRequest } from "@/lib/cron-auth";
+import { captureApiError } from "@/lib/sentry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -102,6 +103,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("[cron/payout-batch]", error);
+    captureApiError(error, "[cron/payout-batch]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
