@@ -80,7 +80,7 @@ import { db } from "@/lib/db"
 import { getSessionFromRequest } from "@/lib/auth-mobile"
 import bcrypt from "bcryptjs"
 
-const mockDb = db as {
+const mockDb = db as unknown as {
   user: { findUnique: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> }
   sale: { findMany: ReturnType<typeof vi.fn>; findUnique: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> }
   commissionRecord: { aggregate: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> }
