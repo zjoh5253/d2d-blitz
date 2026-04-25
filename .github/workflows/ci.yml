@@ -49,6 +49,7 @@ jobs:
           NEXT_PUBLIC_POSTHOG_HOST: https://us.i.posthog.com
           NEXT_PUBLIC_SENTRY_DSN: ""
           SENTRY_DSN: ""
+          RESEND_API_KEY: re_build_placeholder
 
   # This job surfaces the Vercel preview URL in the PR checks summary.
   # Vercel posts the preview URL automatically via the GitHub app, but
