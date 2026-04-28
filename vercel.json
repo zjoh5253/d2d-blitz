@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/payout-sla-check",
-      "schedule": "0 * * * *"
+      "schedule": "30 2 * * *"
     }
   ]
 }
