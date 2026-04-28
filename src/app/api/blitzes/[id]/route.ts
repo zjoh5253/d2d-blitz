@@ -71,10 +71,6 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    if (!["ADMIN", "EXECUTIVE", "MARKET_OWNER", "FIELD_MANAGER"].includes(session.user?.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-    }
-
     const { id } = await params
     const body = await request.json()
     const parsed = blitzUpdateSchema.safeParse(body)
@@ -117,10 +113,6 @@ export async function DELETE(
     const session = await auth()
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    if (!["ADMIN", "EXECUTIVE"].includes(session.user?.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
     const { id } = await params

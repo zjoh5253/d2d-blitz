@@ -15,10 +15,6 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!["ADMIN", "EXECUTIVE"].includes(session.user.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
     const batches = await db.payoutBatch.findMany({
       orderBy: { createdAt: "desc" },
       include: {
