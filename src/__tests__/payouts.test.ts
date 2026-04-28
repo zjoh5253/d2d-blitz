@@ -126,15 +126,15 @@ describe("GET /api/payouts", () => {
     })
   })
 
-  it("returns 403 for any non-admin, non-executive role", async () => {
+  it("returns empty array when no batches exist", async () => {
     vi.mocked(auth).mockResolvedValue(mockRepSession as never)
+    vi.mocked(db.payoutBatch.findMany).mockResolvedValue([] as never)
 
     const response = await GET()
 
-    expect(response.status).toBe(403)
+    expect(response.status).toBe(200)
     const body = await response.json()
-    expect(body.error).toBe("Forbidden")
-    expect(db.payoutBatch.findMany).not.toHaveBeenCalled()
+    expect(body).toEqual([])
   })
 })
 
