@@ -1,11 +1,18 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 const FROM = process.env.EMAIL_FROM ?? "D2D Blitz <noreply@d2dblitz.com>";
 const APP_URL = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
 
+function getResendClient() {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+  return new Resend(apiKey);
+}
+
 export async function sendVerificationEmail(email: string, token: string) {
+  const resend = getResendClient();
   const url = `${APP_URL}/api/auth/verify-email?token=${token}`;
   await resend.emails.send({
     from: FROM,
@@ -39,6 +46,7 @@ export async function sendPayoutBatchCreatedEmail(params: {
   totalInstalls: number;
   slaDeadline: Date;
 }) {
+  const resend = getResendClient();
   const batchUrl = `${APP_URL}/dashboard/payouts/${params.batchId}`;
   const totalFormatted = new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -90,6 +98,7 @@ export async function sendPayoutSLAAlertEmail(params: {
   slaDeadline: Date;
   currentStatus: string;
 }) {
+  const resend = getResendClient();
   const batchUrl = `${APP_URL}/dashboard/payouts/${params.batchId}`;
   const totalFormatted = new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -127,6 +136,7 @@ export async function sendPayoutSLAAlertEmail(params: {
 }
 
 export async function sendPasswordResetEmail(email: string, token: string) {
+  const resend = getResendClient();
   const webUrl = `${APP_URL}/reset-password?token=${token}`;
   // Deep link for mobile (d2dblitz://reset-password?token=...)
   const deepLink = `d2dblitz://reset-password?token=${token}`;
