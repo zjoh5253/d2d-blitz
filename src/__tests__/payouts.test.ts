@@ -126,15 +126,14 @@ describe("GET /api/payouts", () => {
     })
   })
 
-  it("returns empty array when no batches exist", async () => {
+  it("returns 403 for REP role", async () => {
     vi.mocked(auth).mockResolvedValue(mockRepSession as never)
-    vi.mocked(db.payoutBatch.findMany).mockResolvedValue([] as never)
 
     const response = await GET()
 
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(403)
     const body = await response.json()
-    expect(body).toEqual([])
+    expect(body.error).toBe("Forbidden")
   })
 })
 
@@ -479,7 +478,7 @@ describe("GET /api/payouts/[id]", () => {
     )
   })
 
-  it("allows non-admin users to fetch a batch", async () => {
+  it("returns 403 for REP role", async () => {
     vi.mocked(auth).mockResolvedValue(mockRepSession as never)
     vi.mocked(db.payoutBatch.findUnique).mockResolvedValue(mockBatch as never)
 
@@ -487,7 +486,9 @@ describe("GET /api/payouts/[id]", () => {
     const params = Promise.resolve({ id: "batch-1" })
     const response = await GET_BY_ID(request as never, { params })
 
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(403)
+    const body = await response.json()
+    expect(body.error).toBe("Forbidden")
   })
 })
 
