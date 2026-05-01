@@ -23,6 +23,10 @@ vi.mock("@/lib/db", () => ({
   },
 }))
 
+vi.mock("@/lib/posthog", () => ({
+  captureServerEvent: vi.fn(),
+}))
+
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { GET, POST } from "@/app/api/payouts/route"
@@ -101,6 +105,18 @@ describe("GET /api/payouts", () => {
     expect(body[0].period).toBe("2024-01")
   })
 
+  it("returns list of payout batches for EXECUTIVE role", async () => {
+    vi.mocked(auth).mockResolvedValue(mockExecutiveSession as never)
+    vi.mocked(db.payoutBatch.findMany).mockResolvedValue([mockBatch] as never)
+
+    const response = await GET()
+
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(Array.isArray(body)).toBe(true)
+    expect(body).toHaveLength(1)
+  })
+
   it("calls findMany with correct includes and ordering", async () => {
     vi.mocked(auth).mockResolvedValue(mockAdminSession as never)
     vi.mocked(db.payoutBatch.findMany).mockResolvedValue([] as never)
@@ -132,9 +148,7 @@ describe("GET /api/payouts", () => {
 
     const response = await GET()
 
-    expect(response.status).toBe(200)
-    const body = await response.json()
-    expect(body).toEqual([])
+    expect(response.status).toBe(403)
   })
 })
 
@@ -459,6 +473,19 @@ describe("GET /api/payouts/[id]", () => {
     expect(body.payoutLines).toBeDefined()
   })
 
+  it("returns batch for EXECUTIVE role", async () => {
+    vi.mocked(auth).mockResolvedValue(mockExecutiveSession as never)
+    vi.mocked(db.payoutBatch.findUnique).mockResolvedValue(mockBatch as never)
+
+    const request = new Request("http://localhost/api/payouts/batch-1")
+    const params = Promise.resolve({ id: "batch-1" })
+    const response = await GET_BY_ID(request as never, { params })
+
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.id).toBe("batch-1")
+  })
+
   it("calls findUnique with the correct id and includes", async () => {
     vi.mocked(auth).mockResolvedValue(mockAdminSession as never)
     vi.mocked(db.payoutBatch.findUnique).mockResolvedValue(mockBatch as never)
@@ -479,7 +506,7 @@ describe("GET /api/payouts/[id]", () => {
     )
   })
 
-  it("allows non-admin users to fetch a batch", async () => {
+  it("returns 403 when non-admin users fetch a batch", async () => {
     vi.mocked(auth).mockResolvedValue(mockRepSession as never)
     vi.mocked(db.payoutBatch.findUnique).mockResolvedValue(mockBatch as never)
 
@@ -487,7 +514,7 @@ describe("GET /api/payouts/[id]", () => {
     const params = Promise.resolve({ id: "batch-1" })
     const response = await GET_BY_ID(request as never, { params })
 
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(403)
   })
 })
 
