@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Upload, UserPlus, Check, X, FileSpreadsheet, ChevronDown } from "lucide-react";
@@ -63,6 +64,11 @@ export default function DoorKnocksPage() {
   const [selectedRepId, setSelectedRepId] = useState("");
   const [filterDisposition, setFilterDisposition] = useState<Disposition | "ALL" | "UNASSIGNED" | "ASSIGNED">("ALL");
   const [filterRepId, setFilterRepId] = useState<string>("ALL");
+  // Pre-select blitz filter from ?blitz=<id> query param so map-scanner
+  // can deep-link to a freshly-created blitz's lead list.
+  const searchParams = useSearchParams();
+  const initialBlitzFilter = searchParams.get("blitz") ?? "ALL";
+  const [filterBlitzId, setFilterBlitzId] = useState<string>(initialBlitzFilter);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
   const [selectedBlitzId, setSelectedBlitzId] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,6 +87,8 @@ export default function DoorKnocksPage() {
       if (filterRepId === "UNASSIGNED") params.set("unassigned", "true");
       else if (filterRepId !== "ALL") params.set("assignedRepId", filterRepId);
 
+      if (filterBlitzId !== "ALL") params.set("blitzId", filterBlitzId);
+
       const res = await fetch(`/api/door-knock-leads?${params}`);
       if (res.ok) {
         setLeads(await res.json());
@@ -90,7 +98,7 @@ export default function DoorKnocksPage() {
     } finally {
       setLoading(false);
     }
-  }, [filterDisposition, filterRepId]);
+  }, [filterDisposition, filterRepId, filterBlitzId]);
 
   const fetchReps = async () => {
     try {
@@ -340,11 +348,21 @@ export default function DoorKnocksPage() {
       {/* Filters */}
       <div className="flex items-center gap-3">
         <select
+          value={filterBlitzId}
+          onChange={(e) => setFilterBlitzId(e.target.value)}
+          className="h-9 px-3 rounded-lg border text-sm"
+        >
+          <option value="ALL">All Blitzes</option>
+          {blitzes.map((b) => (
+            <option key={b.id} value={b.id}>{b.name}</option>
+          ))}
+        </select>
+        <select
           value={filterDisposition}
           onChange={(e) => setFilterDisposition(e.target.value as Disposition | "ALL" | "UNASSIGNED" | "ASSIGNED")}
           className="h-9 px-3 rounded-lg border text-sm"
         >
-          <option value="ALL">All Leads</option>
+          <option value="ALL">All Dispositions</option>
           <option value="UNASSIGNED">Unassigned</option>
           <option value="ASSIGNED">Assigned</option>
           {Object.entries(DISPOSITION_LABELS).map(([key, label]) => (
