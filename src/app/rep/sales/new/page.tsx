@@ -185,10 +185,7 @@ export default function NewSalePage() {
         )}
 
         <Section label="Blitz *">
-          <SelectField
-            value={blitzLookup.get(blitzId)?.name || "Pick a blitz…"}
-            onClick={() => {/* native select handles */}}
-          >
+          <SelectField value={blitzLookup.get(blitzId)?.name || "Pick a blitz…"}>
             <select
               value={blitzId}
               onChange={(e) => setBlitzId(e.target.value)}
