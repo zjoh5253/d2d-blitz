@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: web-d2d
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
+      - key: NEXTAUTH_URL
+        sync: false
+      # Optional: enables address autocomplete in /rep/sales/new.
+      # Leave unset to fall back to plain text input.
+      - key: NEXT_PUBLIC_GOOGLE_PLACES_API_KEY
+        sync: false

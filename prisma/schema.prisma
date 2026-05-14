@@ -826,6 +826,11 @@ model DoorKnockLead {
   city            String
   state           String
   zip             String
+  // Geographic coordinates — required by the rep-assignment planner to
+  // build walkable territory clusters. Nullable because legacy / manual /
+  // CSV-imported leads may not have them.
+  lat             Float?
+  lng             Float?
   disposition     DoorKnockDisposition @default(PENDING)
   notes           String?
   assignedRepId   String?              @map("assigned_rep_id")
