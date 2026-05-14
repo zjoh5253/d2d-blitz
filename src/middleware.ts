@@ -18,6 +18,8 @@ const ROLE_PROTECTED_ROUTES: Array<{ prefix: string; roles: string[] }> = [
   { prefix: "/dashboard/inbound", roles: ["ADMIN", "CALL_CENTER"] },
   { prefix: "/dashboard/reports", roles: ["ADMIN", "EXECUTIVE"] },
   { prefix: "/dashboard/manager", roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"] },
+  // Mobile-web rep experience. Admins/managers can access for QA.
+  { prefix: "/rep", roles: ["FIELD_REP", "ADMIN", "FIELD_MANAGER"] },
 ];
 
 export async function middleware(req: NextRequest) {
@@ -31,7 +33,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!pathname.startsWith("/dashboard")) {
+  if (!pathname.startsWith("/dashboard") && !pathname.startsWith("/rep")) {
     return NextResponse.next();
   }
 
@@ -62,9 +64,16 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", req.nextUrl.origin));
   }
 
+  // FIELD_REPs landing on /dashboard root get bounced to the rep
+  // experience. Admin/manager dashboard sub-routes still work for them
+  // if they navigate there directly (per the role table above).
+  if (userRole === "FIELD_REP" && pathname === "/dashboard") {
+    return NextResponse.redirect(new URL("/rep/leads", req.nextUrl.origin));
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login", "/register"],
+  matcher: ["/dashboard/:path*", "/rep/:path*", "/login", "/register"],
 };
