@@ -4,7 +4,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Upload, UserPlus, Check, X, FileSpreadsheet, ChevronDown } from "lucide-react";
+import { Upload, UserPlus, Check, X, FileSpreadsheet, ChevronDown, MapPin, Sparkles, Map as MapIcon } from "lucide-react";
+import { ClusterMap, type ClusterMapPoint } from "./cluster-map";
+import { TerritoryMap, type RepTerritory } from "./territory-map";
 
 type Disposition = "PENDING" | "NOT_HOME" | "GO_BACK" | "SOLD" | "NOT_INTERESTED";
 
@@ -36,6 +38,45 @@ interface Blitz {
   id: string;
   name: string;
 }
+
+interface PlannerCluster {
+  clusterIdx: number;
+  leadIds: string[];
+  points: { id: string; lat: number; lng: number; street: string }[];
+  leadCount: number;
+  centroid: { lat: number; lng: number };
+  bbox: { minLat: number; maxLat: number; minLng: number; maxLng: number };
+  topStreets: string[];
+  daysAtTarget: number | null;
+  overTarget: boolean;
+}
+
+interface PlannerResult {
+  clusters: PlannerCluster[];
+  totalLeads: number;
+  leadsPerRep: number;
+  skippedNoCoords: number;
+  doorsPerRepPerDay: number;
+  warning?: string;
+}
+
+interface SavedPlan {
+  id: string;
+  name: string;
+  numReps: number;
+  numDays: number | null;
+  assignments: {
+    plannerResult: PlannerResult;
+    clusterAssignments: Record<number, string>;
+  };
+  createdAt: string;
+  appliedAt: string | null;
+}
+
+const CLUSTER_COLORS = [
+  "bg-blue-500", "bg-emerald-500", "bg-amber-500", "bg-violet-500", "bg-rose-500",
+  "bg-cyan-500", "bg-orange-500", "bg-pink-500", "bg-lime-500", "bg-indigo-500",
+];
 
 const DISPOSITION_LABELS: Record<Disposition, string> = {
   PENDING: "Pending",
@@ -73,6 +114,74 @@ export default function DoorKnocksPage() {
   const [selectedBlitzId, setSelectedBlitzId] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastClickedIndex = useRef<number | null>(null);
+
+  // Rep-assignment planner — auto-clusters unassigned leads into geographic
+  // territories sized for each rep's daily door-knock target.
+  const [plannerOpen, setPlannerOpen] = useState(false);
+  const [plannerNumReps, setPlannerNumReps] = useState(5);
+  const [plannerNumDays, setPlannerNumDays] = useState(4);
+  const [plannerIncludeAssigned, setPlannerIncludeAssigned] = useState(false);
+  // When set, the planner redistributes only this rep's PENDING leads
+  // across the other reps. Used when a rep drops mid-blitz.
+  const [plannerSourceRepId, setPlannerSourceRepId] = useState<string>("");
+  const [plannerComputing, setPlannerComputing] = useState(false);
+  const [plannerApplying, setPlannerApplying] = useState(false);
+  const [plannerResult, setPlannerResult] = useState<PlannerResult | null>(null);
+  const [plannerError, setPlannerError] = useState<string | null>(null);
+  const [savedPlans, setSavedPlans] = useState<SavedPlan[]>([]);
+  const [savingDraft, setSavingDraft] = useState(false);
+
+  // Territory map modal — visualizes who's covering what after assignments
+  // are applied.
+  const [territoriesOpen, setTerritoriesOpen] = useState(false);
+  const [territoriesLoading, setTerritoriesLoading] = useState(false);
+  const [territories, setTerritories] = useState<RepTerritory[]>([]);
+
+  const handleOpenTerritories = useCallback(async () => {
+    if (filterBlitzId === "ALL") return;
+    setTerritoriesOpen(true);
+    setTerritoriesLoading(true);
+    try {
+      const res = await fetch(
+        `/api/door-knock-leads?blitzId=${encodeURIComponent(filterBlitzId)}&assigned=true`
+      );
+      if (res.ok) {
+        const all: DoorKnockLead[] = await res.json();
+        // Group by rep.
+        const byRep = new Map<string, RepTerritory>();
+        for (const lead of all) {
+          if (
+            !lead.assignedRep ||
+            typeof (lead as DoorKnockLead & { lat?: number; lng?: number }).lat !== "number" ||
+            typeof (lead as DoorKnockLead & { lat?: number; lng?: number }).lng !== "number"
+          ) continue;
+          const key = lead.assignedRep.id;
+          if (!byRep.has(key)) {
+            byRep.set(key, {
+              repId: lead.assignedRep.id,
+              repName: lead.assignedRep.name ?? "Unknown",
+              points: [],
+            });
+          }
+          byRep.get(key)!.points.push({
+            id: lead.id,
+            lat: (lead as DoorKnockLead & { lat: number }).lat,
+            lng: (lead as DoorKnockLead & { lng: number }).lng,
+            street: `${lead.streetNumber} ${lead.streetName}`,
+            disposition: lead.disposition,
+          });
+        }
+        // Stable order: most leads first.
+        setTerritories(
+          Array.from(byRep.values()).sort((a, b) => b.points.length - a.points.length)
+        );
+      }
+    } finally {
+      setTerritoriesLoading(false);
+    }
+  }, [filterBlitzId]);
+  // clusterIdx -> repId (or "" if not yet picked)
+  const [clusterAssignments, setClusterAssignments] = useState<Record<number, string>>({});
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -211,6 +320,137 @@ export default function DoorKnocksPage() {
     });
   };
 
+  const handleComputePlan = async () => {
+    if (filterBlitzId === "ALL") return;
+    setPlannerComputing(true);
+    setPlannerError(null);
+    setPlannerResult(null);
+    setClusterAssignments({});
+    try {
+      const res = await fetch("/api/door-knock-leads/cluster-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blitzId: filterBlitzId,
+          numReps: plannerNumReps,
+          numDays: plannerNumDays,
+          includeAssigned: plannerIncludeAssigned,
+          sourceRepId: plannerSourceRepId || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPlannerError(data.error ?? "Failed to compute plan");
+        return;
+      }
+      setPlannerResult(data);
+    } catch (err) {
+      setPlannerError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPlannerComputing(false);
+    }
+  };
+
+  const fetchSavedPlans = useCallback(async (blitzId: string) => {
+    try {
+      const res = await fetch(`/api/door-knock-leads/cluster-plan/save?blitzId=${encodeURIComponent(blitzId)}`);
+      if (res.ok) setSavedPlans(await res.json());
+    } catch {}
+  }, []);
+
+  // Refresh saved plans whenever the planner opens.
+  useEffect(() => {
+    if (plannerOpen && filterBlitzId !== "ALL") {
+      fetchSavedPlans(filterBlitzId);
+    }
+  }, [plannerOpen, filterBlitzId, fetchSavedPlans]);
+
+  const handleSaveDraft = async () => {
+    if (!plannerResult || filterBlitzId === "ALL") return;
+    const name = window.prompt("Name this draft:", `Draft ${new Date().toLocaleString()}`);
+    if (!name) return;
+    setSavingDraft(true);
+    setPlannerError(null);
+    try {
+      const res = await fetch("/api/door-knock-leads/cluster-plan/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blitzId: filterBlitzId,
+          name,
+          numReps: plannerNumReps,
+          numDays: plannerNumDays,
+          assignments: { plannerResult, clusterAssignments },
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setPlannerError(data.error ?? "Failed to save draft");
+        return;
+      }
+      await fetchSavedPlans(filterBlitzId);
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const handleLoadDraft = (plan: SavedPlan) => {
+    setPlannerResult(plan.assignments.plannerResult);
+    setClusterAssignments(plan.assignments.clusterAssignments ?? {});
+    setPlannerNumReps(plan.numReps);
+    if (plan.numDays !== null) setPlannerNumDays(plan.numDays);
+    setPlannerError(null);
+  };
+
+  const handleDeleteDraft = async (id: string) => {
+    if (!window.confirm("Delete this draft?")) return;
+    await fetch(`/api/door-knock-leads/cluster-plan/save?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    if (filterBlitzId !== "ALL") await fetchSavedPlans(filterBlitzId);
+  };
+
+  const handleApplyPlan = async () => {
+    if (!plannerResult) return;
+    // Verify every cluster has a rep picked.
+    const unassigned = plannerResult.clusters.filter((c) => !clusterAssignments[c.clusterIdx]);
+    if (unassigned.length > 0) {
+      setPlannerError(`Pick a rep for every cluster (${unassigned.length} unassigned).`);
+      return;
+    }
+    setPlannerApplying(true);
+    setPlannerError(null);
+    try {
+      let totalAssigned = 0;
+      // One PUT per cluster — the existing assign endpoint takes
+      // {leadIds[], repId} and updates them in one transaction.
+      for (const c of plannerResult.clusters) {
+        const repId = clusterAssignments[c.clusterIdx];
+        const res = await fetch("/api/door-knock-leads/assign", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ leadIds: c.leadIds, repId }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          setPlannerError(`Failed to assign cluster ${c.clusterIdx + 1}: ${data.error}`);
+          return;
+        }
+        const data = await res.json();
+        totalAssigned += data.assigned;
+      }
+      setUploadResult(`Assigned ${totalAssigned} leads across ${plannerResult.clusters.length} reps.`);
+      setPlannerOpen(false);
+      setPlannerResult(null);
+      setClusterAssignments({});
+      fetchLeads();
+    } catch (err) {
+      setPlannerError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPlannerApplying(false);
+    }
+  };
+
   const toggleSelectAll = () => {
     if (selectedIds.size === leads.length) {
       setSelectedIds(new Set());
@@ -232,6 +472,29 @@ export default function DoorKnocksPage() {
           <p className="text-sm text-muted-foreground mt-1">
             Upload, assign, and track door-to-door leads
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={handleOpenTerritories}
+            disabled={filterBlitzId === "ALL"}
+            title={filterBlitzId === "ALL" ? "Select a blitz first" : "View per-rep territory map"}
+          >
+            <MapIcon className="size-4 mr-2" />
+            View territories
+          </Button>
+          <Button
+            onClick={() => {
+              setPlannerOpen(true);
+              setPlannerError(null);
+              setPlannerResult(null);
+            }}
+            disabled={filterBlitzId === "ALL"}
+            title={filterBlitzId === "ALL" ? "Select a blitz first to plan rep assignments" : ""}
+          >
+            <Sparkles className="size-4 mr-2" />
+            Plan rep assignments
+          </Button>
         </div>
       </div>
 
@@ -381,6 +644,365 @@ export default function DoorKnocksPage() {
           ))}
         </select>
       </div>
+
+      {/* Rep-assignment Planner */}
+      {plannerOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-6"
+          onClick={(e) => { if (e.target === e.currentTarget) setPlannerOpen(false); }}
+        >
+          <div className="bg-white rounded-xl w-full max-w-4xl my-6 shadow-xl">
+            <div className="flex items-center justify-between border-b p-5">
+              <div className="flex items-center gap-2">
+                <Sparkles className="size-5 text-violet-600" />
+                <h2 className="text-lg font-semibold">Plan rep assignments</h2>
+              </div>
+              <button
+                onClick={() => setPlannerOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-5">
+              <p className="text-sm text-muted-foreground">
+                Auto-cluster the unassigned leads in this blitz into walkable
+                territories — one per rep. Reps stay in tight geographic
+                areas instead of driving across the ZIP.
+              </p>
+
+              {/* Inputs */}
+              <div className="flex items-end gap-4 flex-wrap">
+                <label className="flex flex-col text-xs font-medium text-muted-foreground">
+                  Reps
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={plannerNumReps}
+                    onChange={(e) => setPlannerNumReps(parseInt(e.target.value, 10) || 1)}
+                    className="mt-1 w-24 h-10 px-3 rounded-lg border text-sm"
+                  />
+                </label>
+                <label className="flex flex-col text-xs font-medium text-muted-foreground">
+                  Days
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={plannerNumDays}
+                    onChange={(e) => setPlannerNumDays(parseInt(e.target.value, 10) || 1)}
+                    className="mt-1 w-24 h-10 px-3 rounded-lg border text-sm"
+                  />
+                </label>
+                <div className="text-sm text-muted-foreground pb-2">
+                  Target = {plannerNumReps} × {plannerNumDays} × 100 ={" "}
+                  <span className="font-semibold text-foreground">
+                    {(plannerNumReps * plannerNumDays * 100).toLocaleString()} doors
+                  </span>{" "}
+                  at 100/rep/day
+                </div>
+                <Button
+                  onClick={handleComputePlan}
+                  disabled={plannerComputing || filterBlitzId === "ALL"}
+                >
+                  {plannerComputing ? "Computing…" : "Compute clusters"}
+                </Button>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={plannerIncludeAssigned}
+                  onChange={(e) => setPlannerIncludeAssigned(e.target.checked)}
+                  disabled={!!plannerSourceRepId}
+                  className="rounded"
+                />
+                Re-plan leads that are already assigned (overrides existing rep assignments)
+              </label>
+              {/* Rep-dropout redistribution. Pulls one rep's PENDING leads
+                  and partitions them across the others. */}
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span className="whitespace-nowrap">Rep dropped out — redistribute leads from:</span>
+                <select
+                  value={plannerSourceRepId}
+                  onChange={(e) => setPlannerSourceRepId(e.target.value)}
+                  className="h-8 px-2 rounded border text-sm"
+                >
+                  <option value="">(no — use default lead pool)</option>
+                  {reps.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name || r.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {plannerError && (
+                <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                  {plannerError}
+                </div>
+              )}
+
+              {/* Saved drafts for this blitz */}
+              {savedPlans.length > 0 && (
+                <div className="rounded-lg border bg-gray-50/50 p-3 space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground mb-1">
+                    Saved drafts for this blitz
+                  </div>
+                  {savedPlans.map((p) => (
+                    <div key={p.id} className="flex items-center gap-2 text-sm py-1">
+                      <span className="flex-1 truncate">
+                        <span className="font-medium">{p.name}</span>
+                        <span className="text-muted-foreground ml-2">
+                          {p.numReps} reps{p.numDays ? ` × ${p.numDays}d` : ""} ·
+                          {" "}
+                          {new Date(p.createdAt).toLocaleString()}
+                        </span>
+                        {p.appliedAt && (
+                          <span className="ml-2 text-emerald-700 text-xs">(applied)</span>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleLoadDraft(p)}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        Load
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDraft(p.id)}
+                        className="text-xs text-red-600 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {plannerResult && plannerResult.totalLeads === 0 && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+                  <p className="font-medium mb-1">No leads to cluster.</p>
+                  <p>
+                    {plannerResult.warning ??
+                      "Every lead in this blitz is already assigned to a rep."}{" "}
+                    Check the box above to re-plan leads that are already assigned.
+                  </p>
+                </div>
+              )}
+              {plannerResult && plannerResult.totalLeads > 0 && (
+                <div className="space-y-4">
+                  <div className="text-sm text-muted-foreground">
+                    Clustered {plannerResult.totalLeads.toLocaleString()} leads
+                    into {plannerResult.clusters.length} territories
+                    {plannerResult.skippedNoCoords > 0 && (
+                      <>
+                        {" · "}
+                        <span className="text-amber-700">
+                          {plannerResult.skippedNoCoords} skipped (no coordinates)
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Map view: every lead as a colored pin per territory.
+                      Click a pin (or shift+drag a rectangle) to reassign
+                      leads between territories before applying. */}
+                  <ClusterMap
+                    points={plannerResult.clusters.flatMap((c) =>
+                      c.points.map((p) => ({
+                        id: p.id,
+                        lat: p.lat,
+                        lng: p.lng,
+                        clusterIdx: c.clusterIdx,
+                        street: p.street,
+                      } satisfies ClusterMapPoint))
+                    )}
+                    numClusters={plannerResult.clusters.length}
+                    onReassign={(leadIds, newClusterIdx) => {
+                      // Move the leads from their current cluster(s) into
+                      // newClusterIdx. Mutates plannerResult.clusters by
+                      // splicing leadIds + points and updating counts.
+                      setPlannerResult((prev) => {
+                        if (!prev) return prev;
+                        const moved = new Set(leadIds);
+                        const next = prev.clusters.map((c) => ({
+                          ...c,
+                          leadIds: [...c.leadIds],
+                          points: [...c.points],
+                        }));
+                        // Collect moved points from source clusters.
+                        const harvested: typeof next[number]["points"] = [];
+                        for (const c of next) {
+                          if (c.clusterIdx === newClusterIdx) continue;
+                          const keptIds: string[] = [];
+                          const keptPoints: typeof c.points = [];
+                          for (let i = 0; i < c.leadIds.length; i++) {
+                            const id = c.leadIds[i];
+                            if (moved.has(id)) {
+                              harvested.push(c.points[i]);
+                            } else {
+                              keptIds.push(id);
+                              keptPoints.push(c.points[i]);
+                            }
+                          }
+                          c.leadIds = keptIds;
+                          c.points = keptPoints;
+                          c.leadCount = keptIds.length;
+                        }
+                        // Dump into destination cluster.
+                        const dest = next.find((c) => c.clusterIdx === newClusterIdx);
+                        if (dest) {
+                          dest.leadIds = [
+                            ...dest.leadIds,
+                            ...harvested.map((p) => p.id),
+                          ];
+                          dest.points = [...dest.points, ...harvested];
+                          dest.leadCount = dest.leadIds.length;
+                        }
+                        return { ...prev, clusters: next };
+                      });
+                    }}
+                  />
+
+                  <div className="overflow-hidden rounded-lg border">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50/50 text-xs uppercase tracking-wide text-muted-foreground">
+                        <tr>
+                          <th className="p-3 text-left">Territory</th>
+                          <th className="p-3 text-left">Leads</th>
+                          <th className="p-3 text-left">Days at 100/day</th>
+                          <th className="p-3 text-left">Top streets</th>
+                          <th className="p-3 text-left">Assign to rep</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {plannerResult.clusters.map((c) => (
+                          <tr key={c.clusterIdx} className="border-t">
+                            <td className="p-3">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`inline-block size-3 rounded-full ${CLUSTER_COLORS[c.clusterIdx % CLUSTER_COLORS.length]}`}
+                                />
+                                <span className="font-medium">#{c.clusterIdx + 1}</span>
+                              </div>
+                            </td>
+                            <td className="p-3 font-medium">
+                              {c.leadCount.toLocaleString()}
+                            </td>
+                            <td className="p-3">
+                              {c.daysAtTarget !== null ? (
+                                <span className={c.overTarget ? "text-amber-700 font-medium" : ""}>
+                                  {c.daysAtTarget.toFixed(1)} days
+                                  {c.overTarget && " (over)"}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                            <td className="p-3 text-xs text-muted-foreground">
+                              {c.topStreets.join(", ")}
+                            </td>
+                            <td className="p-3">
+                              <select
+                                value={clusterAssignments[c.clusterIdx] ?? ""}
+                                onChange={(e) =>
+                                  setClusterAssignments((prev) => ({
+                                    ...prev,
+                                    [c.clusterIdx]: e.target.value,
+                                  }))
+                                }
+                                className="h-8 px-2 rounded border text-sm"
+                              >
+                                <option value="">Pick rep…</option>
+                                {reps.map((r) => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.name || r.email}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <p className="text-xs text-muted-foreground">
+                      Same rep can be assigned to multiple territories.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setPlannerOpen(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleSaveDraft}
+                        disabled={savingDraft || plannerApplying}
+                      >
+                        {savingDraft ? "Saving…" : "Save as draft"}
+                      </Button>
+                      <Button
+                        onClick={handleApplyPlan}
+                        disabled={plannerApplying}
+                      >
+                        <Check className="size-4 mr-1" />
+                        {plannerApplying ? "Applying…" : "Apply assignments"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Territory Map Modal */}
+      {territoriesOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-6"
+          onClick={(e) => { if (e.target === e.currentTarget) setTerritoriesOpen(false); }}
+        >
+          <div className="bg-white rounded-xl w-full max-w-5xl my-6 shadow-xl">
+            <div className="flex items-center justify-between border-b p-5">
+              <div className="flex items-center gap-2">
+                <MapIcon className="size-5 text-blue-600" />
+                <h2 className="text-lg font-semibold">Territory map</h2>
+              </div>
+              <button
+                onClick={() => setTerritoriesOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Each rep&apos;s currently-assigned leads with a convex-hull
+                polygon showing the territory they cover. Pins are colored by rep.
+              </p>
+              {territoriesLoading ? (
+                <div className="text-sm text-muted-foreground p-8 text-center">
+                  Loading territories…
+                </div>
+              ) : territories.length === 0 ? (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+                  No assigned leads with coordinates in this blitz yet. Use the planner to assign reps first.
+                </div>
+              ) : (
+                <TerritoryMap territories={territories} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Leads Table */}
       <div className="bg-white rounded-xl border overflow-hidden">
