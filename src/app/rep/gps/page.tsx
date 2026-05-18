@@ -208,11 +208,13 @@ export default function RepGpsPage() {
           current={current}
         />
 
-        {/* Log-a-knock FAB (only shown while tracking) */}
+        {/* Log-a-knock FAB (only shown while tracking). Positioned above
+            the rep layout's fixed bottom tab nav (h ~5rem) so it doesn't
+            hide behind Home/Leads/GPS/Sales/Profile on mobile. */}
         {session && (
           <button
             onClick={() => setKnockSheetOpen(true)}
-            className="absolute right-4 bottom-4 flex items-center gap-2 rounded-full bg-blue-600 text-white px-4 py-3 font-medium shadow-lg"
+            className="fixed right-4 bottom-24 z-30 flex items-center gap-2 rounded-full bg-blue-600 text-white px-5 py-3 font-medium shadow-lg"
           >
             <Plus className="size-5" />
             Log knock
