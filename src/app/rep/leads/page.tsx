@@ -40,6 +40,7 @@ const FILTERS: Array<{ key: Disposition | "ALL"; label: string }> = [
 ];
 
 const RESOLVE_OPTIONS: Array<{ key: Disposition; label: string }> = [
+  { key: "PENDING", label: "Pending" },
   { key: "NOT_HOME", label: "Not Home" },
   { key: "GO_BACK", label: "Go Back" },
   { key: "SOLD", label: "Sold" },
@@ -271,28 +272,26 @@ export default function RepLeadsPage() {
                 Navigate
               </button>
 
-              {selectedLead.disposition === "PENDING" && (
-                <>
-                  <div className="text-xs uppercase tracking-wide text-gray-500 pt-2">Resolve</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {RESOLVE_OPTIONS.map((opt) => {
-                      const cfg = DISPO[opt.key];
-                      const Icon = cfg.icon;
-                      return (
-                        <button
-                          key={opt.key}
-                          onClick={() => resolve(opt.key)}
-                          disabled={resolving}
-                          className={`flex flex-col items-center justify-center gap-1 rounded-lg border py-3 text-sm font-medium ${cfg.color}`}
-                        >
-                          <Icon className="size-5" />
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
+              <div className="text-xs uppercase tracking-wide text-gray-500 pt-2">
+                {selectedLead.disposition === "PENDING" ? "Resolve" : "Change status"}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {RESOLVE_OPTIONS.filter((opt) => opt.key !== selectedLead.disposition).map((opt) => {
+                  const cfg = DISPO[opt.key];
+                  const Icon = cfg.icon;
+                  return (
+                    <button
+                      key={opt.key}
+                      onClick={() => resolve(opt.key)}
+                      disabled={resolving}
+                      className={`flex flex-col items-center justify-center gap-1 rounded-lg border py-3 text-sm font-medium ${cfg.color}`}
+                    >
+                      <Icon className="size-5" />
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
