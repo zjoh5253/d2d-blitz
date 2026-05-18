@@ -72,6 +72,31 @@ export default function NewSalePage() {
     })();
   }, [isEdit]);
 
+  // Reverse-geocode GPS coords (from the /rep/gps Log Knock → Sale
+  // shortcut) into a street address so the rep doesn't have to type it.
+  // Silent fallback if the Geocoding API is unenabled or returns nothing
+  // — the rep can still type / use the Places autocomplete.
+  useEffect(() => {
+    if (isEdit) return;
+    const lat = searchParams.get("lat");
+    const lng = searchParams.get("lng");
+    if (!lat || !lng || searchParams.get("address") || !apiKey) return;
+    (async () => {
+      try {
+        const res = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`
+        );
+        const data = await res.json();
+        const first = data.results?.[0];
+        if (first?.formatted_address) setAddress(first.formatted_address);
+      } catch {
+        // Non-fatal — rep can fill the address manually.
+      }
+    })();
+    // Intentionally run once on mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Edit mode: load the sale and pre-fill form fields.
   useEffect(() => {
     if (!saleId) return;

@@ -268,8 +268,14 @@ export default function RepGpsPage() {
     setKnockSheetOpen(false);
     // Sale knocks jump straight to the New Sale form so the rep can
     // capture customer details without leaving GPS for the Sales tab.
+    // Pass the current GPS fix so the form can reverse-geocode it into
+    // a street address.
     if (result === "sale") {
-      router.push("/rep/sales/new");
+      const params = new URLSearchParams({
+        lat: String(current.lat),
+        lng: String(current.lng),
+      });
+      router.push(`/rep/sales/new?${params}`);
     }
   };
 
