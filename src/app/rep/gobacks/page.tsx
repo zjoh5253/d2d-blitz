@@ -106,9 +106,15 @@ export default function RepGobacksPage() {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="font-medium">{g.prospectName}</div>
-                  <div className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(g.prospectAddress)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-xs text-blue-600 flex items-center gap-1 mt-0.5 underline-offset-2 hover:underline"
+                  >
                     <MapPin className="size-3" /> {g.prospectAddress}
-                  </div>
+                  </a>
                   {g.prospectPhone && (
                     <a href={`tel:${g.prospectPhone}`} className="text-xs text-blue-600 flex items-center gap-1 mt-0.5">
                       <Phone className="size-3" /> {g.prospectPhone}
