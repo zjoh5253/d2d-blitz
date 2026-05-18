@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Play, Pause, Square, Plus, X, CheckCircle2, ThumbsUp, Home, ThumbsDown, Calendar } from "lucide-react";
 import { RepGpsMap, type GpsKnock, type GpsRoutePoint, type KnockResult } from "./rep-gps-map";
 
@@ -101,6 +102,7 @@ function formatHM(seconds: number): string {
 }
 
 export default function RepGpsPage() {
+  const router = useRouter();
   const [session, setSession] = useState<SessionState | null>(() => loadSession());
   const [current, setCurrent] = useState<{ lat: number; lng: number } | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -264,6 +266,11 @@ export default function RepGpsPage() {
       return next;
     });
     setKnockSheetOpen(false);
+    // Sale knocks jump straight to the New Sale form so the rep can
+    // capture customer details without leaving GPS for the Sales tab.
+    if (result === "sale") {
+      router.push("/rep/sales/new");
+    }
   };
 
   const liveSeconds = session ? activeSeconds(session, now) : 0;

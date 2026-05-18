@@ -88,7 +88,11 @@ export default function RepSalesPage() {
                 const cfg = STATUS_CFG[s.status] ?? STATUS_CFG.SUBMITTED;
                 const Icon = cfg.icon;
                 return (
-                  <div key={s.id} className="bg-white rounded-lg border p-3 space-y-1">
+                  <Link
+                    key={s.id}
+                    href={`/rep/sales/new?saleId=${s.id}`}
+                    className="block bg-white rounded-lg border p-3 space-y-1 active:bg-gray-50"
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="font-medium text-gray-900 truncate">
@@ -109,7 +113,7 @@ export default function RepSalesPage() {
                         <span>Install: {new Date(s.installDate).toLocaleDateString()}</span>
                       )}
                     </div>
-                  </div>
+                  </Link>
                 );
               })}
             </section>

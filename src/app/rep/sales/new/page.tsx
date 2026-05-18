@@ -24,6 +24,8 @@ const SPEED_TIERS = ["100M", "200M", "250M", "300M", "500M", "600M", "940M", "1G
 export default function NewSalePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const saleId = searchParams.get("saleId");
+  const isEdit = !!saleId;
 
   const [carriers, setCarriers] = useState<Carrier[]>([]);
   const [blitzes, setBlitzes] = useState<Blitz[]>([]);
@@ -62,13 +64,40 @@ export default function NewSalePage() {
           const data = await bRes.json();
           const list: Blitz[] = Array.isArray(data) ? data : data.blitzes || [];
           setBlitzes(list);
-          if (list.length === 1) setBlitzId(list[0].id);
+          if (list.length === 1 && !isEdit) setBlitzId(list[0].id);
         }
       } finally {
         setLoadingMeta(false);
       }
     })();
-  }, []);
+  }, [isEdit]);
+
+  // Edit mode: load the sale and pre-fill form fields.
+  useEffect(() => {
+    if (!saleId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/sales/${saleId}`);
+        if (!res.ok) return;
+        const s = await res.json();
+        setBlitzId(s.blitzId ?? "");
+        setCarrierId(s.carrierId ?? "");
+        setCustomerName(s.customerName ?? "");
+        setPhone(s.customerPhone ?? "");
+        setEmail(s.customerEmail ?? "");
+        setAddress(s.customerAddress ?? "");
+        setOrderConfirmation(s.orderConfirmation ?? "");
+        if (s.installDate) {
+          const d = new Date(s.installDate);
+          if (!Number.isNaN(d.getTime())) {
+            setInstallDate(d.toISOString().slice(0, 10));
+          }
+        }
+      } catch {
+        // Non-fatal — user can re-fill manually
+      }
+    })();
+  }, [saleId]);
 
   // Address autocomplete via Google Places (skipped if no key).
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY;
@@ -148,8 +177,8 @@ export default function NewSalePage() {
         installDate,
         orderConfirmation: orderInfoParts.join(" · ") || undefined,
       };
-      const res = await fetch("/api/sales", {
-        method: "POST",
+      const res = await fetch(saleId ? `/api/sales/${saleId}` : "/api/sales", {
+        method: saleId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -158,7 +187,7 @@ export default function NewSalePage() {
         setError(data.error ?? `Failed (${res.status})`);
         return;
       }
-      setSuccess("Sale submitted.");
+      setSuccess(saleId ? "Sale updated." : "Sale submitted.");
       // Brief delay so the user sees the confirmation, then bounce to /rep/sales.
       setTimeout(() => router.push("/rep/sales"), 700);
     } catch (e) {
@@ -175,7 +204,7 @@ export default function NewSalePage() {
         <button onClick={() => router.back()} className="p-1 -ml-1">
           <ChevronLeft className="size-5 text-gray-700" />
         </button>
-        <h1 className="text-lg font-bold">New Sale</h1>
+        <h1 className="text-lg font-bold">{isEdit ? "Edit Sale" : "New Sale"}</h1>
       </div>
 
       <div className="p-4 space-y-4">
@@ -320,7 +349,7 @@ export default function NewSalePage() {
           disabled={!canSubmit || submitting}
           className="w-full bg-emerald-600 disabled:bg-gray-300 text-white font-medium py-3 rounded-lg"
         >
-          {submitting ? "Submitting…" : "Submit sale"}
+          {submitting ? "Saving…" : isEdit ? "Save changes" : "Submit sale"}
         </button>
 
         <div className="h-4" />
