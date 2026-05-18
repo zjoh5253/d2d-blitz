@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronDown, Check, Calendar } from "lucide-react";
 
 // Web port of mobile-d2d's NewSaleScreen. Same POST contract to
@@ -23,6 +23,7 @@ const SPEED_TIERS = ["100M", "200M", "250M", "300M", "500M", "600M", "940M", "1G
 
 export default function NewSalePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [carriers, setCarriers] = useState<Carrier[]>([]);
   const [blitzes, setBlitzes] = useState<Blitz[]>([]);
@@ -30,10 +31,14 @@ export default function NewSalePage() {
 
   const [blitzId, setBlitzId] = useState("");
   const [carrierId, setCarrierId] = useState("");
-  const [customerName, setCustomerName] = useState("");
+  const [customerName, setCustomerName] = useState(
+    () => searchParams.get("customerName") ?? ""
+  );
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useState(
+    () => searchParams.get("address") ?? ""
+  );
   const [speed, setSpeed] = useState<string | null>(null);
   const [valueAdded, setValueAdded] = useState(false);
   const [installDate, setInstallDate] = useState("");

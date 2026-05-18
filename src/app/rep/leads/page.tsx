@@ -94,6 +94,19 @@ export default function RepLeadsPage() {
     window.open(url, "_blank");
   };
 
+  const saleFormHref = (lead: Lead): string => {
+    const address = `${lead.streetNumber} ${lead.streetName}, ${lead.city}, ${lead.state} ${lead.zip}`;
+    const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim();
+    const params = new URLSearchParams({ address, leadId: lead.id });
+    if (name) params.set("customerName", name);
+    return `/rep/sales/new?${params}`;
+  };
+
+  const goToSaleForm = useCallback(
+    (lead: Lead) => router.push(saleFormHref(lead)),
+    [router]
+  );
+
   const resolve = async (disposition: Disposition) => {
     if (!selectedLead) return;
     setResolving(true);
@@ -104,6 +117,10 @@ export default function RepLeadsPage() {
         body: JSON.stringify({ disposition }),
       });
       if (res.ok) {
+        if (disposition === "SOLD") {
+          goToSaleForm(selectedLead);
+          return;
+        }
         setSelectedLead(null);
         fetchLeads();
       }
@@ -114,8 +131,13 @@ export default function RepLeadsPage() {
 
   const handlePinPress = useCallback((pin: RepLeadPin) => {
     const lead = leads.find((l) => l.id === pin.id);
-    if (lead) setSelectedLead(lead);
-  }, [leads]);
+    if (!lead) return;
+    if (lead.disposition === "SOLD") {
+      goToSaleForm(lead);
+      return;
+    }
+    setSelectedLead(lead);
+  }, [leads, goToSaleForm]);
 
   const pendingCount = leads.filter((l) => l.disposition === "PENDING").length;
 
@@ -178,7 +200,13 @@ export default function RepLeadsPage() {
               return (
                 <button
                   key={lead.id}
-                  onClick={() => setSelectedLead(lead)}
+                  onClick={() => {
+                    if (lead.disposition === "SOLD") {
+                      goToSaleForm(lead);
+                      return;
+                    }
+                    setSelectedLead(lead);
+                  }}
                   className="w-full text-left bg-white rounded-lg border p-3 active:bg-gray-50"
                 >
                   <div className="flex items-center justify-between mb-1.5">
