@@ -18,12 +18,14 @@ interface GoBack {
 
 interface Blitz { id: string; name: string }
 
-const STATUS_CFG: Record<GoBackStatus, { label: string; bg: string; color: string }> = {
-  SCHEDULED: { label: "Scheduled", bg: "bg-blue-100",    color: "text-blue-700" },
-  REVISITED: { label: "Revisited", bg: "bg-amber-100",   color: "text-amber-700" },
-  CONVERTED: { label: "Converted", bg: "bg-emerald-100", color: "text-emerald-700" },
-  CLOSED:    { label: "Closed",    bg: "bg-gray-100",    color: "text-gray-700" },
+const STATUS_CFG: Record<GoBackStatus, { label: string; bg: string; color: string; btnLabel: string }> = {
+  SCHEDULED: { label: "Scheduled", bg: "bg-blue-100",    color: "text-blue-700",    btnLabel: "Scheduled" },
+  REVISITED: { label: "Revisited", bg: "bg-amber-100",   color: "text-amber-700",   btnLabel: "Revisited" },
+  CONVERTED: { label: "Converted", bg: "bg-emerald-100", color: "text-emerald-700", btnLabel: "Converted" },
+  CLOSED:    { label: "Closed",    bg: "bg-gray-100",    color: "text-gray-700",    btnLabel: "Close" },
 };
+
+const STATUS_ORDER: GoBackStatus[] = ["SCHEDULED", "REVISITED", "CONVERTED", "CLOSED"];
 
 export default function RepGobacksPage() {
   const [gobacks, setGobacks] = useState<GoBack[]>([]);
@@ -46,6 +48,17 @@ export default function RepGobacksPage() {
   useEffect(() => { fetchGobacks(); }, [statusFilter]);
 
   const advanceStatus = async (g: GoBack, status: GoBackStatus) => {
+    if (status === g.status) return;
+    const currentIdx = STATUS_ORDER.indexOf(g.status);
+    const nextIdx = STATUS_ORDER.indexOf(status);
+    if (
+      nextIdx < currentIdx &&
+      !window.confirm(
+        `Change status from ${STATUS_CFG[g.status].label} to ${STATUS_CFG[status].label}?`
+      )
+    ) {
+      return;
+    }
     await fetch(`/api/go-backs/${g.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -110,15 +123,21 @@ export default function RepGobacksPage() {
                   {cfg.label}
                 </span>
               </div>
-              {g.status === "SCHEDULED" && (
-                <div className="flex gap-2 pt-1">
-                  <button onClick={() => advanceStatus(g, "REVISITED")} className="flex-1 text-xs font-medium bg-amber-100 text-amber-800 rounded py-1.5">Mark Revisited</button>
-                  <button onClick={() => advanceStatus(g, "CONVERTED")} className="flex-1 text-xs font-medium bg-emerald-100 text-emerald-800 rounded py-1.5 flex items-center justify-center gap-1">
-                    <CheckCircle2 className="size-3" /> Converted
-                  </button>
-                  <button onClick={() => advanceStatus(g, "CLOSED")} className="flex-1 text-xs font-medium bg-gray-100 text-gray-700 rounded py-1.5">Close</button>
-                </div>
-              )}
+              <div className="flex gap-2 pt-1">
+                {STATUS_ORDER.filter((s) => s !== g.status).map((nextStatus) => {
+                  const next = STATUS_CFG[nextStatus];
+                  return (
+                    <button
+                      key={nextStatus}
+                      onClick={() => advanceStatus(g, nextStatus)}
+                      className={`flex-1 text-xs font-medium rounded py-1.5 flex items-center justify-center gap-1 ${next.bg} ${next.color}`}
+                    >
+                      {nextStatus === "CONVERTED" && <CheckCircle2 className="size-3" />}
+                      {next.btnLabel}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           );
         })
