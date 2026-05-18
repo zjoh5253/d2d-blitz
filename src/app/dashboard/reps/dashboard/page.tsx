@@ -139,6 +139,17 @@ export default async function RepDashboardPage() {
     include: { carrier: true },
   })
 
+  // Sales submitted today — derived from the Sale table directly so a
+  // rep's freshly-submitted sale shows up without waiting for the
+  // DailyReport.salesCount field to be filled in at end of day.
+  const salesToday = await db.sale.count({
+    where: {
+      repId,
+      submittedAt: { gte: todayStart, lte: todayEnd },
+      status: { not: "CANCELLED" },
+    },
+  })
+
   // Go-backs due today and tomorrow
   const goBacksDueSoon = await db.goBack.findMany({
     where: {
@@ -205,7 +216,7 @@ export default async function RepDashboardPage() {
         <StatCardEnhanced
           icon={TrendingUp}
           label="Sales Today"
-          value={todayReport?.salesCount ?? 0}
+          value={salesToday}
           iconBg="bg-emerald-50"
           iconColor="text-emerald-600"
           delay="120ms"

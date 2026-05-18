@@ -68,31 +68,20 @@ export async function GET(request: NextRequest) {
     });
     const suspendedRepIds = new Set(latestPeriods.map((p) => p.repId));
 
-    // Build sale filter
-    const saleWhere: Record<string, unknown> = {
-      status: "VERIFIED",
-      submittedAt: { gte: start, lte: end },
-    };
+    // Scope filters (blitz wins over market)
+    const scopeWhere: Record<string, unknown> = blitzId
+      ? { blitzId }
+      : marketId
+        ? { blitz: { marketId } }
+        : {};
 
-    if (blitzId) {
-      saleWhere.blitzId = blitzId;
-    } else if (marketId) {
-      saleWhere.blitz = { marketId };
-    }
-
-    // Aggregate verified installs per rep
-    const salesByRep = await db.sale.groupBy({
-      by: ["repId"],
-      where: saleWhere,
-      _count: { id: true },
-    });
-
-    // Total sales per rep (for install rate)
+    // Total sales per rep (any status) — drives leaderboard membership
+    // so reps with submitted-but-not-yet-verified sales still appear.
     const totalSalesByRep = await db.sale.groupBy({
       by: ["repId"],
       where: {
         submittedAt: { gte: start, lte: end },
-        ...(blitzId ? { blitzId } : marketId ? { blitz: { marketId } } : {}),
+        ...scopeWhere,
       },
       _count: { id: true },
     });
@@ -101,8 +90,23 @@ export async function GET(request: NextRequest) {
       totalSalesByRep.map((r) => [r.repId, r._count.id])
     );
 
-    // Get rep details
-    const repIds = salesByRep.map((r) => r.repId);
+    // Verified installs per rep (subset)
+    const verifiedByRep = await db.sale.groupBy({
+      by: ["repId"],
+      where: {
+        status: "VERIFIED",
+        submittedAt: { gte: start, lte: end },
+        ...scopeWhere,
+      },
+      _count: { id: true },
+    });
+
+    const verifiedMap = new Map(
+      verifiedByRep.map((r) => [r.repId, r._count.id])
+    );
+
+    // Get rep details — universe is anyone with any sales in period
+    const repIds = totalSalesByRep.map((r) => r.repId);
     const reps = await db.user.findMany({
       where: { id: { in: repIds } },
       select: {
@@ -115,12 +119,12 @@ export async function GET(request: NextRequest) {
     const repMap = new Map(reps.map((r) => [r.id, r]));
 
     // Build leaderboard, filtering out held/suspended reps
-    const rows = salesByRep
+    const rows = totalSalesByRep
       .filter((r) => !heldRepIds.has(r.repId) && !suspendedRepIds.has(r.repId))
       .map((r) => {
         const rep = repMap.get(r.repId);
-        const verifiedInstalls = r._count.id;
-        const totalSales = totalSalesMap.get(r.repId) ?? 0;
+        const totalSales = r._count.id;
+        const verifiedInstalls = verifiedMap.get(r.repId) ?? 0;
         const installRate = totalSales > 0 ? verifiedInstalls / totalSales : 0;
         return {
           repId: r.repId,
@@ -131,7 +135,9 @@ export async function GET(request: NextRequest) {
           tier: rep?.governanceTier?.name ?? null,
         };
       })
-      .sort((a, b) => b.verifiedInstalls - a.verifiedInstalls)
+      .sort((a, b) =>
+        b.verifiedInstalls - a.verifiedInstalls || b.sales - a.sales
+      )
       .map((row, idx) => ({ ...row, rank: idx + 1 }));
 
     return NextResponse.json({ period, rows });
