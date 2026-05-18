@@ -5,12 +5,15 @@ import { useRouter } from "next/navigation"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Select } from "@/components/ui/select"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { DataTable } from "@/components/tables/data-table"
 import { StaffingTab } from "./staffing-tab"
 import { ExpenseForm } from "./expense-form"
 
-// Status transition map
+const STATUS_ORDER = ["PLANNING", "STAFFING", "READY", "ACTIVE", "REVIEW", "CLOSED"] as const
+
+// Status transition map (forward "happy path")
 const STATUS_TRANSITIONS: Record<string, { next: string; label: string } | null> = {
   PLANNING: { next: "STAFFING", label: "Move to Staffing" },
   STAFFING: { next: "READY", label: "Mark Ready" },
@@ -90,16 +93,33 @@ export function BlitzTabs({ blitz, availableReps }: BlitzTabsProps) {
 
   const transition = STATUS_TRANSITIONS[blitz.status]
 
-  async function handleStatusTransition() {
-    if (!transition) return
+  async function changeStatus(nextStatus: string) {
     setTransitioning(true)
     await fetch(`/api/blitzes/${blitz.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: transition.next }),
+      body: JSON.stringify({ status: nextStatus }),
     })
     setTransitioning(false)
     router.refresh()
+  }
+
+  function handleStatusTransition() {
+    if (!transition) return
+    return changeStatus(transition.next)
+  }
+
+  function handleStatusSelect(e: React.ChangeEvent<HTMLSelectElement>) {
+    const nextStatus = e.target.value
+    if (!nextStatus || nextStatus === blitz.status) return
+    const currentIdx = STATUS_ORDER.indexOf(blitz.status as typeof STATUS_ORDER[number])
+    const nextIdx = STATUS_ORDER.indexOf(nextStatus as typeof STATUS_ORDER[number])
+    const goingBackward = nextIdx < currentIdx
+    if (goingBackward && !confirm(`Revert blitz from ${blitz.status} back to ${nextStatus}?`)) {
+      e.target.value = blitz.status
+      return
+    }
+    void changeStatus(nextStatus)
   }
 
   // Derived stats
@@ -184,13 +204,23 @@ export function BlitzTabs({ blitz, availableReps }: BlitzTabsProps) {
   return (
     <>
       {/* Status transition */}
-      {transition && (
-        <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Change status:</span>
+          <Select
+            value={blitz.status}
+            onChange={handleStatusSelect}
+            disabled={transitioning}
+            className="h-9 w-40"
+            options={STATUS_ORDER.map((s) => ({ value: s, label: s }))}
+          />
+        </div>
+        {transition && (
           <Button onClick={handleStatusTransition} disabled={transitioning}>
             {transitioning ? "Updating..." : transition.label}
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       <Tabs defaultValue="overview">
         <TabsList>
