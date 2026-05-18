@@ -150,6 +150,21 @@ export default async function RepDashboardPage() {
     },
   })
 
+  // Hours logged today from /rep/gps clock-in sessions. Tolerant of the
+  // gps_sessions migration not yet applied — falls back to 0 so the page
+  // still renders.
+  let secondsToday = 0
+  try {
+    const todaySessions = await db.gpsSession.aggregate({
+      where: { repId, startedAt: { gte: todayStart, lte: todayEnd } },
+      _sum: { durationSeconds: true },
+    })
+    secondsToday = todaySessions._sum.durationSeconds ?? 0
+  } catch {
+    secondsToday = 0
+  }
+  const hoursTodayLabel = `${Math.floor(secondsToday / 3600)}h ${Math.floor((secondsToday % 3600) / 60)}m`
+
   // Go-backs due today and tomorrow
   const goBacksDueSoon = await db.goBack.findMany({
     where: {
@@ -196,14 +211,22 @@ export default async function RepDashboardPage() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <StatCardEnhanced
+          icon={Clock}
+          label="Hours Today"
+          value={hoursTodayLabel}
+          iconBg="bg-indigo-50"
+          iconColor="text-indigo-600"
+          delay="0ms"
+        />
         <StatCardEnhanced
           icon={DoorOpen}
           label="Doors Knocked"
           value={todayReport?.doorsKnocked ?? 0}
           iconBg="bg-blue-50"
           iconColor="text-blue-600"
-          delay="0ms"
+          delay="60ms"
         />
         <StatCardEnhanced
           icon={MessageSquare}
@@ -211,7 +234,7 @@ export default async function RepDashboardPage() {
           value={todayReport?.conversations ?? 0}
           iconBg="bg-cyan-50"
           iconColor="text-cyan-600"
-          delay="60ms"
+          delay="120ms"
         />
         <StatCardEnhanced
           icon={TrendingUp}
@@ -219,7 +242,7 @@ export default async function RepDashboardPage() {
           value={salesToday}
           iconBg="bg-emerald-50"
           iconColor="text-emerald-600"
-          delay="120ms"
+          delay="180ms"
         />
         <StatCardEnhanced
           icon={RotateCcw}
@@ -227,7 +250,7 @@ export default async function RepDashboardPage() {
           value={pendingGoBacksCount}
           iconBg="bg-amber-50"
           iconColor="text-amber-600"
-          delay="180ms"
+          delay="240ms"
         />
       </div>
 

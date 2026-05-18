@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Play, Square, Plus, X, CheckCircle2, ThumbsUp, Home, ThumbsDown, Calendar } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Play, Pause, Square, Plus, X, CheckCircle2, ThumbsUp, Home, ThumbsDown, Calendar } from "lucide-react";
 import { RepGpsMap, type GpsKnock, type GpsRoutePoint, type KnockResult } from "./rep-gps-map";
 
 // Foreground browser GPS tracking. Best-effort — when the browser tab
@@ -10,10 +10,26 @@ import { RepGpsMap, type GpsKnock, type GpsRoutePoint, type KnockResult } from "
 
 const STORAGE_KEY = "rep-gps-session-v1";
 
+interface PauseInterval {
+  pausedAt: number;
+  resumedAt: number | null;
+}
+
 interface SessionState {
   startedAt: number;
   route: GpsRoutePoint[];
   knocks: GpsKnock[];
+  pauses?: PauseInterval[];
+}
+
+interface PastSession {
+  id: string;
+  startedAt: string;
+  endedAt: string;
+  durationSeconds: number;
+  pausedSeconds: number;
+  knockCount: number;
+  routeMiles: number;
 }
 
 const KNOCK_OPTIONS: Array<{ result: KnockResult; label: string; icon: React.ComponentType<{ className?: string }>; color: string }> = [
@@ -42,7 +58,7 @@ function saveSession(s: SessionState | null) {
 }
 
 function haversineMiles(a: GpsRoutePoint, b: GpsRoutePoint): number {
-  const R = 3958.8; // miles
+  const R = 3958.8;
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(b.lat - a.lat);
   const dLng = toRad(b.lng - a.lng);
@@ -52,29 +68,66 @@ function haversineMiles(a: GpsRoutePoint, b: GpsRoutePoint): number {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+function isCurrentlyPaused(session: SessionState | null): boolean {
+  if (!session?.pauses?.length) return false;
+  const last = session.pauses[session.pauses.length - 1];
+  return last.resumedAt === null;
+}
+
+function pausedMsTotal(session: SessionState, asOf: number): number {
+  return (session.pauses ?? []).reduce(
+    (sum, p) => sum + ((p.resumedAt ?? asOf) - p.pausedAt),
+    0
+  );
+}
+
+function activeSeconds(session: SessionState, asOf: number): number {
+  const elapsed = asOf - session.startedAt;
+  const paused = pausedMsTotal(session, asOf);
+  return Math.max(0, Math.floor((elapsed - paused) / 1000));
+}
+
+function formatHMS(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+function formatHM(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return `${h}h ${m.toString().padStart(2, "0")}m`;
+}
+
 export default function RepGpsPage() {
   const [session, setSession] = useState<SessionState | null>(() => loadSession());
   const [current, setCurrent] = useState<{ lat: number; lng: number } | null>(null);
   const [now, setNow] = useState(Date.now());
   const [knockSheetOpen, setKnockSheetOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [permissionState, setPermissionState] = useState<"prompt" | "granted" | "denied" | "unsupported">("prompt");
+  const [pastSessions, setPastSessions] = useState<PastSession[]>([]);
   const watchIdRef = useRef<number | null>(null);
 
-  // Re-render every second for the timer.
+  const paused = isCurrentlyPaused(session);
+
+  // Re-render every second for the timer — pause the interval when paused
+  // so we don't burn cycles updating a frozen display.
   useEffect(() => {
-    if (!session) return;
+    if (!session || paused) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [session]);
+  }, [session, paused]);
 
-  // Manage geolocation watcher.
+  // GPS watcher — runs only while a session is active AND not paused.
+  // When paused we keep `current` as last known location for the map.
   useEffect(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setPermissionState("unsupported");
       return;
     }
-    if (!session) {
-      // Not tracking — just grab a one-shot fix for the map.
+    if (!session || paused) {
       navigator.geolocation.getCurrentPosition(
         (pos) => setCurrent({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
         () => setPermissionState("denied"),
@@ -88,7 +141,6 @@ export default function RepGpsPage() {
         setCurrent(p);
         setSession((prev) => {
           if (!prev) return prev;
-          // Skip near-duplicate points to keep the route trim.
           const last = prev.route[prev.route.length - 1];
           if (last && haversineMiles(last, p) < 0.003) return prev;
           const next = { ...prev, route: [...prev.route, p] };
@@ -107,19 +159,90 @@ export default function RepGpsPage() {
       if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     };
-  }, [!!session]);
+  }, [!!session, paused]);
+
+  const fetchToday = useCallback(async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      const res = await fetch(`/api/gps-sessions?date=${today}`);
+      if (res.ok) setPastSessions(await res.json());
+    } catch {
+      // Non-fatal — likely the gps_sessions table isn't migrated yet.
+    }
+  }, []);
+
+  useEffect(() => { fetchToday(); }, [fetchToday]);
 
   const start = () => {
-    const fresh: SessionState = { startedAt: Date.now(), route: [], knocks: [] };
+    const fresh: SessionState = { startedAt: Date.now(), route: [], knocks: [], pauses: [] };
     setSession(fresh);
     saveSession(fresh);
   };
 
-  const stop = () => {
+  const togglePause = () => {
     if (!session) return;
-    if (!window.confirm("End this tracking session? Your route + knocks will be cleared.")) return;
+    setSession((prev) => {
+      if (!prev) return prev;
+      const pauses = [...(prev.pauses ?? [])];
+      const last = pauses[pauses.length - 1];
+      if (last && last.resumedAt === null) {
+        // Currently paused — resume
+        pauses[pauses.length - 1] = { ...last, resumedAt: Date.now() };
+      } else {
+        // Running — pause
+        pauses.push({ pausedAt: Date.now(), resumedAt: null });
+      }
+      const next = { ...prev, pauses };
+      saveSession(next);
+      return next;
+    });
+  };
+
+  const finish = async () => {
+    if (!session) return;
+    if (!window.confirm("End this tracking session and save the record?")) return;
+
+    const endedAt = Date.now();
+    const closedPauses = (session.pauses ?? []).map((p) => ({
+      pausedAt: p.pausedAt,
+      resumedAt: p.resumedAt ?? endedAt,
+    }));
+    const pausedMs = closedPauses.reduce((sum, p) => sum + (p.resumedAt - p.pausedAt), 0);
+    const durationSeconds = Math.max(0, Math.floor((endedAt - session.startedAt - pausedMs) / 1000));
+    const routeMiles = session.route.reduce(
+      (sum, p, i) => (i === 0 ? 0 : sum + haversineMiles(session.route[i - 1], p)),
+      0
+    );
+
+    let saved = false;
+    try {
+      const res = await fetch("/api/gps-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startedAt: new Date(session.startedAt).toISOString(),
+          endedAt: new Date(endedAt).toISOString(),
+          durationSeconds,
+          pausedSeconds: Math.floor(pausedMs / 1000),
+          knockCount: session.knocks.length,
+          routeMiles,
+        }),
+      });
+      saved = res.ok;
+    } catch (err) {
+      console.error("Failed to save GPS session", err);
+    }
+
+    if (!saved) {
+      window.alert(
+        "Couldn't save the session record. Your data is still here — try Finish again in a moment."
+      );
+      return;
+    }
+
     setSession(null);
     saveSession(null);
+    fetchToday();
   };
 
   const logKnock = (result: KnockResult) => {
@@ -143,50 +266,83 @@ export default function RepGpsPage() {
     setKnockSheetOpen(false);
   };
 
-  const duration = session ? Math.floor((now - session.startedAt) / 1000) : 0;
-  const hours = Math.floor(duration / 3600);
-  const minutes = Math.floor((duration % 3600) / 60);
-  const seconds = duration % 60;
-  const timerLabel = `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  const liveSeconds = session ? activeSeconds(session, now) : 0;
+  const timerLabel = formatHMS(liveSeconds);
 
   const miles = session
     ? session.route.reduce((sum, p, i) => (i === 0 ? 0 : sum + haversineMiles(session.route[i - 1], p)), 0)
     : 0;
 
+  const totalSecondsToday =
+    pastSessions.reduce((sum, s) => sum + s.durationSeconds, 0) + liveSeconds;
+
   return (
     <div className="flex h-screen flex-col">
       {/* Header bar */}
-      <div className="border-b bg-white px-4 py-3 flex items-center justify-between">
-        <div>
+      <div className="border-b bg-white px-4 py-3 flex items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
           <h1 className="text-lg font-bold">GPS Tracking</h1>
-          {session && (
-            <p className="text-xs text-gray-500">
+          {session ? (
+            <p className="text-xs text-gray-500 truncate">
               {timerLabel} · {miles.toFixed(2)} mi · {session.knocks.length} knocks
+              {paused && <span className="text-blue-600 font-medium"> · Paused</span>}
             </p>
+          ) : (
+            <button
+              onClick={() => setHistoryOpen(true)}
+              className="text-xs text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline"
+            >
+              Today: {formatHM(totalSecondsToday)} · {pastSessions.length} session{pastSessions.length === 1 ? "" : "s"}
+            </button>
           )}
         </div>
-        {session ? (
-          <button
-            onClick={stop}
-            className="flex items-center gap-1.5 rounded-full bg-red-600 text-white px-4 py-2 text-sm font-medium"
-          >
-            <Square className="size-4" /> Stop
-          </button>
-        ) : (
-          <button
-            onClick={start}
-            disabled={permissionState === "denied" || permissionState === "unsupported"}
-            className="flex items-center gap-1.5 rounded-full bg-emerald-600 disabled:bg-gray-300 text-white px-4 py-2 text-sm font-medium"
-          >
-            <Play className="size-4" /> Start
-          </button>
-        )}
+        <div className="flex gap-2 shrink-0">
+          {session ? (
+            <>
+              <button
+                onClick={togglePause}
+                className={`flex items-center gap-1.5 rounded-full text-white px-3 py-2 text-sm font-medium ${
+                  paused ? "bg-emerald-600" : "bg-amber-500"
+                }`}
+              >
+                {paused ? (
+                  <>
+                    <Play className="size-4" /> Resume
+                  </>
+                ) : (
+                  <>
+                    <Pause className="size-4" /> Pause
+                  </>
+                )}
+              </button>
+              <button
+                onClick={finish}
+                className="flex items-center gap-1.5 rounded-full bg-red-600 text-white px-3 py-2 text-sm font-medium"
+              >
+                <Square className="size-4" /> Finish
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={start}
+              disabled={permissionState === "denied" || permissionState === "unsupported"}
+              className="flex items-center gap-1.5 rounded-full bg-emerald-600 disabled:bg-gray-300 text-white px-4 py-2 text-sm font-medium"
+            >
+              <Play className="size-4" /> Start
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Caveat banner */}
-      {session && (
+      {session && !paused && (
         <div className="bg-amber-50 border-b border-amber-200 px-3 py-2 text-[11px] text-amber-900">
           Keep this tab open while walking. Browser GPS pauses if you lock your screen.
+        </div>
+      )}
+      {paused && (
+        <div className="bg-blue-50 border-b border-blue-200 px-3 py-2 text-xs text-blue-900 text-center">
+          Paused — tap Resume to continue logging hours.
         </div>
       )}
       {permissionState === "denied" && (
@@ -208,10 +364,8 @@ export default function RepGpsPage() {
           current={current}
         />
 
-        {/* Log-a-knock FAB (only shown while tracking). Positioned above
-            the rep layout's fixed bottom tab nav (h ~5rem) so it doesn't
-            hide behind Home/Leads/GPS/Sales/Profile on mobile. */}
-        {session && (
+        {/* Log-a-knock FAB — only shown while actively tracking (not paused). */}
+        {session && !paused && (
           <button
             onClick={() => setKnockSheetOpen(true)}
             className="fixed right-4 bottom-24 z-30 flex items-center gap-2 rounded-full bg-blue-600 text-white px-5 py-3 font-medium shadow-lg"
@@ -249,6 +403,55 @@ export default function RepGpsPage() {
                   </button>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* History sheet — today's logged sessions */}
+      {historyOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center"
+          onClick={(e) => { if (e.target === e.currentTarget) setHistoryOpen(false); }}
+        >
+          <div className="w-full max-w-md bg-white rounded-t-2xl max-h-[85vh] overflow-y-auto">
+            <div className="sticky top-0 flex items-center justify-between border-b bg-white p-4">
+              <div>
+                <h2 className="font-semibold">Today&apos;s Sessions</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Total: {formatHM(totalSecondsToday)}</p>
+              </div>
+              <button onClick={() => setHistoryOpen(false)}>
+                <X className="size-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              {pastSessions.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-6">
+                  No sessions logged today yet.
+                </p>
+              ) : (
+                pastSessions.map((s) => (
+                  <div
+                    key={s.id}
+                    className="bg-white border rounded-lg p-3 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-sm">
+                        {new Date(s.startedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                        {" – "}
+                        {new Date(s.endedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {s.knockCount} knock{s.knockCount === 1 ? "" : "s"} · {s.routeMiles.toFixed(2)} mi
+                        {s.pausedSeconds > 0 && ` · ${Math.round(s.pausedSeconds / 60)}m paused`}
+                      </div>
+                    </div>
+                    <div className="font-bold text-lg text-gray-900 shrink-0">
+                      {formatHM(s.durationSeconds)}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
