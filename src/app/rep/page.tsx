@@ -3,7 +3,18 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { ClipboardList, CheckCircle2, MapPin, ChevronRight, Clock, FileText, ArrowLeftRight, Trophy, DollarSign } from "lucide-react";
+import {
+  ClipboardList,
+  CheckCircle2,
+  MapPin,
+  ChevronRight,
+  Clock,
+  FileText,
+  ArrowLeftRight,
+  Trophy,
+  DollarSign,
+  Timer,
+} from "lucide-react";
 
 interface LeadsSummary {
   total: number;
@@ -11,9 +22,42 @@ interface LeadsSummary {
   soldToday: number;
 }
 
+interface WindowStats {
+  hours: number;
+  sales: number;
+  knocks: number;
+  salesPerHour: number | null;
+}
+
+interface BlitzStats extends WindowStats {
+  blitzId: string;
+  blitzName: string;
+  marketName: string;
+  carrierName: string;
+}
+
+interface Scorecard {
+  today: WindowStats;
+  week: WindowStats;
+  blitzes: BlitzStats[];
+}
+
+function formatHours(h: number): string {
+  if (h < 1) return `${Math.round(h * 60)}m`;
+  const whole = Math.floor(h);
+  const mins = Math.round((h - whole) * 60);
+  return mins > 0 ? `${whole}h ${mins}m` : `${whole}h`;
+}
+
+function formatRate(r: number | null): string {
+  if (r == null) return "—";
+  return r.toFixed(2);
+}
+
 export default function RepHomePage() {
   const { data: session } = useSession();
   const [summary, setSummary] = useState<LeadsSummary | null>(null);
+  const [scorecard, setScorecard] = useState<Scorecard | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -33,6 +77,15 @@ export default function RepHomePage() {
               new Date(l.resolvedAt) >= todayStart
           ).length,
         });
+      } catch {}
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/rep/scorecard");
+        if (res.ok) setScorecard(await res.json());
       } catch {}
     })();
   }, []);
@@ -68,6 +121,59 @@ export default function RepHomePage() {
           value={summary?.total ?? "—"}
           tone="text-blue-700"
         />
+      </div>
+
+      {/* Hours + sales-per-hour. Today/week aggregate from gps_sessions;
+          per-blitz cards listed below if the rep is on an active blitz. */}
+      <div className="bg-white rounded-lg border p-4 space-y-3">
+        <div className="flex items-center gap-1.5">
+          <Timer className="size-4 text-blue-600" />
+          <h2 className="text-sm font-semibold text-gray-700">Hours & sales</h2>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <HoursCell
+            label="Today"
+            hours={scorecard?.today.hours}
+            sales={scorecard?.today.sales}
+            rate={scorecard?.today.salesPerHour ?? null}
+          />
+          <HoursCell
+            label="This week"
+            hours={scorecard?.week.hours}
+            sales={scorecard?.week.sales}
+            rate={scorecard?.week.salesPerHour ?? null}
+          />
+        </div>
+        {scorecard && scorecard.blitzes.length > 0 && (
+          <div className="space-y-1.5 pt-1">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Active blitz{scorecard.blitzes.length === 1 ? "" : "es"}
+            </p>
+            {scorecard.blitzes.map((b) => (
+              <div
+                key={b.blitzId}
+                className="border rounded-md p-2.5 flex items-center justify-between gap-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{b.blitzName}</p>
+                  <p className="text-xs text-gray-500">
+                    {b.carrierName} · {b.sales} sale{b.sales === 1 ? "" : "s"} · {b.knocks} knock{b.knocks === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-bold text-gray-900">{formatHours(b.hours)}</p>
+                  <p className="text-xs text-gray-500">{formatRate(b.salesPerHour)} / hr</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <Link
+          href="/rep/gps/history"
+          className="block text-center text-xs text-blue-600 hover:underline pt-1"
+        >
+          See full session history →
+        </Link>
       </div>
 
       <Link
@@ -127,6 +233,30 @@ function StatCard({
       <Icon className={`size-5 mx-auto mb-1 ${tone}`} />
       <div className={`text-xl font-bold ${tone}`}>{value}</div>
       <div className="text-xs text-gray-500">{label}</div>
+    </div>
+  );
+}
+
+function HoursCell({
+  label,
+  hours,
+  sales,
+  rate,
+}: {
+  label: string;
+  hours: number | undefined;
+  sales: number | undefined;
+  rate: number | null;
+}) {
+  return (
+    <div className="bg-gray-50 rounded-md p-2.5">
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-lg font-bold text-gray-900">
+        {hours == null ? "—" : formatHours(hours)}
+      </p>
+      <p className="text-xs text-gray-600">
+        {sales ?? "—"} sale{sales === 1 ? "" : "s"} · {formatRate(rate)} / hr
+      </p>
     </div>
   );
 }
