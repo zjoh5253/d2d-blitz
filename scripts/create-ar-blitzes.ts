@@ -1,16 +1,16 @@
 import "dotenv/config"
 import { db } from "../src/lib/db"
 
-// Creates 4 PLANNING-status blitzes under Kinetic Arkansas for the
+// Creates 4 PLANNING-status blitzes under Arkansas Rightfiber for the
 // CrowdFiber lead lists Teki sent (Kensett, Rogers, Beebe, Bald Knob).
 // One demo rep assigned per blitz: Eve→Kensett, Frank→Rogers,
 // Grace→Beebe, Henry→Bald Knob. Ivy is held for the upcoming
 // Lockhart, TX (AT&T) blitz.
 //
 // Idempotent: if a blitz with the same name already exists under the
-// Kinetic Arkansas market, it's skipped.
+// Arkansas Rightfiber market, it's skipped.
 
-const AR_MARKET_NAME = "Kinetic Arkansas"
+const AR_MARKET_NAME = "Arkansas Rightfiber"
 
 const CITIES = [
   { city: "Kensett",   repEmail: "rep1@d2dblitz.com", repCapHint: 1 }, // Eve
@@ -33,7 +33,7 @@ async function main() {
   const end = new Date("2026-06-09T00:00:00Z")
 
   for (const c of CITIES) {
-    const name = `${c.city}, AR (Kinetic CrowdFiber)`
+    const name = `${c.city}, AR (Rightfiber CrowdFiber)`
     const existing = await db.blitz.findFirst({
       where: { marketId: market.id, name },
     })

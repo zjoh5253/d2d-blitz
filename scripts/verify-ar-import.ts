@@ -3,8 +3,14 @@ import { db } from "../src/lib/db"
 
 async function main() {
   const blitzes = await db.blitz.findMany({
-    where: { name: { contains: "Kinetic CrowdFiber" } },
+    where: {
+      OR: [
+        { name: { contains: "CrowdFiber" } },
+        { name: { contains: "Lockhart" } },
+      ],
+    },
     select: { id: true, name: true },
+    orderBy: { name: "asc" },
   })
 
   for (const b of blitzes) {

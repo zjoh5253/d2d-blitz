@@ -19,19 +19,19 @@ import {
 const FILES: Array<{ path: string; blitzName: string }> = [
   {
     path: "C:/Users/marie/Downloads/Kensett CrowdFiber Leads May 18 2026.xlsx",
-    blitzName: "Kensett, AR (Kinetic CrowdFiber)",
+    blitzName: "Kensett, AR (Rightfiber CrowdFiber)",
   },
   {
     path: "C:/Users/marie/Downloads/Rogers CrowdFiber Leads May 18 2026 (1).xlsx",
-    blitzName: "Rogers, AR (Kinetic CrowdFiber)",
+    blitzName: "Rogers, AR (Rightfiber CrowdFiber)",
   },
   {
     path: "C:/Users/marie/Downloads/Beebe CrowdFiber Leads May 18 2026.xlsx",
-    blitzName: "Beebe, AR (Kinetic CrowdFiber)",
+    blitzName: "Beebe, AR (Rightfiber CrowdFiber)",
   },
   {
     path: "C:/Users/marie/Downloads/Bald Knob CrowdFiber Leads May 18 2026 (1).xlsx",
-    blitzName: "Bald Knob, AR (Kinetic CrowdFiber)",
+    blitzName: "Bald Knob, AR (Rightfiber CrowdFiber)",
   },
 ]
 
