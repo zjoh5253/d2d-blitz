@@ -305,6 +305,11 @@ model User {
 model GpsSession {
   id              String   @id @default(cuid())
   repId           String   @map("rep_id")
+  // Exact blitz attribution for this session — supersedes the
+  // date-overlap approximation in /api/rep/scorecard. Set by the
+  // POST handler when the rep has exactly one ACTIVE blitz at
+  // submission time; left null when ambiguous (0 or >1 ACTIVE).
+  blitzId         String?  @map("blitz_id")
   startedAt       DateTime @map("started_at")
   endedAt         DateTime @map("ended_at")
   durationSeconds Int      @map("duration_seconds")
@@ -313,9 +318,11 @@ model GpsSession {
   routeMiles      Float    @default(0) @map("route_miles")
   createdAt       DateTime @default(now()) @map("created_at")
 
-  rep User @relation(fields: [repId], references: [id])
+  rep   User   @relation(fields: [repId], references: [id])
+  blitz Blitz? @relation(fields: [blitzId], references: [id])
 
   @@index([repId, startedAt])
+  @@index([blitzId])
   @@map("gps_sessions")
 }
 
@@ -437,6 +444,7 @@ model Blitz {
   deductions    Deduction[]
   commissionRecords CommissionRecord[]
   doorKnockLeads DoorKnockLead[]
+  gpsSessions   GpsSession[]
 
   @@index([marketId])
   @@index([managerId])

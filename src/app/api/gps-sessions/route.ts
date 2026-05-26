@@ -11,6 +11,10 @@ const createSchema = z.object({
   pausedSeconds: z.number().int().min(0).default(0),
   knockCount: z.number().int().min(0).default(0),
   routeMiles: z.number().min(0).default(0),
+  // Optional. When the rep is staffed on exactly one ACTIVE blitz at
+  // submission time and the client doesn't pass one, the POST handler
+  // auto-attributes via that single assignment.
+  blitzId: z.string().min(1).optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -67,9 +71,27 @@ export async function POST(request: NextRequest) {
     }
 
     const data = parsed.data;
+
+    // Auto-attribute the session to a blitz when the rep is unambiguously
+    // on one. An explicit blitzId from the client wins; with 0 or >1
+    // active assignments we leave it null and the scorecard falls back
+    // to date-overlap for those rows.
+    let blitzId: string | null = data.blitzId ?? null;
+    if (!blitzId) {
+      const active = await db.blitzAssignment.findMany({
+        where: {
+          repId: session.user.id!,
+          blitz: { status: { in: ["READY", "ACTIVE", "REVIEW"] } },
+        },
+        select: { blitzId: true },
+      });
+      if (active.length === 1) blitzId = active[0].blitzId;
+    }
+
     const created = await db.gpsSession.create({
       data: {
         repId: session.user.id,
+        blitzId,
         startedAt: parseISO(data.startedAt),
         endedAt: parseISO(data.endedAt),
         durationSeconds: data.durationSeconds,

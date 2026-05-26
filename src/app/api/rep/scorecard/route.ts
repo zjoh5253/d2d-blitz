@@ -14,11 +14,11 @@ import { startOfDay, startOfWeek, endOfDay } from "date-fns"
 // Knocks: gps_sessions.knockCount sum, plus door_knock_leads resolved
 // non-PENDING in the window.
 //
-// "Per active blitz" hours are approximate — gps_sessions doesn't
-// carry a blitzId, so we attribute by date overlap with the blitz's
-// start/end. If a rep works in two simultaneous blitzes the same
-// hour counts toward both; documented behavior, easy to fix later
-// by adding gps_sessions.blitz_id.
+// "Per active blitz" hours are exact for sessions with a blitzId set
+// (the POST handler auto-attributes when the rep has a single ACTIVE
+// assignment). Sessions without a blitzId — older rows from before
+// the column existed, or rows submitted when the rep was on 0 or >1
+// blitzes — fall back to a date-overlap attribution.
 
 type WindowStats = {
   hours: number
@@ -112,17 +112,13 @@ export async function GET(request: NextRequest) {
     const today = computeWindow(sessionsToday, salesToday)
     const week = computeWindow(sessionsWeek, salesWeek)
 
-    // Per-blitz: hours attributed by date overlap, sales filtered by
-    // Sale.blitzId (which IS tracked). See header comment for caveat
-    // on hour attribution under multi-blitz overlap.
+    // Per-blitz: prefer exact blitzId match on gps_sessions; fall back
+    // to date overlap for sessions submitted before the column existed
+    // (or with a null blitzId because the rep had 0/>1 active blitzes
+    // when the session ended).
     const blitzes: BlitzStats[] = []
     for (const a of activeAssignments) {
       const b = a.blitz
-      const blitzSessions = sessionsWeek.filter(
-        (s) => s.startedAt >= b.startDate && s.startedAt <= b.endDate
-      )
-      // Sales scoped by Sale.blitzId — the authoritative link, no
-      // overlap ambiguity for sales.
       const blitzSalesCount = await db.sale.count({
         where: {
           repId,
@@ -130,18 +126,22 @@ export async function GET(request: NextRequest) {
           submittedAt: { gte: b.startDate, lte: b.endDate },
         },
       })
-      // For sessions started BEFORE this week's window but during the
-      // blitz, the sessionsWeek query missed them. Re-query for the
-      // full blitz window to get accurate hours.
-      const allBlitzSessions = await db.gpsSession.findMany({
+      const exactSessions = await db.gpsSession.findMany({
+        where: { repId, blitzId: b.id },
+        select: { durationSeconds: true, knockCount: true },
+      })
+      const overlapSessions = await db.gpsSession.findMany({
         where: {
           repId,
+          blitzId: null,
           startedAt: { gte: b.startDate, lte: b.endDate },
         },
         select: { durationSeconds: true, knockCount: true },
       })
-      const stats = computeWindow(allBlitzSessions, blitzSalesCount)
-      void blitzSessions  // sessionsWeek-overlap version is fallback context, currently unused
+      const stats = computeWindow(
+        [...exactSessions, ...overlapSessions],
+        blitzSalesCount
+      )
       blitzes.push({
         ...stats,
         blitzId: b.id,
