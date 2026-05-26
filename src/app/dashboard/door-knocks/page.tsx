@@ -88,8 +88,8 @@ const DISPOSITION_LABELS: Record<Disposition, string> = {
 
 const DISPOSITION_COLORS: Record<Disposition, string> = {
   PENDING: "bg-gray-100 text-gray-700",
-  NOT_HOME: "bg-amber-100 text-amber-700",
-  GO_BACK: "bg-violet-100 text-violet-700",
+  NOT_HOME: "bg-orange-100 text-orange-700",
+  GO_BACK: "bg-yellow-100 text-yellow-700",
   SOLD: "bg-emerald-100 text-emerald-700",
   NOT_INTERESTED: "bg-red-100 text-red-700",
 };
@@ -517,7 +517,7 @@ export default function DoorKnocksPage() {
       <div className="bg-white rounded-xl border p-6">
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <FileSpreadsheet className="size-5" />
-          Import Leads from CSV
+          Import Leads from CSV or Excel
         </h2>
         <div className="flex items-end gap-4">
           <div className="flex-1 max-w-xs">
@@ -539,7 +539,7 @@ export default function DoorKnocksPage() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv"
+              accept=".csv,.xlsx,.xls"
               onChange={handleUpload}
               className="hidden"
             />
@@ -548,7 +548,7 @@ export default function DoorKnocksPage() {
               disabled={uploading}
             >
               <Upload className="size-4 mr-2" />
-              {uploading ? "Uploading..." : "Upload CSV"}
+              {uploading ? "Uploading..." : "Upload CSV / Excel"}
             </Button>
           </div>
         </div>
@@ -558,7 +558,7 @@ export default function DoorKnocksPage() {
           </p>
         )}
         <p className="text-xs text-muted-foreground mt-3">
-          Expected columns: First Name, Last Name, Street Number, Street Name, City, Zip, Notes
+          Accepts .csv, .xlsx, .xls. Required: either an "Address" column or separate "Street Number" + "Street Name". Optional: First Name, Last Name, City, State, Zip, lat/lon, PON Name, Zone, Notes. Rows with a non-empty "Bad Address" flag are skipped.
         </p>
       </div>
 
