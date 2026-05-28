@@ -114,7 +114,9 @@ export function normalizeRow(
   // Two address layouts in the wild:
   //   (a) single combined `Address` field — CrowdFiber, most carrier exports
   //   (b) separate street number / street name fields — our seed CSV format
-  const combinedAddr = coerceString(row["address"] ?? row["street address"])
+  const combinedAddr = coerceString(
+    row["address"] ?? row["street address"] ?? row["mapping full address"] ?? row["full address"]
+  )
   let streetNumber = coerceString(
     row["street number"] ?? row["streetnumber"] ?? row["street_number"] ?? row["address number"]
   )
@@ -122,7 +124,11 @@ export function normalizeRow(
     row["street name"] ?? row["streetname"] ?? row["street_name"] ?? row["street"]
   )
   if (!streetNumber && !streetName && combinedAddr) {
-    const split = splitAddress(combinedAddr)
+    // Some carrier exports cram full "street, city, state zip" into one
+    // field. Take only the part before the first comma for the street
+    // portion; the city/state/zip fields are populated separately.
+    const streetPart = combinedAddr.split(",")[0].trim()
+    const split = splitAddress(streetPart)
     streetNumber = split.streetNumber
     streetName = split.streetName
   }
@@ -144,14 +150,20 @@ export function normalizeRow(
   // CrowdFiber uses `lon`; our existing convention is `lng`. Accept both.
   const lng = coerceNum(row["lng"] ?? row["lon"] ?? row["longitude"])
 
-  // Pack CrowdFiber context fields into notes so the rep sees them in-app.
+  // Pack carrier-export context fields into notes so the rep sees them in-app.
   const extraBits: string[] = []
   const pon = coerceString(row["pon name"] ?? row["pon"])
   const zone = coerceString(row["zone"])
   const inService = coerceString(row["in service date"])
+  const maxSpeed = coerceString(row["max speed"] ?? row["max_speed"])
+  const currentSpeed = coerceString(row["current_speed"] ?? row["current speed"])
+  const wireless = coerceString(row["current wrls"] ?? row["current_wrls"])
   if (pon) extraBits.push(`PON: ${pon}`)
   if (zone) extraBits.push(`Zone: ${zone}`)
   if (inService) extraBits.push(`In service: ${inService}`)
+  if (maxSpeed) extraBits.push(`Max ${maxSpeed} Mbps`)
+  if (currentSpeed) extraBits.push(`Current ${currentSpeed} Mbps`)
+  if (wireless) extraBits.push(`Wireless: ${wireless}`)
   const userNotes = coerceString(row["notes"])
   const combinedNotes = [userNotes, extraBits.join(" · ")].filter(Boolean).join(" — ")
 
