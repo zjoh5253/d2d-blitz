@@ -21,6 +21,7 @@ import {
   X,
   LayoutDashboard,
   ClipboardList,
+  Timer,
 } from "lucide-react";
 
 interface NavItem {
@@ -186,6 +187,12 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/dashboard/manager/reps",
         icon: <Users className="size-[18px]" />,
         roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"],
+      },
+      {
+        title: "Rep Scorecards",
+        href: "/dashboard/manager/scorecards",
+        icon: <Timer className="size-[18px]" />,
+        roles: ["ADMIN", "FIELD_MANAGER"],
       },
       {
         title: "Manager Blitzes",
