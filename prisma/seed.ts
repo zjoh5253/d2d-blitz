@@ -40,6 +40,12 @@ async function main() {
     },
   });
 
+  // ─── MVP Demo Team ──────────────────────────────────────────────────────────
+
+  const demoTeam = await prisma.team.create({
+    data: { name: "Demo Team Alpha" },
+  });
+
   // Create users
   const passwordHash = await bcrypt.hash("password123", 10);
 
@@ -83,16 +89,19 @@ async function main() {
     },
   });
 
-  const fieldManager = await prisma.user.create({
+  // MVP demo manager (FIELD_MANAGER) — maps to "MANAGER" role in the MVP feature
+  const demoManager = await prisma.user.create({
     data: {
       email: "manager@d2dblitz.com",
       passwordHash,
       name: "Dave Manager",
       phone: "555-000-0005",
       role: "FIELD_MANAGER",
+      teamId: demoTeam.id,
     },
   });
 
+  // MVP demo reps (FIELD_REP) — maps to "REP" role in the MVP feature
   const rep1 = await prisma.user.create({
     data: {
       email: "rep1@d2dblitz.com",
@@ -100,6 +109,7 @@ async function main() {
       name: "Eve Rep",
       phone: "555-000-0006",
       role: "FIELD_REP",
+      teamId: demoTeam.id,
       governanceTierId: tierSilver.id,
     },
   });
@@ -111,6 +121,7 @@ async function main() {
       name: "Frank Rep",
       phone: "555-000-0007",
       role: "FIELD_REP",
+      teamId: demoTeam.id,
       governanceTierId: tierSilver.id,
     },
   });
@@ -124,6 +135,58 @@ async function main() {
       role: "CALL_CENTER",
     },
   });
+
+  // ─── MVP Sample Visits ──────────────────────────────────────────────────────
+
+  const today = new Date();
+  today.setHours(10, 0, 0, 0);
+
+  const sampleVisitsRep1 = [
+    { address: "100 Oak St, Dallas, TX 75201", outcome: "NOT_HOME" as const, notes: null, minsAgo: 30 },
+    { address: "102 Oak St, Dallas, TX 75201", outcome: "CALLBACK" as const, notes: "Interested, call after 5pm", minsAgo: 45 },
+    { address: "104 Oak St, Dallas, TX 75201", outcome: "SALE" as const, notes: "Signed up for FiberMax 1Gb", minsAgo: 60 },
+    { address: "106 Oak St, Dallas, TX 75201", outcome: "NOT_INTERESTED" as const, notes: "Already has cable contract", minsAgo: 80 },
+    { address: "108 Oak St, Dallas, TX 75201", outcome: "NOT_HOME" as const, notes: null, minsAgo: 95 },
+    { address: "110 Oak St, Dallas, TX 75201", outcome: "SALE" as const, notes: "Upsold premium package", minsAgo: 115 },
+  ];
+
+  const sampleVisitsRep2 = [
+    { address: "200 Elm Ave, Dallas, TX 75202", outcome: "NOT_HOME" as const, notes: null, minsAgo: 25 },
+    { address: "202 Elm Ave, Dallas, TX 75202", outcome: "NOT_INTERESTED" as const, notes: "Very price sensitive", minsAgo: 40 },
+    { address: "204 Elm Ave, Dallas, TX 75202", outcome: "CALLBACK" as const, notes: "Spouse needs to agree", minsAgo: 55 },
+    { address: "206 Elm Ave, Dallas, TX 75202", outcome: "SALE" as const, notes: "Easy close, super friendly", minsAgo: 70 },
+    { address: "208 Elm Ave, Dallas, TX 75202", outcome: "NOT_HOME" as const, notes: null, minsAgo: 90 },
+  ];
+
+  for (const v of sampleVisitsRep1) {
+    const ts = new Date(today.getTime() - v.minsAgo * 60 * 1000);
+    await prisma.visit.create({
+      data: {
+        repId: rep1.id,
+        teamId: demoTeam.id,
+        address: v.address,
+        outcome: v.outcome,
+        notes: v.notes,
+        createdAt: ts,
+      },
+    });
+  }
+
+  for (const v of sampleVisitsRep2) {
+    const ts = new Date(today.getTime() - v.minsAgo * 60 * 1000);
+    await prisma.visit.create({
+      data: {
+        repId: rep2.id,
+        teamId: demoTeam.id,
+        address: v.address,
+        outcome: v.outcome,
+        notes: v.notes,
+        createdAt: ts,
+      },
+    });
+  }
+
+  // ─── Full Platform Seed Data ─────────────────────────────────────────────────
 
   // Create carriers
   const carrier1 = await prisma.carrier.create({
@@ -200,7 +263,7 @@ async function main() {
       repCap: 10,
       housingPlan: "Extended Stay America - Irving",
       status: "ACTIVE",
-      managerId: fieldManager.id,
+      managerId: demoManager.id,
     },
   });
 
@@ -325,7 +388,7 @@ async function main() {
       source: "REFERRAL",
       status: "INTERVIEW",
       recruiterId: recruiter.id,
-      fieldManagerId: fieldManager.id,
+      fieldManagerId: demoManager.id,
       marketId: market1.id,
       notes: "Strong referral from Eve Rep",
       travelCapable: true,
@@ -333,16 +396,20 @@ async function main() {
     },
   });
 
+  // Suppress unused variable warnings
+  void [tierGold, tierBronze, sale1, sale2, admin, executive, callCenter, market2];
+
   console.log("Seed data created successfully!");
-  console.log("\nLogin credentials (all use password: password123):");
-  console.log("  Admin: admin@d2dblitz.com");
-  console.log("  Executive: exec@d2dblitz.com");
-  console.log("  Recruiter: recruiter@d2dblitz.com");
+  console.log("\nMVP Demo accounts (password: password123):");
+  console.log("  Manager:  manager@d2dblitz.com  (FIELD_MANAGER — sees Visit Dashboard)");
+  console.log("  Rep 1:    rep1@d2dblitz.com     (FIELD_REP — logs visits)");
+  console.log("  Rep 2:    rep2@d2dblitz.com     (FIELD_REP — logs visits)");
+  console.log("\nAll accounts (password: password123):");
+  console.log("  Admin:        admin@d2dblitz.com");
+  console.log("  Executive:    exec@d2dblitz.com");
+  console.log("  Recruiter:    recruiter@d2dblitz.com");
   console.log("  Market Owner: marketowner@d2dblitz.com");
-  console.log("  Field Manager: manager@d2dblitz.com");
-  console.log("  Field Rep 1: rep1@d2dblitz.com");
-  console.log("  Field Rep 2: rep2@d2dblitz.com");
-  console.log("  Call Center: callcenter@d2dblitz.com");
+  console.log("  Call Center:  callcenter@d2dblitz.com");
 }
 
 main()

@@ -146,6 +146,13 @@ enum TouchpointOutcome {
   DO_NOT_KNOCK
 }
 
+enum VisitOutcome {
+  NOT_HOME
+  NOT_INTERESTED
+  CALLBACK
+  SALE
+}
+
 enum CarrierStatus {
   ACTIVE
   INACTIVE
@@ -219,6 +226,17 @@ model GovernanceTier {
   @@map("governance_tiers")
 }
 
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  users  User[]
+  visits Visit[]
+
+  @@map("teams")
+}
+
 model User {
   id               String    @id @default(cuid())
   email            String    @unique
@@ -227,6 +245,7 @@ model User {
   phone            String?
   role             Role
   status           UserStatus @default(ACTIVE)
+  teamId           String?   @map("team_id")
   governanceTierId String?   @map("governance_tier_id")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
@@ -243,6 +262,9 @@ model User {
   // NextAuth relations
   accounts Account[]
   sessions Session[]
+
+  // Team relation
+  team           Team?           @relation(fields: [teamId], references: [id])
 
   // GovernanceTier relation
   governanceTier GovernanceTier? @relation(fields: [governanceTierId], references: [id])
@@ -328,8 +350,12 @@ model User {
   // Touchpoints logged by this rep
   touchpoints Touchpoint[]
 
+  // Visit log
+  visits Visit[]
+
   @@index([role])
   @@index([status])
+  @@index([teamId])
   @@index([governanceTierId])
   @@map("users")
 }
@@ -951,4 +977,25 @@ model Touchpoint {
   @@index([outcome])
   @@index([timestamp])
   @@map("touchpoints")
+}
+
+// ─── MVP Visit Log ────────────────────────────────────────────────────────────
+
+model Visit {
+  id        String       @id @default(cuid())
+  repId     String       @map("rep_id")
+  teamId    String?      @map("team_id")
+  address   String
+  outcome   VisitOutcome
+  notes     String?
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  rep  User  @relation(fields: [repId], references: [id])
+  team Team? @relation(fields: [teamId], references: [id])
+
+  @@index([repId])
+  @@index([teamId])
+  @@index([outcome])
+  @@index([createdAt])
+  @@map("visits")
 }
