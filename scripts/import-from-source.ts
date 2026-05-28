@@ -43,6 +43,24 @@ async function main() {
     : await db.blitz.findFirst({ where: { name: args.blitzName! } })
   if (!blitz) throw new Error(`Blitz not found: ${args.blitzName ?? args.blitzId}`)
 
+  // Single-rep auto-assignment: if exactly one ACTIVE/ASSIGNED/CONFIRMED
+  // rep is on the blitz, all new and pre-existing unassigned leads are
+  // auto-assigned to them. Mirrors gps_sessions.blitz_id auto-attribution.
+  // Multi-rep blitzes need cluster-plan (admin UI) to distribute leads.
+  const activeAssignments = await db.blitzAssignment.findMany({
+    where: { blitzId: blitz.id, status: { in: ["ASSIGNED", "CONFIRMED", "ACTIVE"] } },
+    select: { repId: true },
+  })
+  const singleRepId: string | null =
+    activeAssignments.length === 1 ? activeAssignments[0].repId : null
+  if (singleRepId) {
+    console.log(`Single-rep blitz — new + existing unassigned leads will auto-assign to rep ${singleRepId}`)
+  } else if (activeAssignments.length > 1) {
+    console.log(`Multi-rep blitz (${activeAssignments.length} reps) — leads stay unassigned; run cluster-plan from admin UI`)
+  } else {
+    console.log(`No reps assigned to blitz — leads stay unassigned`)
+  }
+
   const provider = await getAddressProvider()
   console.log(`Provider: ${provider.name}`)
   console.log(`Target blitz: ${blitz.name} (${blitz.id})`)
@@ -132,6 +150,7 @@ async function main() {
         uploadedById: admin.id,
         uploadBatchId: batchId,
         blitzId: blitz.id,
+        assignedRepId: singleRepId,
       }
     })
 
@@ -153,6 +172,16 @@ async function main() {
 
   console.log(`\nDone. Total leads inserted: ${totalInserted} on ${blitz.name}`)
   console.log(`Batch id: ${batchId}`)
+
+  // Sweep pre-existing unassigned leads on the same blitz (catches the
+  // case where earlier imports ran before this auto-assign logic existed).
+  if (singleRepId) {
+    const swept = await db.doorKnockLead.updateMany({
+      where: { blitzId: blitz.id, assignedRepId: null },
+      data: { assignedRepId: singleRepId },
+    })
+    if (swept.count > 0) console.log(`Swept ${swept.count} pre-existing unassigned leads → rep ${singleRepId}`)
+  }
 }
 
 main()
