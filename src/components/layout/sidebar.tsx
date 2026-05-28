@@ -64,6 +64,24 @@ const NAV_GROUPS: NavGroup[] = [
         roles: ["ADMIN", "MARKET_OWNER", "FIELD_MANAGER"],
       },
       {
+        title: "Log Visit",
+        href: "/dashboard/visits/new",
+        icon: <MapPin className="size-[18px]" />,
+        roles: ["ADMIN", "FIELD_MANAGER", "FIELD_REP"],
+      },
+      {
+        title: "My Visits",
+        href: "/dashboard/visits",
+        icon: <ClipboardList className="size-[18px]" />,
+        roles: ["FIELD_REP"],
+      },
+      {
+        title: "Visit Dashboard",
+        href: "/dashboard/manager/visits",
+        icon: <BarChart3 className="size-[18px]" />,
+        roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"],
+      },
+      {
         title: "Daily Report",
         href: "/dashboard/reps/daily-report",
         icon: <Activity className="size-[18px]" />,
