@@ -48,17 +48,45 @@ async function main() {
   console.log(`Target blitz: ${blitz.name} (${blitz.id})`)
   console.log(`ZIPs: ${args.zips.join(", ")}\n`)
 
-  // Pull existing externalIds for this blitz to dedup across re-runs.
-  const existing = await db.doorKnockLead.findMany({
-    where: { blitzId: blitz.id, notes: { contains: "osm-" } },
-    select: { notes: true },
+  // Two dedup paths against existing leads on this blitz:
+  //  1. ID dedup — same OSM externalId already imported (re-run safety)
+  //  2. Spatial dedup — a lead (any source) within 30m of an OSM pin is
+  //     almost certainly the same property. Catches the case of adding
+  //     OSM fill on top of a carrier-curated XLSX (Lockhart pattern).
+  const SPATIAL_DEDUP_METERS = 30
+  const existingLeads = await db.doorKnockLead.findMany({
+    where: { blitzId: blitz.id },
+    select: { lat: true, lng: true, notes: true },
   })
   const seenIds = new Set<string>()
-  for (const r of existing) {
+  const spatialKeys = new Set<string>() // quantized lat/lng grid for fast lookup
+  // ~111,000 m per degree of lat; longitude shrinks with cos(lat) but we
+  // bucket conservatively (use lat scale for both → buckets slightly
+  // bigger in longitude, which over-dedups in absolute terms but the
+  // 9-cell neighbor check below covers the slack).
+  const CELL_DEGREES = SPATIAL_DEDUP_METERS / 111_000
+  function cellKey(lat: number, lng: number): string {
+    return `${Math.floor(lat / CELL_DEGREES)}|${Math.floor(lng / CELL_DEGREES)}`
+  }
+  for (const r of existingLeads) {
     const m = r.notes?.match(/osm-(?:node|way|relation)-\d+/)
     if (m) seenIds.add(m[0])
+    if (r.lat != null && r.lng != null) spatialKeys.add(cellKey(r.lat, r.lng))
   }
-  if (seenIds.size > 0) console.log(`Dedup: ${seenIds.size} OSM-sourced leads already on this blitz; will skip those.`)
+  if (seenIds.size > 0) console.log(`ID dedup: ${seenIds.size} OSM-sourced leads already on this blitz`)
+  if (spatialKeys.size > 0) console.log(`Spatial dedup: ${spatialKeys.size} existing pin cells; OSM pins within ~${SPATIAL_DEDUP_METERS}m will be skipped`)
+
+  function isSpatialDup(lat: number, lng: number): boolean {
+    // Check the cell + 8 neighbors to handle pins near a cell boundary.
+    const blat = Math.floor(lat / CELL_DEGREES)
+    const blng = Math.floor(lng / CELL_DEGREES)
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (spatialKeys.has(`${blat + dy}|${blng + dx}`)) return true
+      }
+    }
+    return false
+  }
 
   let totalInserted = 0
   const batchId = generateUploadBatchId()
@@ -68,10 +96,21 @@ async function main() {
     const discovered = await provider.discoverAddressesForZip(zip)
     console.log(`Discovered ${discovered.length} usable addresses`)
 
-    const fresh = discovered.filter((a) => !a.externalId || !seenIds.has(a.externalId))
-    if (fresh.length < discovered.length) {
-      console.log(`  ${discovered.length - fresh.length} already on blitz — skipped`)
-    }
+    let idSkips = 0
+    let spatialSkips = 0
+    const fresh = discovered.filter((a) => {
+      if (a.externalId && seenIds.has(a.externalId)) {
+        idSkips++
+        return false
+      }
+      if (isSpatialDup(a.lat, a.lng)) {
+        spatialSkips++
+        return false
+      }
+      return true
+    })
+    if (idSkips > 0) console.log(`  ${idSkips} OSM IDs already on blitz — skipped`)
+    if (spatialSkips > 0) console.log(`  ${spatialSkips} OSM pins within ${SPATIAL_DEDUP_METERS}m of existing leads — skipped`)
 
     const leads = fresh.map((a) => {
       // For pins without resolved street info, label by coords so reps
@@ -105,7 +144,11 @@ async function main() {
     }
     totalInserted += inserted
     console.log(`Inserted ${inserted} leads for ZIP ${zip}`)
-    for (const a of fresh) if (a.externalId) seenIds.add(a.externalId)
+    // Update both dedup indexes so subsequent ZIPs in this run see them.
+    for (const a of fresh) {
+      if (a.externalId) seenIds.add(a.externalId)
+      spatialKeys.add(cellKey(a.lat, a.lng))
+    }
   }
 
   console.log(`\nDone. Total leads inserted: ${totalInserted} on ${blitz.name}`)
