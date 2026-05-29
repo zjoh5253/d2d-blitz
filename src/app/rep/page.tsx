@@ -14,6 +14,7 @@ import {
   Trophy,
   DollarSign,
   Timer,
+  Wallet,
 } from "lucide-react";
 
 interface LeadsSummary {
@@ -58,6 +59,7 @@ export default function RepHomePage() {
   const { data: session } = useSession();
   const [summary, setSummary] = useState<LeadsSummary | null>(null);
   const [scorecard, setScorecard] = useState<Scorecard | null>(null);
+  const [earnings, setEarnings] = useState<{ today: number; thisWeek: number; pending: number } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -86,6 +88,15 @@ export default function RepHomePage() {
       try {
         const res = await fetch("/api/rep/scorecard");
         if (res.ok) setScorecard(await res.json());
+      } catch {}
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/commissions/preview");
+        if (res.ok) setEarnings(await res.json());
       } catch {}
     })();
   }, []);
@@ -175,6 +186,37 @@ export default function RepHomePage() {
           See full session history →
         </Link>
       </div>
+
+      {/* Earnings snapshot — links to the full My Pay screen. */}
+      <Link href="/rep/pay" className="block bg-white rounded-lg border p-4 active:bg-gray-50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Wallet className="size-4 text-blue-600" />
+            <h2 className="text-sm font-semibold text-gray-700">Earnings</h2>
+          </div>
+          <ChevronRight className="size-4 text-gray-400" />
+        </div>
+        <div className="grid grid-cols-3 gap-2 mt-2">
+          <div>
+            <p className="text-xs text-gray-500">Pending</p>
+            <p className="text-lg font-bold text-amber-700">
+              {earnings == null ? "—" : `$${Math.round(earnings.pending)}`}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">This week</p>
+            <p className="text-lg font-bold text-gray-900">
+              {earnings == null ? "—" : `$${Math.round(earnings.thisWeek)}`}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">Today</p>
+            <p className="text-lg font-bold text-gray-900">
+              {earnings == null ? "—" : `$${Math.round(earnings.today)}`}
+            </p>
+          </div>
+        </div>
+      </Link>
 
       <Link
         href="/rep/leads"

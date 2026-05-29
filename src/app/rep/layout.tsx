@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { Home, ClipboardList, MapPin, DollarSign, User } from "lucide-react";
+import { Home, ClipboardList, MapPin, DollarSign, Wallet, User } from "lucide-react";
 
 // Mobile-web rep experience — mirrors the native app's bottom-tab nav.
 // Renders inside a phone-shaped viewport on desktop but full-bleed on
@@ -16,6 +16,7 @@ const TABS = [
   { href: "/rep/leads", label: "Leads", icon: ClipboardList, match: (p: string) => p.startsWith("/rep/leads") },
   { href: "/rep/gps", label: "GPS", icon: MapPin, match: (p: string) => p.startsWith("/rep/gps") },
   { href: "/rep/sales", label: "Sales", icon: DollarSign, match: (p: string) => p.startsWith("/rep/sales") },
+  { href: "/rep/pay", label: "Pay", icon: Wallet, match: (p: string) => p.startsWith("/rep/pay") },
   { href: "/rep/profile", label: "Profile", icon: User, match: (p: string) => p.startsWith("/rep/profile") },
 ];
 
