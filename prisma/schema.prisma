@@ -577,6 +577,9 @@ model InstallUpload {
   rowCount       Int      @map("row_count")
   matchedCount   Int      @default(0) @map("matched_count")
   unmatchedCount Int      @default(0) @map("unmatched_count")
+  exceptionCount Int      @default(0) @map("exception_count")
+  parseMethod    String?  @map("parse_method") // "tabular-mapping" | "document"
+  notes          String?  // AI parser caveats (ambiguous columns, etc.)
   uploadedAt     DateTime @default(now()) @map("uploaded_at")
 
   carrier    Carrier @relation(fields: [carrierId], references: [id])
@@ -597,9 +600,13 @@ model InstallRecord {
   externalId      String?             @map("external_id")
   customerName    String              @map("customer_name")
   customerAddress String              @map("customer_address")
-  installDate     DateTime            @map("install_date")
+  installDate     DateTime?           @map("install_date") // nullable: unparseable dates are flagged, not faked
   status          InstallRecordStatus @default(UNMATCHED)
   matchedSaleId   String?             @unique @map("matched_sale_id")
+  matchScore           Float?         @map("match_score")            // 0–1 overall match score
+  matchConfidence      String?        @map("match_confidence")       // "high" | "medium"
+  extractionConfidence Float?         @map("extraction_confidence")  // AI extraction confidence 0–1
+  rawData              String?        @map("raw_data")               // original row / extract, for audit
   createdAt       DateTime            @default(now()) @map("created_at")
 
   upload      InstallUpload @relation(fields: [uploadId], references: [id])

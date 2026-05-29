@@ -130,7 +130,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
                       {record.customerAddress}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {format(new Date(record.installDate), "MMM d, yyyy")}
+                      {record.installDate ? format(new Date(record.installDate), "MMM d, yyyy") : "—"}
                     </TableCell>
                     <TableCell className="text-sm">{record.carrier.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
