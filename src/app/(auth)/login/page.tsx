@@ -163,6 +163,9 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
+  const registered = searchParams.get("registered");
+  const verified = searchParams.get("verified");
+  const urlError = searchParams.get("error");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -201,6 +204,67 @@ function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      {/* Post-action status banners */}
+      {registered === "true" && (
+        <div
+          className="rounded-lg px-4 py-3 text-sm"
+          style={{
+            background: "rgba(16,185,129,0.06)",
+            border: "1px solid rgba(16,185,129,0.2)",
+            color: "#065F46",
+          }}
+        >
+          Account created! Check your email to verify your address before signing in.
+        </div>
+      )}
+      {verified === "true" && (
+        <div
+          className="rounded-lg px-4 py-3 text-sm"
+          style={{
+            background: "rgba(16,185,129,0.06)",
+            border: "1px solid rgba(16,185,129,0.2)",
+            color: "#065F46",
+          }}
+        >
+          Email verified! You can now sign in below.
+        </div>
+      )}
+      {verified === "already" && (
+        <div
+          className="rounded-lg px-4 py-3 text-sm"
+          style={{
+            background: "rgba(59,130,246,0.06)",
+            border: "1px solid rgba(59,130,246,0.2)",
+            color: "#1E40AF",
+          }}
+        >
+          Email already verified. Sign in below.
+        </div>
+      )}
+      {urlError === "invalid-verification-token" && (
+        <div
+          className="rounded-lg px-4 py-3 text-sm"
+          style={{
+            background: "rgba(244,63,94,0.05)",
+            border: "1px solid rgba(244,63,94,0.15)",
+            color: "#BE123C",
+          }}
+        >
+          Invalid verification link. Please request a new one from your dashboard.
+        </div>
+      )}
+      {urlError === "verification-token-expired" && (
+        <div
+          className="rounded-lg px-4 py-3 text-sm"
+          style={{
+            background: "rgba(244,63,94,0.05)",
+            border: "1px solid rgba(244,63,94,0.15)",
+            color: "#BE123C",
+          }}
+        >
+          Verification link expired. Sign in and request a new verification email from your dashboard.
+        </div>
+      )}
       {/* Email */}
       <div className="space-y-1.5">
         <Label

@@ -146,6 +146,14 @@ enum TouchpointOutcome {
   DO_NOT_KNOCK
 }
 
+enum TouchpointType {
+  DOOR_KNOCK
+  CONTACT
+  CONVERSATION
+  DEMO
+  CLOSE
+}
+
 enum CarrierStatus {
   ACTIVE
   INACTIVE
@@ -931,23 +939,25 @@ model DevicePushToken {
 // ─── Touchpoints ─────────────────────────────────────────────────────────────
 
 model Touchpoint {
-  id        String            @id @default(cuid())
-  repId     String            @map("rep_id")
-  blitzId   String            @map("blitz_id")
-  address   String
-  outcome   TouchpointOutcome @default(NO_ANSWER)
+  id        String             @id @default(cuid())
+  repId     String             @map("rep_id")
+  blitzId   String             @map("blitz_id")
+  type      TouchpointType     @default(DOOR_KNOCK)
+  address   String             @default("")
+  outcome   TouchpointOutcome  @default(NO_ANSWER)
   notes     String?
   latitude  Float?
   longitude Float?
-  timestamp DateTime          @default(now())
-  createdAt DateTime          @default(now()) @map("created_at")
-  updatedAt DateTime          @updatedAt @map("updated_at")
+  timestamp DateTime           @default(now())
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
 
   rep   User  @relation(fields: [repId], references: [id])
   blitz Blitz @relation(fields: [blitzId], references: [id])
 
   @@index([repId])
   @@index([blitzId])
+  @@index([type])
   @@index([outcome])
   @@index([timestamp])
   @@map("touchpoints")
