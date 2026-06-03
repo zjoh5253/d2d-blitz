@@ -18,12 +18,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 //   tsx scripts/scan-kinetic.ts --blitz <id> --limit 500
 //   tsx scripts/scan-kinetic.ts --limit 2000 --min-delay 500
 
-type Args = { limit: number; blitzId?: string; maxAgeDays: number; minDelay: number; cooldown: number }
-function parseArgs(argv: string[]): Args {
+export type ScanArgs = { limit: number; blitzId?: string; maxAgeDays: number; minDelay: number; cooldown: number; kineticOnly: boolean }
+function parseArgs(argv: string[]): ScanArgs {
   // gokinetic throttles a single IP hard (~10 calls then 429). Default to a
   // slow, polite cadence + a long cooldown when throttled. Resumable, so it's
   // fine to run in small chunks / via cron.
-  const out: Args = { limit: 25, maxAgeDays: 30, minDelay: 1500, cooldown: 120_000 }
+  const out: ScanArgs = { limit: 25, maxAgeDays: 30, minDelay: 1500, cooldown: 120_000, kineticOnly: false }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--limit") out.limit = parseInt(argv[++i], 10) || out.limit
@@ -31,6 +31,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === "--max-age-days") out.maxAgeDays = parseInt(argv[++i], 10) || out.maxAgeDays
     else if (a === "--min-delay") out.minDelay = parseInt(argv[++i], 10) || out.minDelay
     else if (a === "--cooldown") out.cooldown = parseInt(argv[++i], 10) || out.cooldown
+    else if (a === "--kinetic-only") out.kineticOnly = true
   }
   return out
 }
@@ -40,15 +41,19 @@ const STATUS_PRIORITY: Record<string, number> = {
   ACTIVE: 5, READY: 4, STAFFING: 3, PLANNING: 2, REVIEW: 1, CLOSED: 0,
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2))
-  console.log(`limit=${args.limit} blitz=${args.blitzId ?? "ALL"} maxAgeDays=${args.maxAgeDays} minDelay=${args.minDelay}ms\n`)
+export async function runScan(args: ScanArgs) {
+  console.log(`limit=${args.limit} blitz=${args.blitzId ?? "ALL"} kineticOnly=${args.kineticOnly} maxAgeDays=${args.maxAgeDays} minDelay=${args.minDelay}ms\n`)
 
   const leads = await db.doorKnockLead.findMany({
     where: {
       disposition: "PENDING",
       suppressed: false,
       ...(args.blitzId ? { blitzId: args.blitzId } : {}),
+      // gokinetic only matters for blitzes selling Kinetic — skip Rightfiber /
+      // AT&T blitzes so we don't waste the IP's tiny throttle budget on them.
+      ...(args.kineticOnly
+        ? { blitz: { market: { carrier: { name: { contains: "Kinetic", mode: "insensitive" } } } } }
+        : {}),
     },
     select: {
       streetNumber: true, streetName: true, city: true, state: true, zip: true,
@@ -140,6 +145,12 @@ async function main() {
   const secs = ((Date.now() - t0) / 1000).toFixed(0)
   console.log(`\n\nDone in ${secs}s — scanned ${scanned}, serviceable ${serviceable}, customers ${customers}, errors ${errors}`)
   if (customers > 0) console.log(`Run suppress-known-customers.ts to hide the ${customers} customer addresses from reps.`)
+  return { scanned, serviceable, customers, errors }
 }
 
-main().catch((e) => { console.error(e); process.exit(1) }).finally(() => db.$disconnect())
+// CLI entry — only when run directly (kinetic-cron imports runScan instead).
+if (process.argv[1]?.includes("scan-kinetic")) {
+  runScan(parseArgs(process.argv.slice(2)))
+    .catch((e) => { console.error(e); process.exit(1) })
+    .finally(() => db.$disconnect())
+}
