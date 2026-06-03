@@ -58,18 +58,25 @@ export async function gatherKnownCustomerKeys(): Promise<Map<string, SuppressRea
     if (k && !keys.has(k)) keys.set(k, reason)
   }
 
-  const [installs, sales, soldLeads] = await Promise.all([
+  const [installs, sales, soldLeads, kineticCustomers] = await Promise.all([
     db.installRecord.findMany({ select: { customerAddress: true } }),
     db.sale.findMany({ select: { customerAddress: true } }),
     db.doorKnockLead.findMany({
       where: { disposition: "SOLD" },
       select: { streetNumber: true, streetName: true, zip: true },
     }),
+    // Addresses the Kinetic (gokinetic) scan flagged as current customers.
+    // addressKey is already the canonical key, so it drops straight in.
+    db.kineticAddressStatus.findMany({
+      where: { isCustomer: true },
+      select: { addressKey: true },
+    }),
   ])
 
   for (const r of installs) add(keyFromFullAddress(r.customerAddress), "Current customer (install on record)")
   for (const s of sales) add(keyFromFullAddress(s.customerAddress), "Current customer (sale on record)")
   for (const l of soldLeads) add(keyFromParts(l.streetNumber, l.streetName, l.zip), "Current customer (sold lead)")
+  for (const k of kineticCustomers) add(k.addressKey, "Current Kinetic customer (gokinetic)")
 
   return keys
 }

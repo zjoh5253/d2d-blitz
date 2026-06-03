@@ -896,3 +896,36 @@ model DoorKnockLead {
   @@index([suppressed])
   @@map("door_knock_leads")
 }
+
+// Cached per-address result of the Kinetic (gokinetic.com) availability
+// check. Keyed by canonical address (canonicalizeAddress(street)|zip5) so a
+// ZIP scanned for one blitz is reused by every other — the scan worker only
+// hits gokinetic for addresses with no fresh row here. `isCustomer` drives
+// lead suppression (reps don't knock current customers).
+model KineticAddressStatus {
+  id         String  @id @default(cuid())
+  addressKey String  @unique @map("address_key")
+
+  // Normalized signals
+  serviceable Boolean @default(false)
+  isCustomer  Boolean @default(false)
+  comingSoon  Boolean @default(false)
+
+  // Raw signals from the API, kept so we can re-derive the above if we
+  // refine which field means "current customer".
+  validationResult String? @map("validation_result")
+  maxQual          String? @map("max_qual")
+  techType         String? @map("tech_type")
+  billingStatus    String? @map("billing_status")
+  estCompletionDt  String? @map("est_completion_dt")
+  raw              String?
+
+  checkedAt DateTime @default(now()) @map("checked_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isCustomer])
+  @@index([serviceable])
+  @@index([checkedAt])
+  @@map("kinetic_address_status")
+}
