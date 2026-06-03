@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
+import { ProxyAgent, type Dispatcher } from "undici"
 
 // Kinetic (gokinetic.com) per-address availability client.
 //
@@ -19,6 +20,29 @@ const UA =
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex")
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+// fetch() init with undici's dispatcher (not in the DOM RequestInit type).
+type FetchInit = RequestInit & { dispatcher?: Dispatcher }
+
+// When KINETIC_PROXY_URL is set, route every request through it. Use a
+// rotating RESIDENTIAL proxy gateway here — gokinetic throttles hard per IP,
+// and rotating IPs is what lets the scan run at volume / in the cloud.
+// Format: http://user:pass@gateway-host:port (https:// also fine).
+function buildProxyDispatcher(): ProxyAgent | undefined {
+  const url = process.env.KINETIC_PROXY_URL
+  if (!url) return undefined
+  const u = new URL(url)
+  const uri = `${u.protocol}//${u.host}`
+  if (u.username || u.password) {
+    const token =
+      "Basic " +
+      Buffer.from(`${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}`).toString("base64")
+    console.log(`[kinetic] routing through proxy ${u.host}`)
+    return new ProxyAgent({ uri, token })
+  }
+  console.log(`[kinetic] routing through proxy ${u.host}`)
+  return new ProxyAgent(uri)
+}
 
 // Raised when gokinetic returns HTTP 429. The worker catches this to apply a
 // long cooldown rather than hammering the (heavily) rate-limited single IP.
@@ -88,9 +112,11 @@ export class KineticClient {
   private sessionId = ""
   private readonly deviceId = randomUUID()
   private readonly minDelayMs: number
+  private readonly dispatcher?: Dispatcher
 
   constructor(opts: { minDelayMs?: number } = {}) {
     this.minDelayMs = opts.minDelayMs ?? 400
+    this.dispatcher = buildProxyDispatcher()
   }
 
   private async ensureSession(): Promise<void> {
@@ -109,7 +135,8 @@ export class KineticClient {
         "device-id": this.deviceId,
       },
       body,
-    })
+      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+    } as FetchInit)
     if (res.status !== 200 && res.status !== 201) {
       throw new Error(`kinetic session failed: HTTP ${res.status}`)
     }
@@ -150,7 +177,8 @@ export class KineticClient {
         "session-id": this.sessionId,
       },
       body,
-    })
+      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+    } as FetchInit)
 
     if (res.status === 401 && attempt < 2) {
       this.token = null // force re-auth

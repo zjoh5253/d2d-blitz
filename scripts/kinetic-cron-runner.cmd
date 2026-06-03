@@ -9,8 +9,9 @@ if not exist ".env.kinetic.local" (
   echo missing .env.kinetic.local >> kinetic-cron.log
   exit /b 1
 )
-for /f "usebackq delims=" %%i in (".env.kinetic.local") do set "DATABASE_URL=%%i"
-set "KINETIC_CRON_BATCH=8"
+REM Load KEY=VALUE lines (DATABASE_URL, KINETIC_PROXY_URL, KINETIC_CRON_BATCH).
+REM Skip blank lines and # comments. Quotes keep & in the DB URL safe.
+for /f "usebackq eol=# tokens=1* delims==" %%a in (".env.kinetic.local") do set "%%a=%%b"
 echo. >> kinetic-cron.log
 echo ===== %date% %time% ===== >> kinetic-cron.log
 call npx tsx scripts/kinetic-cron.ts >> kinetic-cron.log 2>&1
