@@ -94,6 +94,14 @@ const DISPOSITION_COLORS: Record<Disposition, string> = {
   NOT_INTERESTED: "bg-red-100 text-red-700",
 };
 
+// Cap how many rows we render at once. The unfiltered list can be tens of
+// thousands of leads (40k+ across all blitzes); rendering every row as a
+// <tr> OOM-crashes mobile Safari ("A problem repeatedly occurred"). The
+// full set still lives in `leads` state so the stat cards stay accurate —
+// we only cap the DOM. Narrowing via the Blitz/Disposition/Rep filters
+// brings the count back under the cap.
+const RENDER_LIMIT = 500;
+
 export default function DoorKnocksPage() {
   const [leads, setLeads] = useState<DoorKnockLead[]>([]);
   const [reps, setReps] = useState<Rep[]>([]);
@@ -1004,6 +1012,16 @@ export default function DoorKnocksPage() {
         </div>
       )}
 
+      {/* Overflow notice — the table render is capped at RENDER_LIMIT rows
+          to keep mobile browsers from crashing on huge unfiltered lists. */}
+      {!loading && leads.length > RENDER_LIMIT && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+          Showing the first <span className="font-semibold">{RENDER_LIMIT.toLocaleString()}</span> of{" "}
+          <span className="font-semibold">{leads.length.toLocaleString()}</span> leads. Use the
+          Blitz, Disposition, or Rep filters above to narrow the list.
+        </div>
+      )}
+
       {/* Leads Table */}
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">
@@ -1039,7 +1057,7 @@ export default function DoorKnocksPage() {
                 </td>
               </tr>
             ) : (
-              leads.map((lead, index) => (
+              leads.slice(0, RENDER_LIMIT).map((lead, index) => (
                 <tr
                   key={lead.id}
                   className={`border-b last:border-0 hover:bg-gray-50/50 cursor-pointer select-none ${selectedIds.has(lead.id) ? "bg-blue-50" : ""}`}
