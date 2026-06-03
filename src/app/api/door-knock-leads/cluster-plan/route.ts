@@ -45,12 +45,16 @@ export async function POST(request: NextRequest) {
       blitzId: string;
       lat: { not: null };
       lng: { not: null };
+      suppressed: boolean;
       assignedRepId?: null | string;
       disposition?: "PENDING";
     } = {
       blitzId,
       lat: { not: null },
       lng: { not: null },
+      // Never cluster/assign suppressed leads — those are known current
+      // customers and shouldn't be put in front of a rep.
+      suppressed: false,
     };
     if (sourceRepId) {
       // Rep dropped out: redistribute only their unfinished work.

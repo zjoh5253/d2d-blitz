@@ -870,6 +870,12 @@ model DoorKnockLead {
   notes           String?
   assignedRepId   String?              @map("assigned_rep_id")
   blitzId         String?              @map("blitz_id")
+  // Suppression: when a lead's address matches a known current customer
+  // (existing install / sale / sold lead, or — later — a carrier partner
+  // export), it's flagged so reps don't waste time knocking a door that
+  // already has service. Hidden from reps; still visible to admins.
+  suppressed        Boolean            @default(false)
+  suppressionReason String?            @map("suppression_reason")
   goBackId        String?              @unique @map("go_back_id")
   uploadedById    String               @map("uploaded_by_id")
   uploadBatchId   String?              @map("upload_batch_id")
@@ -887,5 +893,6 @@ model DoorKnockLead {
   @@index([disposition])
   @@index([uploadBatchId])
   @@index([uploadedById])
+  @@index([suppressed])
   @@map("door_knock_leads")
 }

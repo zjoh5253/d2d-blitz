@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
     const uploadBatchId = searchParams.get("uploadBatchId")
     const unassigned = searchParams.get("unassigned")
     const assigned = searchParams.get("assigned")
+    const suppressedParam = searchParams.get("suppressed")
     const paginated = searchParams.get("paginated") === "true"
     const idsOnly = searchParams.get("idsOnly") === "true"
 
@@ -43,6 +44,17 @@ export async function GET(request: NextRequest) {
       where.assignedRepId = session.user.id
     } else if (assignedRepId) {
       where.assignedRepId = assignedRepId
+    }
+
+    // Suppressed leads = known current customers. Reps NEVER see them (don't
+    // waste time knocking doors that already have service). Admins see all by
+    // default; ?suppressed=true|false lets them filter to audit.
+    if (session.user.role === "FIELD_REP") {
+      where.suppressed = false
+    } else if (suppressedParam === "true") {
+      where.suppressed = true
+    } else if (suppressedParam === "false") {
+      where.suppressed = false
     }
 
     if (unassigned === "true") {
@@ -90,7 +102,7 @@ export async function GET(request: NextRequest) {
       const offsetRaw = parseInt(searchParams.get("offset") ?? "", 10)
       const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0
 
-      const [leads, dispositionGroups, assignmentGroups] = await Promise.all([
+      const [leads, dispositionGroups, assignmentGroups, suppressionGroups] = await Promise.all([
         db.doorKnockLead.findMany({
           where,
           include: {
@@ -114,6 +126,11 @@ export async function GET(request: NextRequest) {
           where,
           _count: { _all: true },
         }),
+        db.doorKnockLead.groupBy({
+          by: ["suppressed"],
+          where,
+          _count: { _all: true },
+        }),
       ])
 
       const total = dispositionGroups.reduce((s, g) => s + g._count._all, 0)
@@ -121,6 +138,9 @@ export async function GET(request: NextRequest) {
         dispositionGroups.find((g) => g.disposition === "PENDING")?._count._all ?? 0
       const assignedCount = assignmentGroups
         .filter((g) => g.assignedRepId !== null)
+        .reduce((s, g) => s + g._count._all, 0)
+      const suppressedCount = suppressionGroups
+        .filter((g) => g.suppressed === true)
         .reduce((s, g) => s + g._count._all, 0)
 
       return NextResponse.json({
@@ -131,6 +151,7 @@ export async function GET(request: NextRequest) {
           pending,
           assigned: assignedCount,
           resolved: total - pending,
+          suppressed: suppressedCount,
         },
         limit,
         offset,

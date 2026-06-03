@@ -24,6 +24,8 @@ interface DoorKnockLead {
   assignedRepId: string | null;
   uploadBatchId: string | null;
   createdAt: string;
+  suppressed: boolean;
+  suppressionReason: string | null;
   assignedRep: { id: string; name: string | null } | null;
   blitz: { id: string; name: string } | null;
 }
@@ -111,6 +113,7 @@ export default function DoorKnocksPage() {
     pending: number;
     assigned: number;
     resolved: number;
+    suppressed: number;
   } | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [reps, setReps] = useState<Rep[]>([]);
@@ -127,6 +130,9 @@ export default function DoorKnocksPage() {
   const searchParams = useSearchParams();
   const initialBlitzFilter = searchParams.get("blitz") ?? "ALL";
   const [filterBlitzId, setFilterBlitzId] = useState<string>(initialBlitzFilter);
+  // Current-customer (suppressed) filter. "ALL" shows everything with a badge,
+  // "HIDE" excludes customers, "ONLY" shows just the suppressed rows.
+  const [filterCustomers, setFilterCustomers] = useState<"ALL" | "HIDE" | "ONLY">("ALL");
   const [uploadResult, setUploadResult] = useState<string | null>(null);
   const [selectedBlitzId, setSelectedBlitzId] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -215,8 +221,10 @@ export default function DoorKnocksPage() {
     else if (filterRepId !== "ALL") params.set("assignedRepId", filterRepId);
 
     if (filterBlitzId !== "ALL") params.set("blitzId", filterBlitzId);
+    if (filterCustomers === "HIDE") params.set("suppressed", "false");
+    else if (filterCustomers === "ONLY") params.set("suppressed", "true");
     return params;
-  }, [filterDisposition, filterRepId, filterBlitzId]);
+  }, [filterDisposition, filterRepId, filterBlitzId, filterCustomers]);
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -712,6 +720,16 @@ export default function DoorKnocksPage() {
             <option key={r.id} value={r.id}>{r.name || r.email}</option>
           ))}
         </select>
+        <select
+          value={filterCustomers}
+          onChange={(e) => setFilterCustomers(e.target.value as "ALL" | "HIDE" | "ONLY")}
+          className="h-9 px-3 rounded-lg border text-sm"
+          title="Current customers are hidden from reps automatically"
+        >
+          <option value="ALL">All (customers badged)</option>
+          <option value="HIDE">Hide current customers</option>
+          <option value="ONLY">Only current customers</option>
+        </select>
       </div>
 
       {/* Rep-assignment Planner */}
@@ -1124,6 +1142,14 @@ export default function DoorKnocksPage() {
                   </td>
                   <td className="p-3 font-medium">
                     {lead.streetNumber} {lead.streetName}
+                    {lead.suppressed && (
+                      <span
+                        title={lead.suppressionReason ?? "Current customer — hidden from reps"}
+                        className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-purple-100 text-purple-700"
+                      >
+                        Customer
+                      </span>
+                    )}
                   </td>
                   <td className="p-3 text-muted-foreground">
                     {lead.city}, {lead.state} {lead.zip}
@@ -1159,6 +1185,13 @@ export default function DoorKnocksPage() {
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
             Showing {leads.length.toLocaleString()} of {total.toLocaleString()} leads
+            {counts && counts.suppressed > 0 && (
+              <span className="text-purple-700">
+                {" · "}
+                {counts.suppressed.toLocaleString()} current customer
+                {counts.suppressed === 1 ? "" : "s"} hidden from reps
+              </span>
+            )}
           </span>
           {leads.length < total && (
             <Button
