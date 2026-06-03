@@ -19,17 +19,20 @@ async function main() {
   const batch = parseInt(process.env.KINETIC_CRON_BATCH ?? "8", 10) || 8
   console.log(`[kinetic-cron] tick — scanning up to ${batch} Kinetic addresses`)
 
-  const scan = await runScan({
-    limit: batch,
-    kineticOnly: true,
-    maxAgeDays: 30,
-    minDelay: 1500,
-    cooldown: 120_000,
-  })
+  // Scan is best-effort: if gokinetic blocks this IP (datacenter IPs get
+  // blocked faster), we still run the sweep so in-app sold/install customers
+  // and already-cached gokinetic customers stay suppressed.
+  let scanned = 0, customers = 0
+  try {
+    const scan = await runScan({ limit: batch, kineticOnly: true, maxAgeDays: 30, minDelay: 1500, cooldown: 120_000 })
+    scanned = scan.scanned; customers = scan.customers
+  } catch (e) {
+    console.log(`[kinetic-cron] scan skipped/failed (continuing to sweep): ${e instanceof Error ? e.message : e}`)
+  }
 
   const sup = await applyCustomerSuppression({})
   console.log(
-    `[kinetic-cron] done — scanned ${scan.scanned} (${scan.customers} customers found), ` +
+    `[kinetic-cron] done — scanned ${scanned} (${customers} customers found), ` +
     `sweep suppressed ${sup.updated} lead(s). known-keys=${sup.knownCustomerKeys}`
   )
 }
