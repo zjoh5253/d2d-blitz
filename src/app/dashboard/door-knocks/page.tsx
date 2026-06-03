@@ -94,16 +94,25 @@ const DISPOSITION_COLORS: Record<Disposition, string> = {
   NOT_INTERESTED: "bg-red-100 text-red-700",
 };
 
-// Cap how many rows we render at once. The unfiltered list can be tens of
-// thousands of leads (40k+ across all blitzes); rendering every row as a
-// <tr> OOM-crashes mobile Safari ("A problem repeatedly occurred"). The
-// full set still lives in `leads` state so the stat cards stay accurate —
-// we only cap the DOM. Narrowing via the Blitz/Disposition/Rep filters
-// brings the count back under the cap.
-const RENDER_LIMIT = 500;
+// Server-side pagination page size. The unfiltered list can match 40k+
+// leads across all blitzes; loading + rendering them all OOM-crashed mobile
+// Safari ("A problem repeatedly occurred"). We now fetch one bounded page
+// at a time (paginated=true), append via "Load more", and pull filter-scoped
+// totals from the API so the stat cards stay accurate.
+const PAGE_SIZE = 500;
 
 export default function DoorKnocksPage() {
   const [leads, setLeads] = useState<DoorKnockLead[]>([]);
+  // Filter-scoped totals from the paginated API. `leads` holds only the
+  // page(s) loaded so far; `total`/`counts` describe the whole filtered set.
+  const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState<{
+    total: number;
+    pending: number;
+    assigned: number;
+    resolved: number;
+  } | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [reps, setReps] = useState<Rep[]>([]);
   const [blitzes, setBlitzes] = useState<Blitz[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,31 +200,83 @@ export default function DoorKnocksPage() {
   // clusterIdx -> repId (or "" if not yet picked)
   const [clusterAssignments, setClusterAssignments] = useState<Record<number, string>>({});
 
+  // Shared builder for the current filter as query params (no pagination
+  // keys) — reused by the list fetch, load-more, and select-all-matching.
+  const buildLeadParams = useCallback(() => {
+    const params = new URLSearchParams();
+    if (filterDisposition === "UNASSIGNED") {
+      params.set("unassigned", "true");
+    } else if (filterDisposition === "ASSIGNED") {
+      params.set("assigned", "true");
+    } else if (filterDisposition !== "ALL") {
+      params.set("disposition", filterDisposition);
+    }
+    if (filterRepId === "UNASSIGNED") params.set("unassigned", "true");
+    else if (filterRepId !== "ALL") params.set("assignedRepId", filterRepId);
+
+    if (filterBlitzId !== "ALL") params.set("blitzId", filterBlitzId);
+    return params;
+  }, [filterDisposition, filterRepId, filterBlitzId]);
+
   const fetchLeads = useCallback(async () => {
     try {
-      const params = new URLSearchParams();
-      if (filterDisposition === "UNASSIGNED") {
-        params.set("unassigned", "true");
-      } else if (filterDisposition === "ASSIGNED") {
-        params.set("assigned", "true");
-      } else if (filterDisposition !== "ALL") {
-        params.set("disposition", filterDisposition);
-      }
-      if (filterRepId === "UNASSIGNED") params.set("unassigned", "true");
-      else if (filterRepId !== "ALL") params.set("assignedRepId", filterRepId);
-
-      if (filterBlitzId !== "ALL") params.set("blitzId", filterBlitzId);
+      const params = buildLeadParams();
+      params.set("paginated", "true");
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", "0");
 
       const res = await fetch(`/api/door-knock-leads?${params}`);
       if (res.ok) {
-        setLeads(await res.json());
+        const data = await res.json();
+        setLeads(data.leads);
+        setTotal(data.total);
+        setCounts(data.counts);
       }
     } catch (err) {
       console.error("Failed to fetch leads:", err);
     } finally {
       setLoading(false);
     }
-  }, [filterDisposition, filterRepId, filterBlitzId]);
+  }, [buildLeadParams]);
+
+  const loadMore = useCallback(async () => {
+    setLoadingMore(true);
+    try {
+      const params = buildLeadParams();
+      params.set("paginated", "true");
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", String(leads.length));
+
+      const res = await fetch(`/api/door-knock-leads?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLeads((prev) => [...prev, ...data.leads]);
+        setTotal(data.total);
+        setCounts(data.counts);
+      }
+    } catch (err) {
+      console.error("Failed to load more leads:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [buildLeadParams, leads.length]);
+
+  // Select every lead matching the current filter (not just the loaded
+  // page) by pulling the lightweight ids-only list. Lets bulk-assign work
+  // across the full filter even though the table is paginated.
+  const selectAllMatching = useCallback(async () => {
+    try {
+      const params = buildLeadParams();
+      params.set("idsOnly", "true");
+      const res = await fetch(`/api/door-knock-leads?${params}`);
+      if (res.ok) {
+        const ids: string[] = await res.json();
+        setSelectedIds(new Set(ids));
+      }
+    } catch (err) {
+      console.error("Failed to select all matching:", err);
+    }
+  }, [buildLeadParams]);
 
   const fetchReps = async () => {
     try {
@@ -509,14 +570,14 @@ export default function DoorKnocksPage() {
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Total Leads", value: leads.length, color: "text-blue-600" },
-          { label: "Pending", value: pendingCount, color: "text-gray-600" },
-          { label: "Assigned", value: assignedCount, color: "text-violet-600" },
-          { label: "Resolved", value: resolvedCount, color: "text-emerald-600" },
+          { label: "Total Leads", value: counts?.total ?? leads.length, color: "text-blue-600" },
+          { label: "Pending", value: counts?.pending ?? pendingCount, color: "text-gray-600" },
+          { label: "Assigned", value: counts?.assigned ?? assignedCount, color: "text-violet-600" },
+          { label: "Resolved", value: counts?.resolved ?? resolvedCount, color: "text-emerald-600" },
         ].map((stat) => (
           <div key={stat.label} className="bg-white rounded-xl border p-4">
             <p className="text-sm text-muted-foreground">{stat.label}</p>
-            <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
+            <p className={`text-2xl font-bold ${stat.color}`}>{stat.value.toLocaleString()}</p>
           </div>
         ))}
       </div>
@@ -577,12 +638,12 @@ export default function DoorKnocksPage() {
             <p className="text-sm font-medium text-blue-800">
               {selectedIds.size} lead{selectedIds.size > 1 ? "s" : ""} selected
             </p>
-            {selectedIds.size < leads.length && (
+            {selectedIds.size < total && (
               <button
-                onClick={toggleSelectAll}
+                onClick={selectAllMatching}
                 className="text-sm font-medium text-blue-600 underline hover:text-blue-800"
               >
-                Select all {leads.length.toLocaleString()}
+                Select all {total.toLocaleString()}
               </button>
             )}
           </div>
@@ -1012,16 +1073,6 @@ export default function DoorKnocksPage() {
         </div>
       )}
 
-      {/* Overflow notice — the table render is capped at RENDER_LIMIT rows
-          to keep mobile browsers from crashing on huge unfiltered lists. */}
-      {!loading && leads.length > RENDER_LIMIT && (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-          Showing the first <span className="font-semibold">{RENDER_LIMIT.toLocaleString()}</span> of{" "}
-          <span className="font-semibold">{leads.length.toLocaleString()}</span> leads. Use the
-          Blitz, Disposition, or Rep filters above to narrow the list.
-        </div>
-      )}
-
       {/* Leads Table */}
       <div className="bg-white rounded-xl border overflow-hidden">
         <table className="w-full text-sm">
@@ -1057,7 +1108,7 @@ export default function DoorKnocksPage() {
                 </td>
               </tr>
             ) : (
-              leads.slice(0, RENDER_LIMIT).map((lead, index) => (
+              leads.map((lead, index) => (
                 <tr
                   key={lead.id}
                   className={`border-b last:border-0 hover:bg-gray-50/50 cursor-pointer select-none ${selectedIds.has(lead.id) ? "bg-blue-50" : ""}`}
@@ -1101,6 +1152,28 @@ export default function DoorKnocksPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination footer — the table is server-paginated; load more pages
+          on demand instead of shipping the whole (40k+) filtered set. */}
+      {!loading && total > 0 && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>
+            Showing {leads.length.toLocaleString()} of {total.toLocaleString()} leads
+          </span>
+          {leads.length < total && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadMore}
+              disabled={loadingMore}
+            >
+              {loadingMore
+                ? "Loading…"
+                : `Load more (${Math.min(PAGE_SIZE, total - leads.length).toLocaleString()})`}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
