@@ -10,7 +10,7 @@ import { ChevronLeft, ChevronDown, Check, Calendar, Copy } from "lucide-react";
 // orderConfirmation? }.
 
 interface Carrier { id: string; name: string }
-interface Blitz { id: string; name: string }
+interface Blitz { id: string; name: string; market?: { carrier?: { id: string; name: string } | null } | null }
 
 interface PlacePrediction {
   placeId: string;
@@ -76,7 +76,7 @@ export default function NewSalePage() {
   const [blitzes, setBlitzes] = useState<Blitz[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
 
-  const [blitzId, setBlitzId] = useState("");
+  const [blitzId, setBlitzId] = useState(() => searchParams.get("blitzId") ?? "");
   const [carrierId, setCarrierId] = useState("");
   const [customerName, setCustomerName] = useState(
     () => searchParams.get("customerName") ?? ""
@@ -203,6 +203,14 @@ export default function NewSalePage() {
 
   const carrierLookup = useMemo(() => new Map(carriers.map((c) => [c.id, c])), [carriers]);
   const blitzLookup = useMemo(() => new Map(blitzes.map((b) => [b.id, b])), [blitzes]);
+
+  // Auto-fill the carrier from the selected blitz (each blitz belongs to one
+  // carrier), so reps don't pick it manually. Updates if the blitz changes.
+  useEffect(() => {
+    if (!blitzId) return;
+    const cid = blitzes.find((b) => b.id === blitzId)?.market?.carrier?.id;
+    if (cid) setCarrierId(cid);
+  }, [blitzId, blitzes]);
 
   const canSubmit =
     blitzId &&

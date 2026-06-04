@@ -20,6 +20,7 @@ interface Lead {
   lng: number | null;
   disposition: Disposition;
   notes: string | null;
+  blitzId: string | null;
 }
 
 interface LeadEvent {
@@ -160,6 +161,8 @@ export default function RepLeadsPage() {
     const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim();
     const params = new URLSearchParams({ address, leadId: lead.id });
     if (name) params.set("customerName", name);
+    // Pass the lead's blitz so the sale form can prefill blitz + carrier.
+    if (lead.blitzId) params.set("blitzId", lead.blitzId);
     return `/rep/sales/new?${params}`;
   };
 
