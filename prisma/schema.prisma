@@ -929,3 +929,19 @@ model KineticAddressStatus {
   @@index([checkedAt])
   @@map("kinetic_address_status")
 }
+
+// Authoritative current-customer addresses from a carrier/partner export
+// (e.g. Teki's Chuzo customer list). Keyed by canonical address so it feeds
+// the suppression engine exactly like the in-DB sources. Re-importing an
+// updated export just upserts.
+model ServicedAddress {
+  id         String   @id @default(cuid())
+  addressKey String   @unique @map("address_key")
+  source     String   // e.g. "chuzo-2026-06-04"
+  rawAddress String?  @map("raw_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([source])
+  @@map("serviced_addresses")
+}
