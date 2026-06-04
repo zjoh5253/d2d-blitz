@@ -70,7 +70,9 @@ export default function RepLeadsPage() {
 
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState<Disposition | "ALL">("PENDING");
+  // Default to "All" so every pin stays on the map and just recolors when a
+  // rep updates it. Pins only drop off when the rep actively picks a filter.
+  const [activeFilter, setActiveFilter] = useState<Disposition | "ALL">("ALL");
   const [view, setView] = useState<ViewMode>(initialView);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [resolving, setResolving] = useState(false);
