@@ -29,6 +29,11 @@ export async function GET(
         assignedRep: { select: { id: true, name: true } },
         blitz: { select: { id: true, name: true } },
         goBack: true,
+        events: {
+          orderBy: { createdAt: "desc" },
+          take: 25,
+          select: { id: true, disposition: true, note: true, createdAt: true },
+        },
       },
     })
 
@@ -144,6 +149,18 @@ export async function PUT(
         goBack: true,
       },
     })
+
+    // Record the action in the lead's history so it can be reviewed later.
+    if (data.disposition) {
+      await db.doorKnockLeadEvent.create({
+        data: {
+          leadId: id,
+          disposition: data.disposition as DoorKnockDisposition,
+          note: (data.notes as string | null | undefined) ?? null,
+          createdById: session.user.id,
+        },
+      })
+    }
 
     return NextResponse.json(updated)
   } catch (error) {

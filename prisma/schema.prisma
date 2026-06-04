@@ -887,6 +887,7 @@ model DoorKnockLead {
   uploadedBy   User    @relation("UploadedDoorKnockLeads", fields: [uploadedById], references: [id])
   blitz        Blitz?  @relation(fields: [blitzId], references: [id])
   goBack       GoBack? @relation(fields: [goBackId], references: [id])
+  events       DoorKnockLeadEvent[]
 
   @@index([assignedRepId])
   @@index([blitzId])
@@ -895,6 +896,22 @@ model DoorKnockLead {
   @@index([uploadedById])
   @@index([suppressed])
   @@map("door_knock_leads")
+}
+
+// Per-lead action history — one row per disposition action so reps can
+// re-open a pin and see what was done and when.
+model DoorKnockLeadEvent {
+  id          String               @id @default(cuid())
+  leadId      String               @map("lead_id")
+  disposition DoorKnockDisposition
+  note        String?
+  createdById String?              @map("created_by_id")
+  createdAt   DateTime             @default(now()) @map("created_at")
+
+  lead DoorKnockLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("door_knock_lead_events")
 }
 
 // Cached per-address result of the Kinetic (gokinetic.com) availability

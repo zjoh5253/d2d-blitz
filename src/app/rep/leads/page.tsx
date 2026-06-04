@@ -22,6 +22,13 @@ interface Lead {
   notes: string | null;
 }
 
+interface LeadEvent {
+  id: string;
+  disposition: Disposition;
+  note: string | null;
+  createdAt: string;
+}
+
 // Disposition palette (rep-requested 2026-06-04): yellow = Not Home (no
 // answer), blue = Go Back (follow up), green = Sold, red = Not Interested
 // (no sale), gray = Pending. Kept in sync with the rep map + admin.
@@ -50,6 +57,10 @@ const RESOLVE_OPTIONS: Array<{ key: Disposition; label: string }> = [
   { key: "NOT_INTERESTED", label: "Not Interested" },
 ];
 
+function formatEventTime(iso: string): string {
+  return new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 type ViewMode = "list" | "map";
 
 export default function RepLeadsPage() {
@@ -68,6 +79,8 @@ export default function RepLeadsPage() {
   const [goBackMode, setGoBackMode] = useState(false);
   const [goBackDate, setGoBackDate] = useState("");
   const [goBackNotes, setGoBackNotes] = useState("");
+  // Action history for the currently-open pin.
+  const [leadEvents, setLeadEvents] = useState<LeadEvent[]>([]);
 
   // Fetch ALL the rep's leads once (unfiltered) so the disposition tabs can
   // filter client-side and the map can show overall progress regardless of
@@ -83,6 +96,22 @@ export default function RepLeadsPage() {
   }, []);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  // Load the open pin's action history.
+  useEffect(() => {
+    if (!selectedLead) { setLeadEvents([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/door-knock-leads/${selectedLead.id}`);
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setLeadEvents(Array.isArray(data.events) ? data.events : []);
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedLead]);
 
   // Displayed list = all leads narrowed by the active tab (client-side).
   const leads = useMemo(
@@ -139,6 +168,7 @@ export default function RepLeadsPage() {
     setGoBackMode(false);
     setGoBackDate("");
     setGoBackNotes("");
+    setLeadEvents([]);
   };
 
   // Default a new go-back to tomorrow at 10:00 (local), formatted for
@@ -404,6 +434,25 @@ export default function RepLeadsPage() {
                       );
                     })}
                   </div>
+
+                  {leadEvents.length > 0 && (
+                    <div className="pt-3">
+                      <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">History</div>
+                      <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                        {leadEvents.map((ev) => (
+                          <div key={ev.id} className="flex items-start justify-between gap-2 text-xs">
+                            <div className="min-w-0">
+                              <span className={`font-medium ${DISPO[ev.disposition].color}`}>
+                                {DISPO[ev.disposition].label}
+                              </span>
+                              {ev.note && <div className="text-gray-500 mt-0.5 line-clamp-2">{ev.note}</div>}
+                            </div>
+                            <span className="text-gray-400 whitespace-nowrap">{formatEventTime(ev.createdAt)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
