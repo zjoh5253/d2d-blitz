@@ -14,14 +14,16 @@ export type RepLeadPin = {
   disposition: "PENDING" | "NOT_HOME" | "GO_BACK" | "SOLD" | "NOT_INTERESTED";
 };
 
-// Mirror of the mobile DISPOSITION_CONFIG palette so reps see the same
-// colors on phone web and native.
+// Map pin palette (rep-requested 2026-06-04):
+//   yellow = no answer (Not Home), blue = follow up (Go Back),
+//   red = no sale (Not Interested), green = sale made (Sold).
+// PENDING (not yet knocked) stays gray.
 const DISPO_COLOR: Record<RepLeadPin["disposition"], string> = {
-  PENDING: "#6B7280",        // gray-500
-  NOT_HOME: "#F97316",       // orange-500
-  GO_BACK: "#EAB308",        // yellow-500
-  SOLD: "#10B981",           // emerald-500
-  NOT_INTERESTED: "#EF4444", // red-500
+  PENDING: "#6B7280",        // gray-500  — not yet knocked
+  NOT_HOME: "#EAB308",       // yellow-500 — no answer
+  GO_BACK: "#3B82F6",        // blue-500   — follow up
+  SOLD: "#22C55E",           // green-500  — sale made
+  NOT_INTERESTED: "#EF4444", // red-500    — no sale made
 };
 
 export function RepLeadsMap({
