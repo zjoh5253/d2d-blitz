@@ -292,7 +292,13 @@ export default function RepLeadsPage() {
                 : "Your leads have no coordinates — switch to list view."}
             </div>
           ) : (
-            <RepLeadsMap pins={mappableLeads} onPinPress={handlePinPress} />
+            <>
+              <RepLeadsMap pins={mappableLeads} onPinPress={handlePinPress} />
+              {/* Pin count overlay (respects the active disposition filter). */}
+              <div className="absolute top-3 left-3 z-10 rounded-full bg-white/90 shadow px-3 py-1 text-xs font-semibold text-gray-700 pointer-events-none">
+                {mappableLeads.length.toLocaleString()} {mappableLeads.length === 1 ? "pin" : "pins"}
+              </div>
+            </>
           )}
         </div>
       )}
