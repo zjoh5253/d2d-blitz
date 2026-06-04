@@ -57,7 +57,7 @@ export default function RepLeadsPage() {
   const router = useRouter();
   const initialView = (searchParams.get("view") as ViewMode) || "list";
 
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<Disposition | "ALL">("PENDING");
   const [view, setView] = useState<ViewMode>(initialView);
@@ -69,19 +69,37 @@ export default function RepLeadsPage() {
   const [goBackDate, setGoBackDate] = useState("");
   const [goBackNotes, setGoBackNotes] = useState("");
 
+  // Fetch ALL the rep's leads once (unfiltered) so the disposition tabs can
+  // filter client-side and the map can show overall progress regardless of
+  // the active filter. Refetched after a disposition / go-back update.
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (activeFilter !== "ALL") params.set("disposition", activeFilter);
-      const res = await fetch(`/api/door-knock-leads?${params}`);
-      if (res.ok) setLeads(await res.json());
+      const res = await fetch(`/api/door-knock-leads`);
+      if (res.ok) setAllLeads(await res.json());
     } finally {
       setLoading(false);
     }
-  }, [activeFilter]);
+  }, []);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  // Displayed list = all leads narrowed by the active tab (client-side).
+  const leads = useMemo(
+    () => (activeFilter === "ALL" ? allLeads : allLeads.filter((l) => l.disposition === activeFilter)),
+    [allLeads, activeFilter]
+  );
+
+  // Overall map progress — across ALL the rep's mappable leads, independent
+  // of the active filter.
+  const allMappableCount = useMemo(
+    () => allLeads.filter((l) => typeof l.lat === "number" && typeof l.lng === "number").length,
+    [allLeads]
+  );
+  const overallResolvedCount = useMemo(
+    () => allLeads.filter((l) => typeof l.lat === "number" && typeof l.lng === "number" && l.disposition !== "PENDING").length,
+    [allLeads]
+  );
 
   const mappableLeads = useMemo<RepLeadPin[]>(
     () =>
@@ -193,8 +211,6 @@ export default function RepLeadsPage() {
   }, [leads, goToSaleForm]);
 
   const pendingCount = leads.filter((l) => l.disposition === "PENDING").length;
-  // Pins on the map that have been worked (any disposition other than Pending).
-  const resolvedPins = mappableLeads.filter((p) => p.disposition !== "PENDING").length;
 
   return (
     <div className="flex h-screen flex-col">
@@ -296,9 +312,10 @@ export default function RepLeadsPage() {
           ) : (
             <>
               <RepLeadsMap pins={mappableLeads} onPinPress={handlePinPress} />
-              {/* Pin progress overlay (respects the active disposition filter). */}
+              {/* Overall progress across all the rep's mappable leads,
+                  independent of the active filter. */}
               <div className="absolute top-3 left-3 z-10 rounded-full bg-white/90 shadow px-3 py-1 text-xs font-semibold text-gray-700 pointer-events-none">
-                {resolvedPins.toLocaleString()}/{mappableLeads.length.toLocaleString()} pins resolved
+                {overallResolvedCount.toLocaleString()}/{allMappableCount.toLocaleString()} pins resolved
               </div>
             </>
           )}
