@@ -4,6 +4,6 @@
   "buildCommand": "npx prisma generate && next build",
   "installCommand": "npm install",
   "crons": [
-    { "path": "/api/cron/suppress", "schedule": "0 * * * *" }
+    { "path": "/api/cron/suppress", "schedule": "0 9 * * *" }
   ]
 }
