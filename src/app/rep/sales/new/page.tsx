@@ -183,13 +183,17 @@ export default function NewSalePage() {
     }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
-      try {
-        const ps = apiKey ? await googlePlacesSuggest(text, apiKey) : await photonSuggest(text);
-        setPredictions(ps);
-        setShowSuggestions(ps.length > 0);
-      } catch {
-        setPredictions([]);
+      let ps: PlacePrediction[] = [];
+      if (apiKey) {
+        try { ps = await googlePlacesSuggest(text, apiKey); } catch { ps = []; }
       }
+      // Fall back to the free OSM provider if Google is absent or fails (bad
+      // key, API not enabled, referrer blocked) so suggestions still appear.
+      if (ps.length === 0) {
+        try { ps = await photonSuggest(text); } catch { ps = []; }
+      }
+      setPredictions(ps);
+      setShowSuggestions(ps.length > 0);
     }, 300);
   };
   const selectPrediction = (p: PlacePrediction) => {
