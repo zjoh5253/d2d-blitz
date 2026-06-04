@@ -81,6 +81,9 @@ export default function RepLeadsPage() {
   const [goBackMode, setGoBackMode] = useState(false);
   const [goBackDate, setGoBackDate] = useState("");
   const [goBackNotes, setGoBackNotes] = useState("");
+  // "Not Interested" reason sub-form.
+  const [reasonMode, setReasonMode] = useState(false);
+  const [reasonNotes, setReasonNotes] = useState("");
   // Action history for the currently-open pin.
   const [leadEvents, setLeadEvents] = useState<LeadEvent[]>([]);
 
@@ -170,6 +173,8 @@ export default function RepLeadsPage() {
     setGoBackMode(false);
     setGoBackDate("");
     setGoBackNotes("");
+    setReasonMode(false);
+    setReasonNotes("");
     setLeadEvents([]);
   };
 
@@ -222,6 +227,29 @@ export default function RepLeadsPage() {
           disposition: "GO_BACK",
           goBack: { followUpDate: goBackDate, notes: goBackNotes },
         }),
+      });
+      if (res.ok) {
+        closeSheet();
+        fetchLeads();
+      }
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  const enterReasonMode = () => {
+    setReasonNotes(selectedLead?.notes ?? "");
+    setReasonMode(true);
+  };
+
+  const submitNotInterested = async () => {
+    if (!selectedLead) return;
+    setResolving(true);
+    try {
+      const res = await fetch(`/api/door-knock-leads/${selectedLead.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ disposition: "NOT_INTERESTED", notes: reasonNotes }),
       });
       if (res.ok) {
         closeSheet();
@@ -405,6 +433,28 @@ export default function RepLeadsPage() {
                     {resolving ? "Saving…" : "Schedule go-back"}
                   </button>
                 </div>
+              ) : reasonMode ? (
+                <div className="space-y-3">
+                  <button onClick={() => setReasonMode(false)} className="text-sm font-medium text-blue-600">
+                    ← Back
+                  </button>
+                  <div className="text-sm font-semibold text-gray-900">Why no sale? (optional)</div>
+                  <textarea
+                    value={reasonNotes}
+                    onChange={(e) => setReasonNotes(e.target.value)}
+                    rows={3}
+                    placeholder="e.g. happy with current provider, price, renter, not interested"
+                    className="w-full rounded-lg border px-3 py-2 text-sm"
+                    autoFocus
+                  />
+                  <button
+                    onClick={submitNotInterested}
+                    disabled={resolving}
+                    className="w-full rounded-lg bg-red-600 text-white font-medium py-3 disabled:bg-gray-300"
+                  >
+                    {resolving ? "Saving…" : "Mark Not Interested"}
+                  </button>
+                </div>
               ) : (
                 <>
                   <button
@@ -426,7 +476,11 @@ export default function RepLeadsPage() {
                       return (
                         <button
                           key={opt.key}
-                          onClick={() => (opt.key === "GO_BACK" ? enterGoBackMode() : resolve(opt.key))}
+                          onClick={() => {
+                            if (opt.key === "GO_BACK") enterGoBackMode();
+                            else if (opt.key === "NOT_INTERESTED") enterReasonMode();
+                            else resolve(opt.key);
+                          }}
                           disabled={resolving}
                           className={`flex flex-col items-center justify-center gap-1 rounded-lg border py-3 text-sm font-medium ${cfg.color}`}
                         >
