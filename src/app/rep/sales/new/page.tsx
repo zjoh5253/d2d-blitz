@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronDown, Check, Calendar } from "lucide-react";
+import { ChevronLeft, ChevronDown, Check, Calendar, Copy } from "lucide-react";
 
 // Web port of mobile-d2d's NewSaleScreen. Same POST contract to
 // /api/sales: { blitzId, carrierId, customerName, customerPhone,
@@ -273,7 +273,7 @@ export default function NewSalePage() {
           </SelectField>
         </Section>
 
-        <Section label="Customer name *">
+        <Section label="Customer name *" copyValue={customerName}>
           <Input value={customerName} onChange={setCustomerName} placeholder="Jane Doe" />
         </Section>
 
@@ -285,7 +285,7 @@ export default function NewSalePage() {
           <Input value={email} onChange={setEmail} placeholder="optional" type="email" inputMode="email" />
         </Section>
 
-        <Section label="Address *">
+        <Section label="Address *" copyValue={address}>
           <div className="relative">
             <Input value={address} onChange={handleAddressChange} placeholder="Start typing an address" />
             {showSuggestions && predictions.length > 0 && (
@@ -383,12 +383,43 @@ export default function NewSalePage() {
   );
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+function Section({ label, children, copyValue }: { label: string; children: React.ReactNode; copyValue?: string }) {
   return (
     <div>
-      <div className="text-xs font-medium text-gray-600 mb-1">{label}</div>
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-xs font-medium text-gray-600">{label}</div>
+        {copyValue !== undefined && <CopyButton value={copyValue} />}
+      </div>
       {children}
     </div>
+  );
+}
+
+// Tap-to-copy button (used for address + name so reps can paste into the
+// carrier's order system without re-typing).
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    const text = value.trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard blocked — ignore */
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      disabled={!value.trim()}
+      className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 disabled:text-gray-300"
+    >
+      {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+      {copied ? "Copied" : "Copy"}
+    </button>
   );
 }
 
