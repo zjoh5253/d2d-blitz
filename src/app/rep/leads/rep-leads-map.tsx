@@ -34,6 +34,12 @@ export function RepLeadsMap({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const hasFitRef = useRef(false);
+  // Hold the latest onPinPress in a ref so the map-creation effect doesn't
+  // depend on it. Otherwise a new onPinPress identity (e.g. after the parent
+  // refetches leads on a disposition update) would tear down and recreate the
+  // map, snapping the rep's pan/zoom back to the default view.
+  const onPinPressRef = useRef(onPinPress);
+  useEffect(() => { onPinPressRef.current = onPinPress; }, [onPinPress]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -64,7 +70,7 @@ export function RepLeadsMap({
       map.on("click", "leads-circle", (e) => {
         if (!e.features || e.features.length === 0) return;
         const props = e.features[0].properties as { id: string; street: string; disposition: RepLeadPin["disposition"]; lat: number; lng: number };
-        onPinPress?.({
+        onPinPressRef.current?.({
           id: props.id,
           street: props.street,
           disposition: props.disposition,
@@ -76,7 +82,9 @@ export function RepLeadsMap({
 
     mapRef.current = map;
     return () => { map.remove(); mapRef.current = null; };
-  }, [onPinPress]);
+    // Create the map exactly once; the click handler reads onPinPress via a
+    // ref so handler-identity changes never rebuild the map.
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
