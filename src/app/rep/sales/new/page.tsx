@@ -19,6 +19,51 @@ interface PlacePrediction {
   secondaryText: string;
 }
 
+// Google Places autocomplete (used when a key is configured).
+async function googlePlacesSuggest(text: string, apiKey: string): Promise<PlacePrediction[]> {
+  const res = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey },
+    body: JSON.stringify({
+      input: text,
+      includedRegionCodes: ["us"],
+      includedPrimaryTypes: ["street_address", "subpremise", "premise"],
+    }),
+  });
+  const data = await res.json();
+  return (data.suggestions ?? [])
+    .filter((s: { placePrediction?: unknown }) => s.placePrediction)
+    .map((s: { placePrediction: { placeId: string; text?: { text?: string }; structuredFormat?: { mainText?: { text?: string }; secondaryText?: { text?: string } } } }) => ({
+      placeId: s.placePrediction.placeId,
+      description: s.placePrediction.text?.text ?? "",
+      mainText: s.placePrediction.structuredFormat?.mainText?.text ?? s.placePrediction.text?.text ?? "",
+      secondaryText: s.placePrediction.structuredFormat?.secondaryText?.text ?? "",
+    }));
+}
+
+// Free address autocomplete (OpenStreetMap / Photon) — no API key. Used as
+// the default so suggestions work without a paid Google key.
+async function photonSuggest(text: string): Promise<PlacePrediction[]> {
+  const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(text)}&limit=6&lang=en`);
+  const data = await res.json();
+  const feats: Array<{ properties?: Record<string, string> }> = data.features ?? [];
+  return feats
+    .map((f) => f.properties ?? {})
+    .filter((p) => (p.countrycode ?? "").toUpperCase() === "US" || p.country === "United States")
+    .map((p, i) => {
+      const line1 = [p.housenumber, p.street].filter(Boolean).join(" ") || p.name || "";
+      const locality = [p.city || p.town || p.district, p.state, p.postcode].filter(Boolean).join(", ");
+      const description = [line1, locality].filter(Boolean).join(", ");
+      return {
+        placeId: `${p.osm_type ?? "p"}-${p.osm_id ?? i}`,
+        description,
+        mainText: line1 || description,
+        secondaryText: locality,
+      };
+    })
+    .filter((p) => p.description.length > 0);
+}
+
 const SPEED_TIERS = ["100M", "200M", "250M", "300M", "500M", "600M", "940M", "1G", "2G", "5G", "7G", "10G"];
 
 export default function NewSalePage() {
@@ -131,7 +176,7 @@ export default function NewSalePage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleAddressChange = (text: string) => {
     setAddress(text);
-    if (!apiKey || text.trim().length < 3) {
+    if (text.trim().length < 3) {
       setPredictions([]);
       setShowSuggestions(false);
       return;
@@ -139,24 +184,7 @@ export default function NewSalePage() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey },
-          body: JSON.stringify({
-            input: text,
-            includedRegionCodes: ["us"],
-            includedPrimaryTypes: ["street_address", "subpremise", "premise"],
-          }),
-        });
-        const data = await res.json();
-        const ps: PlacePrediction[] = (data.suggestions ?? [])
-          .filter((s: { placePrediction?: unknown }) => s.placePrediction)
-          .map((s: { placePrediction: { placeId: string; text?: { text?: string }; structuredFormat?: { mainText?: { text?: string }; secondaryText?: { text?: string } } } }) => ({
-            placeId: s.placePrediction.placeId,
-            description: s.placePrediction.text?.text ?? "",
-            mainText: s.placePrediction.structuredFormat?.mainText?.text ?? s.placePrediction.text?.text ?? "",
-            secondaryText: s.placePrediction.structuredFormat?.secondaryText?.text ?? "",
-          }));
+        const ps = apiKey ? await googlePlacesSuggest(text, apiKey) : await photonSuggest(text);
         setPredictions(ps);
         setShowSuggestions(ps.length > 0);
       } catch {
