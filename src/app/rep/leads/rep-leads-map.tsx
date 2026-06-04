@@ -52,6 +52,15 @@ export function RepLeadsMap({
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
+    // Live "you are here" dot for field reps — tracks the rep + shows heading.
+    // Auto-activated on load (below) so it appears without an extra tap; the
+    // button stays for manual re-center / retry if permission is denied.
+    const geolocate = new maplibregl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true },
+      trackUserLocation: true,
+    });
+    map.addControl(geolocate, "top-right");
+
     map.on("load", () => {
       map.addSource("leads", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
@@ -78,6 +87,11 @@ export function RepLeadsMap({
           lng: props.lng,
         });
       });
+
+      // Auto-show the rep's live location once the map is ready. The browser
+      // prompts for permission on first use; if denied, the control stays as a
+      // tappable retry button and the fit-to-pins view remains.
+      geolocate.trigger();
     });
 
     mapRef.current = map;
