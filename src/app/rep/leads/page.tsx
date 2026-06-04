@@ -193,6 +193,8 @@ export default function RepLeadsPage() {
   }, [leads, goToSaleForm]);
 
   const pendingCount = leads.filter((l) => l.disposition === "PENDING").length;
+  // Pins on the map that have been worked (any disposition other than Pending).
+  const resolvedPins = mappableLeads.filter((p) => p.disposition !== "PENDING").length;
 
   return (
     <div className="flex h-screen flex-col">
@@ -294,9 +296,9 @@ export default function RepLeadsPage() {
           ) : (
             <>
               <RepLeadsMap pins={mappableLeads} onPinPress={handlePinPress} />
-              {/* Pin count overlay (respects the active disposition filter). */}
+              {/* Pin progress overlay (respects the active disposition filter). */}
               <div className="absolute top-3 left-3 z-10 rounded-full bg-white/90 shadow px-3 py-1 text-xs font-semibold text-gray-700 pointer-events-none">
-                {mappableLeads.length.toLocaleString()} {mappableLeads.length === 1 ? "pin" : "pins"}
+                {resolvedPins.toLocaleString()}/{mappableLeads.length.toLocaleString()} pins resolved
               </div>
             </>
           )}
