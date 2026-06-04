@@ -63,6 +63,11 @@ export default function RepLeadsPage() {
   const [view, setView] = useState<ViewMode>(initialView);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [resolving, setResolving] = useState(false);
+  // Go-back scheduling sub-form (shown inside the action sheet when the rep
+  // taps "Go Back").
+  const [goBackMode, setGoBackMode] = useState(false);
+  const [goBackDate, setGoBackDate] = useState("");
+  const [goBackNotes, setGoBackNotes] = useState("");
 
   const fetchLeads = useCallback(async () => {
     setLoading(true);
@@ -111,6 +116,29 @@ export default function RepLeadsPage() {
     [router]
   );
 
+  const closeSheet = () => {
+    setSelectedLead(null);
+    setGoBackMode(false);
+    setGoBackDate("");
+    setGoBackNotes("");
+  };
+
+  // Default a new go-back to tomorrow at 10:00 (local), formatted for
+  // <input type="datetime-local">.
+  const defaultGoBackDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(10, 0, 0, 0);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const enterGoBackMode = () => {
+    setGoBackDate(defaultGoBackDate());
+    setGoBackNotes(selectedLead?.notes ?? "");
+    setGoBackMode(true);
+  };
+
   const resolve = async (disposition: Disposition) => {
     if (!selectedLead) return;
     setResolving(true);
@@ -125,7 +153,28 @@ export default function RepLeadsPage() {
           goToSaleForm(selectedLead);
           return;
         }
-        setSelectedLead(null);
+        closeSheet();
+        fetchLeads();
+      }
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  const submitGoBack = async () => {
+    if (!selectedLead || !goBackDate) return;
+    setResolving(true);
+    try {
+      const res = await fetch(`/api/door-knock-leads/${selectedLead.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          disposition: "GO_BACK",
+          goBack: { followUpDate: goBackDate, notes: goBackNotes },
+        }),
+      });
+      if (res.ok) {
+        closeSheet();
         fetchLeads();
       }
     } finally {
@@ -252,7 +301,7 @@ export default function RepLeadsPage() {
       {selectedLead && (
         <div
           className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center"
-          onClick={(e) => { if (e.target === e.currentTarget) setSelectedLead(null); }}
+          onClick={(e) => { if (e.target === e.currentTarget) closeSheet(); }}
         >
           <div className="w-full max-w-md bg-white rounded-t-2xl">
             <div className="flex items-center justify-between p-4 border-b">
@@ -260,41 +309,78 @@ export default function RepLeadsPage() {
                 <div className="font-semibold">{selectedLead.streetNumber} {selectedLead.streetName}</div>
                 <div className="text-xs text-gray-500">{selectedLead.city}, {selectedLead.state} {selectedLead.zip}</div>
               </div>
-              <button onClick={() => setSelectedLead(null)} className="text-gray-500">
+              <button onClick={closeSheet} className="text-gray-500">
                 <X className="size-5" />
               </button>
             </div>
 
             <div className="p-4 space-y-2">
-              <button
-                onClick={() => navigateTo(selectedLead)}
-                disabled={typeof selectedLead.lat !== "number"}
-                className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 text-white font-medium py-3 disabled:bg-gray-300"
-              >
-                <Navigation className="size-4" />
-                Navigate
-              </button>
+              {goBackMode ? (
+                <div className="space-y-3">
+                  <button onClick={() => setGoBackMode(false)} className="text-sm font-medium text-blue-600">
+                    ← Back
+                  </button>
+                  <div className="text-sm font-semibold text-gray-900">Schedule a go-back</div>
+                  <label className="block">
+                    <span className="text-xs text-gray-500">Day &amp; time</span>
+                    <input
+                      type="datetime-local"
+                      value={goBackDate}
+                      onChange={(e) => setGoBackDate(e.target.value)}
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-gray-500">Notes (optional)</span>
+                    <textarea
+                      value={goBackNotes}
+                      onChange={(e) => setGoBackNotes(e.target.value)}
+                      rows={3}
+                      placeholder="e.g. spouse home after 5pm, gate code 1234"
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <button
+                    onClick={submitGoBack}
+                    disabled={resolving || !goBackDate}
+                    className="w-full rounded-lg bg-blue-600 text-white font-medium py-3 disabled:bg-gray-300"
+                  >
+                    {resolving ? "Saving…" : "Schedule go-back"}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={() => navigateTo(selectedLead)}
+                    disabled={typeof selectedLead.lat !== "number"}
+                    className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 text-white font-medium py-3 disabled:bg-gray-300"
+                  >
+                    <Navigation className="size-4" />
+                    Navigate
+                  </button>
 
-              <div className="text-xs uppercase tracking-wide text-gray-500 pt-2">
-                {selectedLead.disposition === "PENDING" ? "Resolve" : "Change status"}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {RESOLVE_OPTIONS.filter((opt) => opt.key !== selectedLead.disposition).map((opt) => {
-                  const cfg = DISPO[opt.key];
-                  const Icon = cfg.icon;
-                  return (
-                    <button
-                      key={opt.key}
-                      onClick={() => resolve(opt.key)}
-                      disabled={resolving}
-                      className={`flex flex-col items-center justify-center gap-1 rounded-lg border py-3 text-sm font-medium ${cfg.color}`}
-                    >
-                      <Icon className="size-5" />
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
+                  <div className="text-xs uppercase tracking-wide text-gray-500 pt-2">
+                    {selectedLead.disposition === "PENDING" ? "Resolve" : "Change status"}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {RESOLVE_OPTIONS.filter((opt) => opt.key !== selectedLead.disposition).map((opt) => {
+                      const cfg = DISPO[opt.key];
+                      const Icon = cfg.icon;
+                      return (
+                        <button
+                          key={opt.key}
+                          onClick={() => (opt.key === "GO_BACK" ? enterGoBackMode() : resolve(opt.key))}
+                          disabled={resolving}
+                          className={`flex flex-col items-center justify-center gap-1 rounded-lg border py-3 text-sm font-medium ${cfg.color}`}
+                        >
+                          <Icon className="size-5" />
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

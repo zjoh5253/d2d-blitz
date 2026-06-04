@@ -99,6 +99,42 @@ export async function PUT(
       data.goBackId = body.goBackId
     }
 
+    // Go-back scheduling: when a lead is marked GO_BACK with a follow-up
+    // date/time (+ optional notes), create or update the linked GoBack so it
+    // shows up in the rep's go-backs list. Requires the lead to be on a blitz.
+    const gb = body.goBack as { followUpDate?: string; notes?: string } | undefined
+    if (data.disposition === "GO_BACK" && gb?.followUpDate && lead.blitzId) {
+      const followUpDate = new Date(gb.followUpDate)
+      if (!Number.isNaN(followUpDate.getTime())) {
+        const noteVal = gb.notes?.trim() ? gb.notes.trim() : null
+        if (lead.goBackId) {
+          await db.goBack.update({
+            where: { id: lead.goBackId },
+            data: { followUpDate, notes: noteVal, status: "SCHEDULED" },
+          })
+        } else {
+          const prospectName =
+            [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim() ||
+            `${lead.streetNumber} ${lead.streetName}`.trim()
+          const prospectAddress =
+            `${lead.streetNumber} ${lead.streetName}, ${lead.city}, ${lead.state} ${lead.zip}`.trim()
+          const created = await db.goBack.create({
+            data: {
+              repId: lead.assignedRepId ?? session.user.id,
+              blitzId: lead.blitzId,
+              prospectName,
+              prospectAddress,
+              followUpDate,
+              notes: noteVal,
+            },
+          })
+          data.goBackId = created.id
+        }
+        // Mirror the note onto the lead so it shows on the lead card too.
+        data.notes = noteVal
+      }
+    }
+
     const updated = await db.doorKnockLead.update({
       where: { id },
       data,
