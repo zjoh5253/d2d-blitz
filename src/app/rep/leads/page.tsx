@@ -22,12 +22,15 @@ interface Lead {
   notes: string | null;
 }
 
+// Disposition palette (rep-requested 2026-06-04): yellow = Not Home (no
+// answer), blue = Go Back (follow up), green = Sold, red = Not Interested
+// (no sale), gray = Pending. Kept in sync with the rep map + admin.
 const DISPO: Record<Disposition, { label: string; color: string; bg: string; icon: React.ComponentType<{ className?: string }> }> = {
-  PENDING:        { label: "Pending",        color: "text-gray-700",    bg: "bg-gray-100",    icon: Clock },
-  NOT_HOME:       { label: "Not Home",       color: "text-orange-700",  bg: "bg-orange-100",  icon: Home },
-  GO_BACK:        { label: "Go Back",        color: "text-yellow-700",  bg: "bg-yellow-100",  icon: ArrowLeftRight },
-  SOLD:           { label: "Sold",           color: "text-emerald-700", bg: "bg-emerald-100", icon: CheckCircle2 },
-  NOT_INTERESTED: { label: "Not Interested", color: "text-red-700",     bg: "bg-red-100",     icon: XCircle },
+  PENDING:        { label: "Pending",        color: "text-gray-700",   bg: "bg-gray-100",   icon: Clock },
+  NOT_HOME:       { label: "Not Home",       color: "text-yellow-700", bg: "bg-yellow-100", icon: Home },
+  GO_BACK:        { label: "Go Back",        color: "text-blue-700",   bg: "bg-blue-100",   icon: ArrowLeftRight },
+  SOLD:           { label: "Sold",           color: "text-green-700",  bg: "bg-green-100",  icon: CheckCircle2 },
+  NOT_INTERESTED: { label: "Not Interested", color: "text-red-700",    bg: "bg-red-100",    icon: XCircle },
 };
 
 const FILTERS: Array<{ key: Disposition | "ALL"; label: string }> = [

@@ -88,11 +88,14 @@ const DISPOSITION_LABELS: Record<Disposition, string> = {
   NOT_INTERESTED: "Not Interested",
 };
 
+// Disposition palette (rep-requested 2026-06-04): yellow = Not Home (no
+// answer), blue = Go Back (follow up), green = Sold, red = Not Interested
+// (no sale), gray = Pending. Kept in sync with the rep map + list.
 const DISPOSITION_COLORS: Record<Disposition, string> = {
   PENDING: "bg-gray-100 text-gray-700",
-  NOT_HOME: "bg-orange-100 text-orange-700",
-  GO_BACK: "bg-yellow-100 text-yellow-700",
-  SOLD: "bg-emerald-100 text-emerald-700",
+  NOT_HOME: "bg-yellow-100 text-yellow-700",
+  GO_BACK: "bg-blue-100 text-blue-700",
+  SOLD: "bg-green-100 text-green-700",
   NOT_INTERESTED: "bg-red-100 text-red-700",
 };
 
