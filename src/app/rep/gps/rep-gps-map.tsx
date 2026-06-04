@@ -18,12 +18,14 @@ export type GpsKnock = {
 
 export type GpsRoutePoint = { lat: number; lng: number };
 
+// Aligned disposition palette (rep-requested 2026-06-04): yellow = no answer,
+// blue = follow up, green = sale, red = no sale, teal = interested.
 const KNOCK_COLOR: Record<KnockResult, string> = {
-  sale: "#10B981",
-  interested: "#3B82F6",
-  not_home: "#F97316",
-  follow_up: "#EAB308",
-  not_interested: "#EF4444",
+  sale: "#22C55E",            // green
+  interested: "#14B8A6",      // teal
+  not_home: "#EAB308",        // yellow — no answer
+  follow_up: "#3B82F6",       // blue — follow up
+  not_interested: "#EF4444",  // red — no sale
 };
 
 export function RepGpsMap({

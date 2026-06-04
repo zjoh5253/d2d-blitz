@@ -33,11 +33,13 @@ interface PastSession {
   routeMiles: number;
 }
 
+// Aligned disposition palette (rep-requested 2026-06-04): green = sale,
+// teal = interested, yellow = no answer, blue = follow up, red = no sale.
 const KNOCK_OPTIONS: Array<{ result: KnockResult; label: string; icon: React.ComponentType<{ className?: string }>; color: string }> = [
-  { result: "sale",           label: "Sale",          icon: CheckCircle2, color: "bg-emerald-600" },
-  { result: "interested",     label: "Interested",    icon: ThumbsUp,     color: "bg-blue-600" },
-  { result: "not_home",       label: "Not Home",      icon: Home,         color: "bg-orange-500" },
-  { result: "follow_up",      label: "Follow Up",     icon: Calendar,     color: "bg-yellow-500" },
+  { result: "sale",           label: "Sale",          icon: CheckCircle2, color: "bg-green-600" },
+  { result: "interested",     label: "Interested",    icon: ThumbsUp,     color: "bg-teal-500" },
+  { result: "not_home",       label: "Not Home",      icon: Home,         color: "bg-yellow-500" },
+  { result: "follow_up",      label: "Follow Up",     icon: Calendar,     color: "bg-blue-600" },
   { result: "not_interested", label: "No Interest",   icon: ThumbsDown,   color: "bg-red-600" },
 ];
 
