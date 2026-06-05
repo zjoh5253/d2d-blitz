@@ -71,16 +71,17 @@ export async function gatherKnownCustomerKeys(): Promise<Map<string, SuppressRea
       where: { isCustomer: true },
       select: { addressKey: true },
     }),
-    // Authoritative partner/carrier export (e.g. Chuzo). addressKey is
-    // already canonical.
-    db.servicedAddress.findMany({ select: { addressKey: true } }),
+    // Authoritative partner/carrier exports (e.g. Chuzo for Kinetic, a
+    // CrowdFiber export for RightFiber). addressKey is already canonical;
+    // `source` tags which export it came from so reasons stay distinguishable.
+    db.servicedAddress.findMany({ select: { addressKey: true, source: true } }),
   ])
 
   for (const r of installs) add(keyFromFullAddress(r.customerAddress), "Current customer (install on record)")
   for (const s of sales) add(keyFromFullAddress(s.customerAddress), "Current customer (sale on record)")
   for (const l of soldLeads) add(keyFromParts(l.streetNumber, l.streetName, l.zip), "Current customer (sold lead)")
   for (const k of kineticCustomers) add(k.addressKey, "Current Kinetic customer (gokinetic)")
-  for (const s of servicedAddresses) add(s.addressKey, "Current customer (partner export)")
+  for (const s of servicedAddresses) add(s.addressKey, `Current customer (${s.source})`)
 
   return keys
 }
