@@ -117,9 +117,13 @@ export type SaleLike = { customerName: string; customerAddress: string; installD
 export type RecordLike = { customerName: string; customerAddress: string; installDate: Date | null };
 
 export function scoreMatch(record: RecordLike, sale: SaleLike): MatchScore {
-  const addressScore = jaccard(canonicalizeAddress(record.customerAddress), canonicalizeAddress(sale.customerAddress));
+  const recAddr = canonicalizeAddress(record.customerAddress);
+  const addressScore = jaccard(recAddr, canonicalizeAddress(sale.customerAddress));
   const nameScore = jaccard(canonicalizeName(record.customerName), canonicalizeName(sale.customerName));
   const ds = record.installDate ? dateScore(record.installDate, sale.installDate) : 0.3;
+  // Many carrier reports omit the service address on D2D rows (just a name +
+  // order #). When the record has no usable address, fall back to name+date.
+  const hasAddr = recAddr.length > 0;
 
   const overall = 0.55 * addressScore + 0.3 * nameScore + 0.15 * ds;
 
@@ -129,6 +133,10 @@ export function scoreMatch(record: RecordLike, sale: SaleLike): MatchScore {
     tier = "high";
   // MEDIUM: strong address but name or date is off → match, but flag for review.
   } else if (addressScore >= 0.8 && (nameScore >= 0.5 || ds >= 0.8)) {
+    tier = "medium";
+  // MEDIUM (no address): near-exact name + plausible date carries it — flagged
+  // for review since we can't confirm the address.
+  } else if (!hasAddr && nameScore >= 0.9 && ds >= 0.5) {
     tier = "medium";
   }
 

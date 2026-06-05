@@ -107,15 +107,11 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
                 <TableRow>
                   <TableHead>Customer Name</TableHead>
                   <TableHead>Address</TableHead>
+                  <TableHead>Rep</TableHead>
                   <TableHead>Install Date</TableHead>
+                  <TableHead>Order Status</TableHead>
                   <TableHead>Carrier</TableHead>
-                  <TableHead>External ID</TableHead>
-                  {validTab === "MATCHED" && (
-                    <>
-                      <TableHead>Matched Sale</TableHead>
-                      <TableHead>Rep</TableHead>
-                    </>
-                  )}
+                  {validTab === "MATCHED" && <TableHead>Matched Sale</TableHead>}
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -127,24 +123,20 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
                       {record.customerName}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-48 truncate">
-                      {record.customerAddress}
+                      {record.customerAddress || "—"}
                     </TableCell>
+                    <TableCell className="text-sm">{record.repName ?? "—"}</TableCell>
                     <TableCell className="text-sm">
                       {record.installDate ? format(new Date(record.installDate), "MMM d, yyyy") : "—"}
                     </TableCell>
-                    <TableCell className="text-sm">{record.carrier.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {record.externalId ?? "—"}
+                      {record.orderStatus ?? "—"}
                     </TableCell>
+                    <TableCell className="text-sm">{record.carrier.name}</TableCell>
                     {validTab === "MATCHED" && (
-                      <>
-                        <TableCell className="text-sm">
-                          {record.matchedSale?.customerName ?? "—"}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {record.matchedSale?.rep?.name ?? "—"}
-                        </TableCell>
-                      </>
+                      <TableCell className="text-sm">
+                        {record.matchedSale?.customerName ?? "—"}
+                      </TableCell>
                     )}
                     <TableCell>
                       <Badge

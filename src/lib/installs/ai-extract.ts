@@ -24,6 +24,8 @@ export type ExtractedRecord = {
   customerAddress: string;
   installDate: string; // as-found; normalized to a Date at persist time
   externalId: string | null;
+  rep: string | null; // sales rep / agent who sold it, as named in the report
+  status: string | null; // order/install status text (ORDER COMPLETE, CANCELLED, …)
   confidence: number; // 0–1
 };
 
@@ -42,6 +44,8 @@ Rules:
 - The service address is the physical address where service was installed — NOT a billing address or PO box if both appear. Include unit/apt when present.
 - "Install date" may be labeled activation date, service date, completed date, turn-up date, etc. Pick the date the service went live.
 - "External id" is any carrier-side order/account/work-order number that identifies the install.
+- "Rep" is the sales rep / agent / dealer who sold the order — look for columns like Rep, Agent, Sold By, Salesperson, AgentId. Return the person's name (strip parentheticals like "(Teki)" and AgentId/email noise; keep the human name).
+- "Status" is the order/install status text if present (e.g. ORDER COMPLETE, ACTIVATED, PENDING INSTALLATION, CANCELLED, READY FOR TECH DISPATCH).
 - Be conservative with confidence: 1.0 = unambiguous, 0.5 = a reasonable guess, <0.3 = highly uncertain. Never fabricate a value — if a field is absent, leave it empty/null rather than inventing one.
 - Ignore summary rows, totals, headers repeated mid-file, and blank separator rows.`;
 
@@ -54,6 +58,8 @@ const ColumnMappingSchema = z.object({
   customerAddress: z.array(z.string()),
   installDate: z.string().nullable(),
   externalId: z.string().nullable(),
+  rep: z.string().nullable(),
+  status: z.string().nullable(),
   confidence: z.number(),
   notes: z.string().nullable(),
 });
@@ -70,7 +76,7 @@ HEADERS: ${JSON.stringify(data.headers)}
 SAMPLE ROWS:
 ${JSON.stringify(sample, null, 2)}
 
-Identify which column(s) map to each target field. Return the EXACT header strings (copy them verbatim from HEADERS). For customerName and customerAddress, return an ordered array of the columns to concatenate (e.g. ["Street #","Street Name","City","State","Zip"] for a split address, or ["Service Address"] for a combined one). For installDate and externalId, return a single header string or null if absent.`;
+Identify which column(s) map to each target field. Return the EXACT header strings (copy them verbatim from HEADERS). For customerName and customerAddress, return an ordered array of the columns to concatenate (e.g. ["Street #","Street Name","City","State","Zip"] for a split address, or ["Service Address"] for a combined one). For installDate, externalId, rep (the sales rep/agent column), and status (order/install status column), return a single header string or null if absent.`;
 
   const res = await client.messages.parse({
     model: AI_MODEL,
@@ -92,6 +98,8 @@ Identify which column(s) map to each target field. Return the EXACT header strin
     customerAddress: clean(mapping.customerAddress),
     installDate: mapping.installDate && valid.has(mapping.installDate) ? mapping.installDate : null,
     externalId: mapping.externalId && valid.has(mapping.externalId) ? mapping.externalId : null,
+    rep: mapping.rep && valid.has(mapping.rep) ? mapping.rep : null,
+    status: mapping.status && valid.has(mapping.status) ? mapping.status : null,
   };
 }
 
@@ -111,9 +119,11 @@ export function applyMapping(mapping: ColumnMapping, data: TabularData): Extract
     const customerAddress = join(mapping.customerAddress, row);
     const installDate = mapping.installDate ? (row[mapping.installDate] ?? "").trim() : "";
     const externalId = mapping.externalId ? (row[mapping.externalId] ?? "").trim() || null : null;
+    const rep = mapping.rep ? (row[mapping.rep] ?? "").trim() || null : null;
+    const status = mapping.status ? (row[mapping.status] ?? "").trim() || null : null;
     // Skip blank/summary rows that have neither a name nor an address.
     if (!customerName && !customerAddress) continue;
-    out.push({ customerName, customerAddress, installDate, externalId, confidence: mapping.confidence });
+    out.push({ customerName, customerAddress, installDate, externalId, rep, status, confidence: mapping.confidence });
   }
   return out;
 }
@@ -127,6 +137,8 @@ const DocumentRecordsSchema = z.object({
       customerAddress: z.string(),
       installDate: z.string(),
       externalId: z.string().nullable(),
+      rep: z.string().nullable(),
+      status: z.string().nullable(),
       confidence: z.number(),
     })
   ),

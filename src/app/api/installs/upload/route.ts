@@ -5,6 +5,7 @@ import { isAIConfigured } from "@/lib/ai/client";
 import { ingestFile, parseLooseDate } from "@/lib/installs/ingest";
 import { extractInstallRecords } from "@/lib/installs/ai-extract";
 import { bestMatch, type SaleLike } from "@/lib/installs/match";
+import { resolveRepId } from "@/lib/installs/rep-resolve";
 
 // AI-driven install-report upload. Replaces the manual-column-mapping flow:
 // the operator just picks a carrier and drops a CSV / XLSX / PDF. The AI
@@ -86,50 +87,82 @@ export async function POST(request: NextRequest) {
     });
     const pool: OpenSale[] = openSales.map((s) => ({ ...s }));
 
+    // Users for rep attribution — resolve the report's rep/agent name → user.
+    const users = await db.user.findMany({ select: { id: true, name: true } });
+
     let matchedCount = 0;
     let unmatchedCount = 0;
     let exceptionCount = 0;
+    let updatedCount = 0;
+    const seenExternal = new Set<string>();
 
     for (const rec of records) {
-      const installDate = parseLooseDate(rec.installDate);
-      const match = bestMatch({ ...rec, installDate }, pool);
+      const ext = rec.externalId?.trim() || null;
+      // Dedupe duplicate rows inside one file (reports repeat orders per page).
+      if (ext) {
+        if (seenExternal.has(ext)) continue;
+        seenExternal.add(ext);
+      }
 
+      const installDate = parseLooseDate(rec.installDate);
+      const repId = resolveRepId(rec.rep, users);
+
+      // Shared fields, incl. rep attribution straight from the report.
       const base = {
-        uploadId: upload.id,
-        carrierId,
-        externalId: rec.externalId ?? undefined,
         customerName: rec.customerName,
         customerAddress: rec.customerAddress,
         installDate: installDate ?? undefined,
         extractionConfidence: rec.confidence,
+        repName: rec.rep ?? undefined,
+        repId: repId ?? undefined,
+        orderStatus: rec.status ?? undefined,
         rawData: JSON.stringify(rec),
       };
 
+      // Cross-upload dedupe: same carrier + order # → update in place.
+      const existing = ext
+        ? await db.installRecord.findFirst({
+            where: { carrierId, externalId: ext },
+            select: { id: true, status: true },
+          })
+        : null;
+
+      if (existing) {
+        const extra: Record<string, unknown> = {};
+        // Re-attempt a match only if it's still unmatched (sales may have been
+        // entered since the last upload).
+        if (existing.status === "UNMATCHED") {
+          const m = bestMatch({ ...rec, installDate }, pool);
+          if (m) {
+            extra.status = "MATCHED";
+            extra.matchedSaleId = m.sale.id;
+            extra.matchScore = m.score.overall;
+            extra.matchConfidence = m.score.tier;
+            await db.sale.update({
+              where: { id: m.sale.id },
+              data: { status: m.score.tier === "high" ? "VERIFIED" : "INSTALLED" },
+            });
+            pool.splice(pool.indexOf(m.sale), 1);
+          }
+        }
+        await db.installRecord.update({ where: { id: existing.id }, data: { ...base, ...extra } });
+        updatedCount++;
+        continue;
+      }
+
+      const match = bestMatch({ ...rec, installDate }, pool);
+      const create = { ...base, uploadId: upload.id, carrierId, externalId: ext ?? undefined };
+
       if (match && match.score.tier === "high") {
-        // Confident match → verify the sale.
         await db.installRecord.create({
-          data: {
-            ...base,
-            status: "MATCHED",
-            matchedSaleId: match.sale.id,
-            matchScore: match.score.overall,
-            matchConfidence: "high",
-          },
+          data: { ...create, status: "MATCHED", matchedSaleId: match.sale.id, matchScore: match.score.overall, matchConfidence: "high" },
         });
         await db.sale.update({ where: { id: match.sale.id }, data: { status: "VERIFIED" } });
         pool.splice(pool.indexOf(match.sale), 1);
         matchedCount++;
       } else if (match && match.score.tier === "medium") {
-        // Plausible but uncertain → record the match, mark the sale installed
-        // (NOT verified), and flag an exception for a human to confirm.
         const ir = await db.installRecord.create({
-          data: {
-            ...base,
-            status: "MATCHED",
-            matchedSaleId: match.sale.id,
-            matchScore: match.score.overall,
-            matchConfidence: "medium",
-          },
+          data: { ...create, status: "MATCHED", matchedSaleId: match.sale.id, matchScore: match.score.overall, matchConfidence: "medium" },
         });
         await db.sale.update({ where: { id: match.sale.id }, data: { status: "INSTALLED" } });
         await db.installException.create({
@@ -145,8 +178,7 @@ export async function POST(request: NextRequest) {
         matchedCount++;
         exceptionCount++;
       } else {
-        // No candidate cleared the bar.
-        await db.installRecord.create({ data: { ...base, status: "UNMATCHED" } });
+        await db.installRecord.create({ data: { ...create, status: "UNMATCHED" } });
         unmatchedCount++;
       }
     }
@@ -164,6 +196,7 @@ export async function POST(request: NextRequest) {
       matchedCount,
       unmatchedCount,
       exceptionCount,
+      updatedCount,
       notes: notes ?? null,
     });
   } catch (error) {
