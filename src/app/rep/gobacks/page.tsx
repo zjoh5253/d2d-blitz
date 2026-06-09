@@ -243,7 +243,12 @@ function NewGobackSheet({ onClose, onCreated }: { onClose: () => void; onCreated
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           blitzId, prospectName, prospectPhone: prospectPhone || undefined,
-          prospectAddress, followUpDate, notes: notes || undefined,
+          prospectAddress,
+          // datetime-local gives a TZ-less wall-clock ("2026-06-11T14:30");
+          // convert it to a timezone-aware ISO in the rep's browser so the
+          // server (UTC on prod) stores the intended moment, not 14:30 UTC.
+          followUpDate: followUpDate ? new Date(followUpDate).toISOString() : followUpDate,
+          notes: notes || undefined,
         }),
       });
       if (!res.ok) {
