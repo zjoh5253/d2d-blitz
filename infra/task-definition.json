@@ -1,0 +1,51 @@
+{
+  "family": "d2dblitz-web",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::596871238996:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::596871238996:role/d2dblitzTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "d2dblitz-web",
+      "image": "596871238996.dkr.ecr.us-east-1.amazonaws.com/d2dblitz-app:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "secrets": [
+        { "name": "DATABASE_URL",       "valueFrom": "/d2dblitz/DATABASE_URL" },
+        { "name": "AUTH_SECRET",        "valueFrom": "/d2dblitz/AUTH_SECRET" },
+        { "name": "CRON_SECRET",        "valueFrom": "/d2dblitz/CRON_SECRET" },
+        { "name": "RESEND_API_KEY",     "valueFrom": "/d2dblitz/RESEND_API_KEY" },
+        { "name": "STRIPE_SECRET_KEY",  "valueFrom": "/d2dblitz/STRIPE_SECRET_KEY" },
+        { "name": "SENTRY_DSN",         "valueFrom": "/d2dblitz/SENTRY_DSN" }
+      ],
+      "environment": [
+        { "name": "NODE_ENV",                   "value": "production" },
+        { "name": "NEXTAUTH_URL",               "value": "https://app.d2dblitz.zachjohnson.dev" },
+        { "name": "EMAIL_FROM",                 "value": "noreply@d2dblitz.zachjohnson.dev" },
+        { "name": "NEXT_TELEMETRY_DISABLED",    "value": "1" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/d2dblitz-web",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}
