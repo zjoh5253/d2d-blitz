@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Home, ClipboardList, MapPin, DollarSign, Wallet, User } from "lucide-react";
 import { GpsSessionProvider } from "@/components/gps-session-context";
+import { InstallPrompt } from "@/components/install-prompt";
 
 // Mobile-web rep experience — mirrors the native app's bottom-tab nav.
 // Renders inside a phone-shaped viewport on desktop but full-bleed on
@@ -70,6 +71,7 @@ export default function RepLayout({ children }: { children: React.ReactNode }) {
           })}
         </ul>
       </nav>
+      <InstallPrompt />
     </div>
     </GpsSessionProvider>
   );
