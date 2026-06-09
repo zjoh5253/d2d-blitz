@@ -2,41 +2,44 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth-mobile";
 import { db } from "@/lib/db";
 
+function startOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+function endOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
+
+// Resolve a named preset to a [start, end] window. A custom range (from/to)
+// is handled by the caller and takes precedence over the preset.
 function getPeriodDates(period: string): { start: Date; end: Date } {
   const now = new Date();
+
+  if (period === "today") return { start: startOfDay(now), end: endOfDay(now) };
+
+  if (period === "yesterday") {
+    const y = new Date(now);
+    y.setDate(now.getDate() - 1);
+    return { start: startOfDay(y), end: endOfDay(y) };
+  }
 
   if (period === "week") {
     const day = now.getDay();
     const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Monday start
     const start = new Date(now);
     start.setDate(diff);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(now);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
+    return { start: startOfDay(start), end: endOfDay(now) };
   }
 
   if (period === "month") {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
+    return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: endOfDay(now) };
   }
 
-  if (period === "season") {
-    // Q1: Jan-Mar, Q2: Apr-Jun, Q3: Jul-Sep, Q4: Oct-Dec
-    const q = Math.floor(now.getMonth() / 3);
-    const start = new Date(now.getFullYear(), q * 3, 1);
-    const end = new Date(now);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
-  }
-
-  // lifetime
-  const start = new Date(0);
-  const end = new Date(now);
-  end.setHours(23, 59, 59, 999);
-  return { start, end };
+  // "all" / lifetime (default)
+  return { start: new Date(0), end: endOfDay(now) };
 }
 
 export async function GET(request: NextRequest) {
@@ -50,8 +53,20 @@ export async function GET(request: NextRequest) {
     const period = searchParams.get("period") ?? "month";
     const marketId = searchParams.get("marketId") ?? undefined;
     const blitzId = searchParams.get("blitzId") ?? undefined;
+    const repId = searchParams.get("repId") ?? undefined;
+    const fromParam = searchParams.get("from");
+    const toParam = searchParams.get("to");
 
-    const { start, end } = getPeriodDates(period);
+    // Custom range wins over the named preset when both ends are valid dates.
+    let start: Date, end: Date;
+    const from = fromParam ? new Date(fromParam) : null;
+    const to = toParam ? new Date(toParam) : null;
+    if (from && to && !isNaN(from.getTime()) && !isNaN(to.getTime())) {
+      start = startOfDay(from);
+      end = endOfDay(to);
+    } else {
+      ({ start, end } = getPeriodDates(period));
+    }
 
     // Get reps with active compliance holds
     const heldReps = await db.complianceHold.findMany({
@@ -68,12 +83,12 @@ export async function GET(request: NextRequest) {
     });
     const suspendedRepIds = new Set(latestPeriods.map((p) => p.repId));
 
-    // Scope filters (blitz wins over market)
-    const scopeWhere: Record<string, unknown> = blitzId
-      ? { blitzId }
-      : marketId
-        ? { blitz: { marketId } }
-        : {};
+    // Scope filters — combinable. blitz wins over market for the geographic
+    // scope; repId narrows to a single rep on top of either.
+    const scopeWhere: Record<string, unknown> = {
+      ...(blitzId ? { blitzId } : marketId ? { blitz: { marketId } } : {}),
+      ...(repId ? { repId } : {}),
+    };
 
     // Total sales per rep (any status) — drives leaderboard membership
     // so reps with submitted-but-not-yet-verified sales still appear.
@@ -85,10 +100,6 @@ export async function GET(request: NextRequest) {
       },
       _count: { id: true },
     });
-
-    const totalSalesMap = new Map(
-      totalSalesByRep.map((r) => [r.repId, r._count.id])
-    );
 
     // Verified installs per rep (subset)
     const verifiedByRep = await db.sale.groupBy({
@@ -140,7 +151,20 @@ export async function GET(request: NextRequest) {
       )
       .map((row, idx) => ({ ...row, rank: idx + 1 }));
 
-    return NextResponse.json({ period, rows });
+    // Filter options for the UI dropdowns. Blitz doubles as "Team" for now
+    // (per Teki — a standalone team grouping is a later build).
+    const [blitzes, markets] = await Promise.all([
+      db.blitz.findMany({ select: { id: true, name: true, marketId: true }, orderBy: { name: "asc" } }),
+      db.market.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    ]);
+
+    return NextResponse.json({
+      period,
+      from: from && to ? from.toISOString() : null,
+      to: from && to ? to.toISOString() : null,
+      rows,
+      options: { blitzes, markets },
+    });
   } catch (error) {
     console.error("[GET /api/leaderboard]", error);
     return NextResponse.json(

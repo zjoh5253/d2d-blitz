@@ -64,11 +64,11 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", req.nextUrl.origin));
   }
 
-  // FIELD_REPs landing on /dashboard root get bounced to the rep
-  // experience. Admin/manager dashboard sub-routes still work for them
-  // if they navigate there directly (per the role table above).
+  // FIELD_REPs landing on /dashboard root get bounced straight to the Leads
+  // Map — their primary working screen. Admin/manager dashboard sub-routes
+  // still work for them if they navigate there directly (per the role table).
   if (userRole === "FIELD_REP" && pathname === "/dashboard") {
-    return NextResponse.redirect(new URL("/rep/leads", req.nextUrl.origin));
+    return NextResponse.redirect(new URL("/rep/leads?view=map", req.nextUrl.origin));
   }
 
   return NextResponse.next();

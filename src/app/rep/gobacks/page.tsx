@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, X, Calendar, Phone, MapPin, CheckCircle2 } from "lucide-react";
+import { Plus, X, Calendar, CalendarPlus, Phone, MapPin, CheckCircle2 } from "lucide-react";
 
 type GoBackStatus = "SCHEDULED" | "REVISITED" | "CONVERTED" | "CLOSED";
 
@@ -27,11 +27,37 @@ const STATUS_CFG: Record<GoBackStatus, { label: string; bg: string; color: strin
 
 const STATUS_ORDER: GoBackStatus[] = ["SCHEDULED", "REVISITED", "CONVERTED", "CLOSED"];
 
+const REMINDER_OPTS: { value: string; label: string }[] = [
+  { value: "0", label: "At time" },
+  { value: "15", label: "15 min" },
+  { value: "30", label: "30 min" },
+  { value: "60", label: "1 hour" },
+  { value: "1440", label: "1 day" },
+];
+
+// Google Calendar "add event" template link. Reminders aren't settable via the
+// template URL (Google uses the user's default) — the Apple/.ics path carries
+// the exact reminder.
+function googleCalUrl(g: GoBack): string {
+  const start = new Date(g.followUpDate);
+  const end = new Date(start.getTime() + 30 * 60_000);
+  const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: `Follow-up: ${g.prospectName}`,
+    dates: `${fmt(start)}/${fmt(end)}`,
+    details: [g.prospectPhone ? `Phone: ${g.prospectPhone}` : "", g.notes ?? ""].filter(Boolean).join("\n"),
+    location: g.prospectAddress,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 export default function RepGobacksPage() {
   const [gobacks, setGobacks] = useState<GoBack[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState<GoBackStatus | "ALL">("SCHEDULED");
+  const [reminders, setReminders] = useState<Record<string, string>>({});
 
   const fetchGobacks = async () => {
     setLoading(true);
@@ -144,6 +170,37 @@ export default function RepGobacksPage() {
                   );
                 })}
               </div>
+              {(g.status === "SCHEDULED" || g.status === "REVISITED") && (
+                <div className="flex items-center gap-2 pt-2 border-t text-xs">
+                  <span className="text-gray-500 flex items-center gap-1 shrink-0">
+                    <CalendarPlus className="size-3" /> Remind
+                  </span>
+                  <select
+                    value={reminders[g.id] ?? "30"}
+                    onChange={(e) => setReminders((r) => ({ ...r, [g.id]: e.target.value }))}
+                    className="rounded border border-gray-200 px-1.5 py-1 bg-white"
+                    aria-label="Reminder time before follow-up"
+                  >
+                    {REMINDER_OPTS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <a
+                    href={`/api/go-backs/${g.id}/calendar?reminder=${reminders[g.id] ?? "30"}`}
+                    className="ml-auto rounded bg-gray-100 px-2 py-1 font-medium text-gray-700"
+                  >
+                    Apple
+                  </a>
+                  <a
+                    href={googleCalUrl(g)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded bg-gray-100 px-2 py-1 font-medium text-gray-700"
+                  >
+                    Google
+                  </a>
+                </div>
+              )}
             </div>
           );
         })
@@ -223,8 +280,8 @@ function NewGobackSheet({ onClose, onCreated }: { onClose: () => void; onCreated
           <Field label="Address *">
             <input value={prospectAddress} onChange={(e) => setProspectAddress(e.target.value)} className="w-full h-11 px-3 rounded-lg border" />
           </Field>
-          <Field label="Follow-up date *">
-            <input type="date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} className="w-full h-11 px-3 rounded-lg border" />
+          <Field label="Follow-up date & time *">
+            <input type="datetime-local" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} className="w-full h-11 px-3 rounded-lg border" />
           </Field>
           <Field label="Notes">
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="w-full px-3 py-2 rounded-lg border" />

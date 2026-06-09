@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Trophy, TrendingUp } from "lucide-react";
 
@@ -12,49 +12,98 @@ interface Row {
   installRate: number;
 }
 
-type Period = "week" | "month" | "quarter" | "all";
+interface Options {
+  blitzes: { id: string; name: string; marketId: string | null }[];
+  markets: { id: string; name: string }[];
+}
+
+type Period = "today" | "yesterday" | "week" | "month" | "all" | "custom";
 
 const PERIOD_LABELS: Record<Period, string> = {
+  today: "Today",
+  yesterday: "Yesterday",
   week: "This week",
   month: "This month",
-  quarter: "This quarter",
   all: "All time",
+  custom: "Custom range",
 };
+
+const PERIOD_ORDER: Period[] = ["today", "yesterday", "week", "month", "all", "custom"];
 
 export default function RepLeaderboardPage() {
   const { data: session } = useSession();
   const myId = session?.user?.id;
+
   const [period, setPeriod] = useState<Period>("month");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [marketId, setMarketId] = useState("");
+  const [blitzId, setBlitzId] = useState("");
+
   const [rows, setRows] = useState<Row[]>([]);
+  const [options, setOptions] = useState<Options>({ blitzes: [], markets: [] });
   const [loading, setLoading] = useState(true);
 
+  // Blitz dropdown narrows to the selected market.
+  const blitzOptions = useMemo(
+    () => options.blitzes.filter((b) => !marketId || b.marketId === marketId),
+    [options.blitzes, marketId]
+  );
+
+  // If the selected blitz no longer matches the chosen market, clear it.
   useEffect(() => {
+    if (blitzId && !blitzOptions.some((b) => b.id === blitzId)) setBlitzId("");
+  }, [blitzId, blitzOptions]);
+
+  useEffect(() => {
+    // Custom needs both ends before we query.
+    if (period === "custom" && (!customFrom || !customTo)) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/leaderboard?period=${period}`);
+        const params = new URLSearchParams();
+        if (period === "custom") {
+          params.set("from", customFrom);
+          params.set("to", customTo);
+        } else {
+          params.set("period", period);
+        }
+        if (marketId) params.set("marketId", marketId);
+        if (blitzId) params.set("blitzId", blitzId);
+        const res = await fetch(`/api/leaderboard?${params.toString()}`);
         if (res.ok) {
           const data = await res.json();
           setRows(data.rows ?? []);
+          if (data.options) setOptions(data.options);
         }
       } finally {
         setLoading(false);
       }
     })();
-  }, [period]);
+  }, [period, customFrom, customTo, marketId, blitzId]);
 
   const myRank = myId ? rows.findIndex((r) => r.repId === myId) + 1 : 0;
   const myRow = myId ? rows.find((r) => r.repId === myId) : null;
+
+  const subtitle =
+    period === "custom" && customFrom && customTo
+      ? `${customFrom} → ${customTo}`
+      : PERIOD_LABELS[period];
 
   return (
     <div className="p-4 space-y-4">
       <header>
         <h1 className="text-lg font-bold">Leaderboard</h1>
-        <p className="text-xs text-gray-500">{PERIOD_LABELS[period]}</p>
+        <p className="text-xs text-gray-500">{subtitle}</p>
       </header>
 
+      {/* Date presets */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar">
-        {(["week", "month", "quarter", "all"] as const).map((p) => {
+        {PERIOD_ORDER.map((p) => {
           const active = period === p;
           return (
             <button
@@ -66,6 +115,55 @@ export default function RepLeaderboardPage() {
             </button>
           );
         })}
+      </div>
+
+      {/* Custom range inputs */}
+      {period === "custom" && (
+        <div className="flex items-center gap-2 text-sm">
+          <input
+            type="date"
+            value={customFrom}
+            max={customTo || undefined}
+            onChange={(e) => setCustomFrom(e.target.value)}
+            className="flex-1 rounded-lg border border-gray-200 px-2 py-1.5"
+            aria-label="From date"
+          />
+          <span className="text-gray-400">→</span>
+          <input
+            type="date"
+            value={customTo}
+            min={customFrom || undefined}
+            onChange={(e) => setCustomTo(e.target.value)}
+            className="flex-1 rounded-lg border border-gray-200 px-2 py-1.5"
+            aria-label="To date"
+          />
+        </div>
+      )}
+
+      {/* Market + Blitz (Team) filters */}
+      <div className="grid grid-cols-2 gap-2">
+        <select
+          value={marketId}
+          onChange={(e) => setMarketId(e.target.value)}
+          className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm bg-white"
+          aria-label="Market filter"
+        >
+          <option value="">All markets</option>
+          {options.markets.map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+        <select
+          value={blitzId}
+          onChange={(e) => setBlitzId(e.target.value)}
+          className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm bg-white"
+          aria-label="Blitz (team) filter"
+        >
+          <option value="">All blitzes</option>
+          {blitzOptions.map((b) => (
+            <option key={b.id} value={b.id}>{b.name}</option>
+          ))}
+        </select>
       </div>
 
       {myRow && (
@@ -83,8 +181,10 @@ export default function RepLeaderboardPage() {
 
       {loading ? (
         <div className="text-center text-sm text-gray-500 py-8">Loading…</div>
+      ) : period === "custom" && (!customFrom || !customTo) ? (
+        <div className="rounded-lg border border-dashed bg-white p-8 text-center text-sm text-gray-500">Pick a start and end date.</div>
       ) : rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed bg-white p-8 text-center text-sm text-gray-500">No sales yet this period.</div>
+        <div className="rounded-lg border border-dashed bg-white p-8 text-center text-sm text-gray-500">No sales for this filter.</div>
       ) : (
         <div className="bg-white rounded-lg border divide-y">
           {rows.map((r, i) => {

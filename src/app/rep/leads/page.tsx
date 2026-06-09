@@ -67,7 +67,10 @@ type ViewMode = "list" | "map";
 export default function RepLeadsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const initialView = (searchParams.get("view") as ViewMode) || "list";
+  // Map is the rep's primary working screen — tapping "Leads" (or landing here
+  // after login) opens the map directly. Reps can still switch to list via the
+  // header toggle (?view=list).
+  const initialView = (searchParams.get("view") as ViewMode) || "map";
 
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
