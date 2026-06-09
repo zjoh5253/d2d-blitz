@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Home, ClipboardList, MapPin, DollarSign, Wallet, User } from "lucide-react";
+import { GpsSessionProvider } from "@/components/gps-session-context";
 
 // Mobile-web rep experience — mirrors the native app's bottom-tab nav.
 // Renders inside a phone-shaped viewport on desktop but full-bleed on
@@ -38,6 +39,7 @@ export default function RepLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
+    <GpsSessionProvider>
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Main content area scrolls; reserves space for the bottom tab bar. */}
       <main className="flex-1 overflow-y-auto pb-20">{children}</main>
@@ -69,5 +71,6 @@ export default function RepLayout({ children }: { children: React.ReactNode }) {
         </ul>
       </nav>
     </div>
+    </GpsSessionProvider>
   );
 }

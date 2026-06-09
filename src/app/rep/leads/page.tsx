@@ -4,6 +4,9 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Clock, Home, ArrowLeftRight, CheckCircle2, XCircle, MapIcon, ListIcon, Navigation, X, ChevronRight } from "lucide-react";
 import { RepLeadsMap, type RepLeadPin } from "./rep-leads-map";
+import type { KnockResult } from "../gps/rep-gps-map";
+import { useGpsSession } from "@/components/gps-session-context";
+import { GpsStatusBar } from "@/components/gps-status-bar";
 
 type Disposition = "PENDING" | "NOT_HOME" | "GO_BACK" | "SOLD" | "NOT_INTERESTED";
 
@@ -67,6 +70,7 @@ type ViewMode = "list" | "map";
 export default function RepLeadsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const gps = useGpsSession();
   // Map is the rep's primary working screen — tapping "Leads" (or landing here
   // after login) opens the map directly. Reps can still switch to list via the
   // header toggle (?view=list).
@@ -200,6 +204,18 @@ export default function RepLeadsPage() {
     setGoBackMode(true);
   };
 
+  // Logging a disposition on the map doubles as a knock for the active GPS
+  // session (Teki #7: knock count updates without screen-switching).
+  const recordKnock = (d: Disposition, lead: Lead) => {
+    if (!gps.active || typeof lead.lat !== "number" || typeof lead.lng !== "number") return;
+    const r: KnockResult | null =
+      d === "SOLD" ? "sale" :
+      d === "NOT_HOME" ? "not_home" :
+      d === "GO_BACK" ? "follow_up" :
+      d === "NOT_INTERESTED" ? "not_interested" : null;
+    if (r) gps.logKnock(r, { lat: lead.lat, lng: lead.lng });
+  };
+
   const resolve = async (disposition: Disposition) => {
     if (!selectedLead) return;
     setResolving(true);
@@ -210,6 +226,7 @@ export default function RepLeadsPage() {
         body: JSON.stringify({ disposition }),
       });
       if (res.ok) {
+        recordKnock(disposition, selectedLead);
         if (disposition === "SOLD") {
           goToSaleForm(selectedLead);
           return;
@@ -235,6 +252,7 @@ export default function RepLeadsPage() {
         }),
       });
       if (res.ok) {
+        recordKnock("GO_BACK", selectedLead);
         closeSheet();
         fetchLeads();
       }
@@ -258,6 +276,7 @@ export default function RepLeadsPage() {
         body: JSON.stringify({ disposition: "NOT_INTERESTED", notes: reasonNotes }),
       });
       if (res.ok) {
+        recordKnock("NOT_INTERESTED", selectedLead);
         closeSheet();
         fetchLeads();
       }
@@ -280,6 +299,8 @@ export default function RepLeadsPage() {
 
   return (
     <div className="flex h-screen flex-col">
+      {/* Unified map workflow: GPS session bar sits atop the map (Teki #7). */}
+      {view === "map" && <GpsStatusBar />}
       {/* Header */}
       <div className="border-b bg-white px-4 py-3 flex items-center justify-between">
         <div>
