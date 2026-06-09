@@ -42,6 +42,14 @@ export async function GET(request: NextRequest) {
       where,
       orderBy: { startedAt: "desc" },
       take: 100,
+      include: {
+        // Latest edit request so the history view can show its review state.
+        edits: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { id: true, status: true, reviewNote: true, createdAt: true },
+        },
+      },
     });
 
     return NextResponse.json(sessions);

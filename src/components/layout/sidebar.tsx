@@ -195,6 +195,12 @@ const NAV_GROUPS: NavGroup[] = [
         roles: ["ADMIN", "FIELD_MANAGER"],
       },
       {
+        title: "Time-Log Edits",
+        href: "/dashboard/manager/time-edits",
+        icon: <Timer className="size-[18px]" />,
+        roles: ["ADMIN", "FIELD_MANAGER"],
+      },
+      {
         title: "Manager Blitzes",
         href: "/dashboard/manager/blitzes",
         icon: <Zap className="size-[18px]" />,
