@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { PwaRegister } from "@/components/pwa-register";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -21,6 +22,20 @@ export const metadata: Metadata = {
   title: "D2D Blitz - National Distribution Platform",
   description:
     "End-to-end platform for managing national door-to-door distribution blitz operations, recruiting, markets, compensation, and compliance.",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "D2D Blitz",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#2563eb",
 };
 
 export default function RootLayout({
@@ -36,6 +51,7 @@ export default function RootLayout({
     >
       <body className="antialiased font-sans bg-background text-foreground">
         <Providers>{children}</Providers>
+        <PwaRegister />
       </body>
     </html>
   );

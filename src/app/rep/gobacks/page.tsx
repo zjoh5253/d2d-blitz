@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Plus, X, Calendar, CalendarPlus, Phone, MapPin, CheckCircle2 } from "lucide-react";
+import { EnableRemindersButton } from "@/components/enable-reminders-button";
 
 type GoBackStatus = "SCHEDULED" | "REVISITED" | "CONVERTED" | "CLOSED";
 
@@ -100,9 +101,12 @@ export default function RepGobacksPage() {
           <h1 className="text-lg font-bold">Go-Backs</h1>
           <p className="text-xs text-gray-500">Follow-ups you scheduled</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 rounded-full bg-blue-600 text-white px-4 py-2 text-sm font-medium">
-          <Plus className="size-4" /> New
-        </button>
+        <div className="flex items-center gap-2">
+          <EnableRemindersButton />
+          <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 rounded-full bg-blue-600 text-white px-4 py-2 text-sm font-medium">
+            <Plus className="size-4" /> New
+          </button>
+        </div>
       </header>
 
       <div className="flex gap-2 overflow-x-auto no-scrollbar">

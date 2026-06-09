@@ -297,6 +297,7 @@ model User {
   gpsSessions GpsSession[]
   timeLogEdits   GpsSessionEdit[] @relation("TimeLogEditRep")
   timeLogReviews GpsSessionEdit[] @relation("TimeLogEditReviewer")
+  pushSubscriptions PushSubscription[]
 
   @@index([role])
   @@index([status])
@@ -559,6 +560,8 @@ model GoBack {
   status           GoBackStatus @default(SCHEDULED)
   followUpDate     DateTime     @map("follow_up_date")
   notes            String?
+  // Set once a push reminder has been sent so the cron doesn't re-notify.
+  reminderSentAt   DateTime?    @map("reminder_sent_at")
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
 
@@ -572,6 +575,22 @@ model GoBack {
   @@index([status])
   @@index([followUpDate])
   @@map("go_backs")
+}
+
+// Web-push subscription for a rep's installed PWA (one per browser/device).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  repId     String   @map("rep_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  rep User @relation(fields: [repId], references: [id], onDelete: Cascade)
+
+  @@index([repId])
+  @@map("push_subscriptions")
 }
 
 model Sale {
