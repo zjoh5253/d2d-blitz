@@ -32,6 +32,10 @@ export function keyFromParts(
   if (!street || z.length !== 5) return null
   const canon = canonicalizeAddress(street)
   if (!canon) return null
+  // Reject street-less addresses (e.g. number-only "0", blank street name).
+  // Their canonical key has no letters and would collide — every such lead
+  // would match one degenerate cache/customer entry and be falsely suppressed.
+  if (!/[a-z]/i.test(canon)) return null
   return `${canon}|${z}`
 }
 
@@ -46,19 +50,23 @@ export function keyFromFullAddress(full: string | null): string | null {
   if (!street) return null
   const canon = canonicalizeAddress(street)
   if (!canon) return null
+  if (!/[a-z]/i.test(canon)) return null // reject street-less / number-only (see keyFromParts)
   return `${canon}|${z}`
 }
 
 export type SuppressReason = string
 
-// Gather the set of known-current-customer keys → human reason.
+// Gather the set of addresses that should be hidden from reps → human reason.
+// Two kinds: current customers (installs/sales/sold/gokinetic/partner exports)
+// and addresses Kinetic does NOT serve (gokinetic serviceable=false). Both are
+// "not blitz-ready"; distinct reason strings keep them separable/reversible.
 export async function gatherKnownCustomerKeys(): Promise<Map<string, SuppressReason>> {
   const keys = new Map<string, SuppressReason>()
   const add = (k: string | null, reason: SuppressReason) => {
     if (k && !keys.has(k)) keys.set(k, reason)
   }
 
-  const [installs, sales, soldLeads, kineticCustomers, servicedAddresses] = await Promise.all([
+  const [installs, sales, soldLeads, kineticCustomers, servicedAddresses, nonServiceable] = await Promise.all([
     db.installRecord.findMany({ select: { customerAddress: true } }),
     db.sale.findMany({ select: { customerAddress: true } }),
     db.doorKnockLead.findMany({
@@ -75,6 +83,15 @@ export async function gatherKnownCustomerKeys(): Promise<Map<string, SuppressRea
     // CrowdFiber export for RightFiber). addressKey is already canonical;
     // `source` tags which export it came from so reasons stay distinguishable.
     db.servicedAddress.findMany({ select: { addressKey: true, source: true } }),
+    // Addresses the gokinetic scan affirmatively says Kinetic does NOT serve.
+    // Not a "customer" — but equally not blitz-ready, so reps shouldn't knock
+    // them. `comingSoon` (future fiber) gets a distinct reason so those can be
+    // un-suppressed when the area goes live. Distinct reason strings keep these
+    // separable from customer suppressions for one-query reversal.
+    db.kineticAddressStatus.findMany({
+      where: { serviceable: false },
+      select: { addressKey: true, comingSoon: true },
+    }),
   ])
 
   for (const r of installs) add(keyFromFullAddress(r.customerAddress), "Current customer (install on record)")
@@ -82,6 +99,10 @@ export async function gatherKnownCustomerKeys(): Promise<Map<string, SuppressRea
   for (const l of soldLeads) add(keyFromParts(l.streetNumber, l.streetName, l.zip), "Current customer (sold lead)")
   for (const k of kineticCustomers) add(k.addressKey, "Current Kinetic customer (gokinetic)")
   for (const s of servicedAddresses) add(s.addressKey, `Current customer (${s.source})`)
+  // Added last so a customer/serviced match (added above) wins the reason for
+  // any key that is both.
+  for (const a of nonServiceable)
+    add(a.addressKey, a.comingSoon ? "Kinetic coming-soon (gokinetic)" : "Not Kinetic-serviceable (gokinetic)")
 
   return keys
 }
