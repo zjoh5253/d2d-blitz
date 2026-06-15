@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Clock, Home, ArrowLeftRight, CheckCircle2, XCircle, MapIcon, ListIcon, Navigation, X, ChevronRight } from "lucide-react";
+import { Clock, Home, ArrowLeftRight, CheckCircle2, XCircle, MapIcon, ListIcon, Navigation, X, ChevronRight, ShieldCheck, Ban, HelpCircle, Loader2 } from "lucide-react";
 import { RepLeadsMap, type RepLeadPin } from "./rep-leads-map";
 import type { KnockResult } from "../gps/rep-gps-map";
 import { useGpsSession } from "@/components/gps-session-context";
@@ -61,6 +61,26 @@ const RESOLVE_OPTIONS: Array<{ key: Disposition; label: string }> = [
   { key: "NOT_INTERESTED", label: "Not Interested" },
 ];
 
+// "Worth knocking?" Kinetic availability check (just-in-time, per door).
+type Verdict = "worth" | "customer" | "unserviceable" | "coming_soon" | "unknown";
+interface KnockCheck {
+  verdict: Verdict;
+  estCompletionDt?: string | null;
+  cached?: boolean;
+}
+const VERDICT_UI: Record<Verdict, {
+  label: string;
+  sub: string;
+  box: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = {
+  worth:        { label: "Worth knocking",            sub: "Kinetic is available here — no current account.",      box: "bg-green-50 border-green-200 text-green-800",   icon: ShieldCheck },
+  customer:     { label: "Likely skip — customer",    sub: "This address looks like an existing Kinetic customer.", box: "bg-red-50 border-red-200 text-red-800",         icon: Ban },
+  unserviceable:{ label: "Kinetic not available",     sub: "Kinetic can’t be sold at this address.",               box: "bg-amber-50 border-amber-200 text-amber-800",   icon: XCircle },
+  coming_soon:  { label: "Coming soon",               sub: "Kinetic is launching here — pre-reg opportunity.",     box: "bg-blue-50 border-blue-200 text-blue-800",      icon: Clock },
+  unknown:      { label: "Couldn’t verify",           sub: "Go ahead and knock as normal.",                        box: "bg-gray-50 border-gray-200 text-gray-600",      icon: HelpCircle },
+};
+
 function formatEventTime(iso: string): string {
   return new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
@@ -94,6 +114,9 @@ export default function RepLeadsPage() {
   const [reasonNotes, setReasonNotes] = useState("");
   // Action history for the currently-open pin.
   const [leadEvents, setLeadEvents] = useState<LeadEvent[]>([]);
+  // "Worth knocking?" availability check for the currently-open pin.
+  const [knockCheck, setKnockCheck] = useState<KnockCheck | null>(null);
+  const [checkingKnock, setCheckingKnock] = useState(false);
 
   // Fetch ALL the rep's leads once (unfiltered) so the disposition tabs can
   // filter client-side and the map can show overall progress regardless of
@@ -122,6 +145,32 @@ export default function RepLeadsPage() {
           setLeadEvents(Array.isArray(data.events) ? data.events : []);
         }
       } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedLead]);
+
+  // Run the just-in-time "worth knocking?" check when a pin opens. Cache-first
+  // on the server, so this is usually instant; on a cold address it does one
+  // live Kinetic lookup. Degrades to "unknown" on any error/throttle.
+  useEffect(() => {
+    if (!selectedLead || selectedLead.disposition === "SOLD") { setKnockCheck(null); return; }
+    let cancelled = false;
+    setKnockCheck(null);
+    setCheckingKnock(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/kinetic/check`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ leadId: selectedLead.id }),
+        });
+        const data: KnockCheck = res.ok ? await res.json() : { verdict: "unknown" };
+        if (!cancelled) setKnockCheck(data);
+      } catch {
+        if (!cancelled) setKnockCheck({ verdict: "unknown" });
+      } finally {
+        if (!cancelled) setCheckingKnock(false);
+      }
     })();
     return () => { cancelled = true; };
   }, [selectedLead]);
@@ -186,6 +235,8 @@ export default function RepLeadsPage() {
     setReasonMode(false);
     setReasonNotes("");
     setLeadEvents([]);
+    setKnockCheck(null);
+    setCheckingKnock(false);
   };
 
   // Default a new go-back to tomorrow at 10:00 (local), formatted for
@@ -484,6 +535,32 @@ export default function RepLeadsPage() {
                 </div>
               ) : (
                 <>
+                  {/* Worth-knocking? Kinetic availability check for this door. */}
+                  {checkingKnock && !knockCheck ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-500">
+                      <Loader2 className="size-4 animate-spin" />
+                      Checking Kinetic availability…
+                    </div>
+                  ) : knockCheck ? (
+                    (() => {
+                      const v = VERDICT_UI[knockCheck.verdict] ?? VERDICT_UI.unknown;
+                      const Icon = v.icon;
+                      const sub =
+                        knockCheck.verdict === "coming_soon" && knockCheck.estCompletionDt
+                          ? `Kinetic is launching here (~${knockCheck.estCompletionDt}) — pre-reg opportunity.`
+                          : v.sub;
+                      return (
+                        <div className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 ${v.box}`}>
+                          <Icon className="size-5 shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold">{v.label}</div>
+                            <div className="text-xs opacity-90">{sub}</div>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : null}
+
                   <button
                     onClick={() => navigateTo(selectedLead)}
                     disabled={typeof selectedLead.lat !== "number"}
