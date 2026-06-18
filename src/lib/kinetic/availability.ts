@@ -28,7 +28,7 @@ type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: Dispatcher }
 // rotating RESIDENTIAL proxy gateway here — gokinetic throttles hard per IP,
 // and rotating IPs is what lets the scan run at volume / in the cloud.
 // Format: http://user:pass@gateway-host:port (https:// also fine).
-function buildProxyDispatcher(): ProxyAgent | undefined {
+function buildProxyDispatcher(logRoute = true): ProxyAgent | undefined {
   const url = process.env.KINETIC_PROXY_URL || process.env.IPROYAL_PROXY_URL
   if (!url) return undefined
   const u = new URL(url)
@@ -37,10 +37,10 @@ function buildProxyDispatcher(): ProxyAgent | undefined {
     const token =
       "Basic " +
       Buffer.from(`${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}`).toString("base64")
-    console.log(`[kinetic] routing through proxy ${u.host}`)
+    if (logRoute) console.log(`[kinetic] routing through proxy ${u.host}`)
     return new ProxyAgent({ uri, token })
   }
-  console.log(`[kinetic] routing through proxy ${u.host}`)
+  if (logRoute) console.log(`[kinetic] routing through proxy ${u.host}`)
   return new ProxyAgent(uri)
 }
 
@@ -112,31 +112,48 @@ export class KineticClient {
   private sessionId = ""
   private readonly deviceId = randomUUID()
   private readonly minDelayMs: number
-  private readonly dispatcher?: Dispatcher
+  private dispatcher?: Dispatcher
 
   constructor(opts: { minDelayMs?: number } = {}) {
     this.minDelayMs = opts.minDelayMs ?? 400
     this.dispatcher = buildProxyDispatcher()
   }
 
-  private async ensureSession(): Promise<void> {
+  private async rotateProxy(): Promise<void> {
+    if (!this.dispatcher) return
+    await this.dispatcher.close()
+    this.dispatcher = buildProxyDispatcher(false)
+  }
+
+  private async ensureSession(attempt = 0): Promise<void> {
     if (this.token) return
     const body = JSON.stringify({ brazeDeviceId: "" })
-    const res = await fetch(SESSION_URL, {
-      method: "POST",
-      headers: {
-        authorization: BASIC,
-        "content-type": "application/json",
-        accept: "application/json, text/plain, */*",
-        "user-agent": UA,
-        referer: "https://buy.gokinetic.com/check-availability",
-        "x-meta-info": META,
-        "x-resource-id": sha256(body),
-        "device-id": this.deviceId,
-      },
-      body,
-      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
-    } as FetchInit)
+    let res
+    try {
+      res = await fetch(SESSION_URL, {
+        method: "POST",
+        headers: {
+          authorization: BASIC,
+          "content-type": "application/json",
+          accept: "application/json, text/plain, */*",
+          "user-agent": UA,
+          referer: "https://buy.gokinetic.com/check-availability",
+          "x-meta-info": META,
+          "x-resource-id": sha256(body),
+          "device-id": this.deviceId,
+        },
+        body,
+        ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+      } as FetchInit)
+    } catch (error) {
+      if (!this.dispatcher || attempt >= 2) throw error
+      await this.rotateProxy()
+      return this.ensureSession(attempt + 1)
+    }
+    if (res.status === 403 && this.dispatcher && attempt < 2) {
+      await this.rotateProxy()
+      return this.ensureSession(attempt + 1)
+    }
     if (res.status !== 200 && res.status !== 201) {
       throw new Error(`kinetic session failed: HTTP ${res.status}`)
     }
@@ -163,25 +180,39 @@ export class KineticClient {
       state: a.state,
       postalCode: a.postalCode,
     })
-    const res = await fetch(SEARCH_URL, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${this.token}`,
-        "content-type": "application/json",
-        accept: "application/json, text/plain, */*",
-        "user-agent": UA,
-        referer: "https://buy.gokinetic.com/check-in-progress",
-        "x-meta-info": META,
-        "x-resource-id": sha256(body),
-        "device-id": this.deviceId,
-        "session-id": this.sessionId,
-      },
-      body,
-      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
-    } as FetchInit)
+    let res
+    try {
+      res = await fetch(SEARCH_URL, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.token}`,
+          "content-type": "application/json",
+          accept: "application/json, text/plain, */*",
+          "user-agent": UA,
+          referer: "https://buy.gokinetic.com/check-in-progress",
+          "x-meta-info": META,
+          "x-resource-id": sha256(body),
+          "device-id": this.deviceId,
+          "session-id": this.sessionId,
+        },
+        body,
+        ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+      } as FetchInit)
+    } catch (error) {
+      if (!this.dispatcher || attempt >= 2) throw error
+      await this.rotateProxy()
+      this.token = null
+      this.sessionId = ""
+      return this.check(a, attempt + 1)
+    }
 
-    if (res.status === 401 && attempt < 2) {
-      this.token = null // force re-auth
+    if ((res.status === 401 || res.status === 403) && attempt < 2) {
+      // Kinetic limits a residential route to a small request budget. A 403
+      // means the current route is spent, so reconnect through the rotating
+      // gateway before authenticating and retrying this address.
+      if (res.status === 403) await this.rotateProxy()
+      this.token = null
+      this.sessionId = ""
       return this.check(a, attempt + 1)
     }
     if (res.status >= 500 && attempt < 2) {
