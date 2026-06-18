@@ -24,12 +24,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 // fetch() init with undici's dispatcher (not in the DOM RequestInit type).
 type FetchInit = RequestInit & { dispatcher?: Dispatcher }
 
-// When KINETIC_PROXY_URL is set, route every request through it. Use a
+// When KINETIC_PROXY_URL or IPROYAL_PROXY_URL is set, route every request through it. Use a
 // rotating RESIDENTIAL proxy gateway here — gokinetic throttles hard per IP,
 // and rotating IPs is what lets the scan run at volume / in the cloud.
 // Format: http://user:pass@gateway-host:port (https:// also fine).
 function buildProxyDispatcher(): ProxyAgent | undefined {
-  const url = process.env.KINETIC_PROXY_URL
+  const url = process.env.KINETIC_PROXY_URL || process.env.IPROYAL_PROXY_URL
   if (!url) return undefined
   const u = new URL(url)
   const uri = `${u.protocol}//${u.host}`
@@ -199,3 +199,4 @@ export class KineticClient {
     return normalize((await res.json()) as Record<string, unknown>)
   }
 }
+
