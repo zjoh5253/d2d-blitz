@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
-import { ProxyAgent, type Dispatcher } from "undici"
+import { fetch, ProxyAgent, type Dispatcher } from "undici"
 
 // Kinetic (gokinetic.com) per-address availability client.
 //
@@ -22,7 +22,7 @@ const sha256 = (s: string) => createHash("sha256").update(s).digest("hex")
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 // fetch() init with undici's dispatcher (not in the DOM RequestInit type).
-type FetchInit = RequestInit & { dispatcher?: Dispatcher }
+type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: Dispatcher }
 
 // When KINETIC_PROXY_URL or IPROYAL_PROXY_URL is set, route every request through it. Use a
 // rotating RESIDENTIAL proxy gateway here — gokinetic throttles hard per IP,
@@ -199,4 +199,3 @@ export class KineticClient {
     return normalize((await res.json()) as Record<string, unknown>)
   }
 }
-

@@ -1,5 +1,5 @@
 import "dotenv/config"
-import { ProxyAgent } from "undici"
+import { fetch, ProxyAgent } from "undici"
 
 // Validate the residential proxy used by the Kinetic scanner.
 //
