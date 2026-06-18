@@ -120,7 +120,7 @@ export interface SuppressionResult {
 // customer. Idempotent: re-running only touches newly-matching leads. Does
 // NOT un-suppress — once flagged it stays flagged unless cleared manually.
 export async function applyCustomerSuppression(
-  opts: { dryRun?: boolean } = {}
+  opts: { dryRun?: boolean; blitzId?: string } = {}
 ): Promise<SuppressionResult> {
   const dryRun = opts.dryRun ?? false
   const known = await gatherKnownCustomerKeys()
@@ -128,7 +128,11 @@ export async function applyCustomerSuppression(
   // Only scan unworked, not-already-suppressed leads — these are the doors a
   // rep would actually knock.
   const leads = await db.doorKnockLead.findMany({
-    where: { disposition: "PENDING", suppressed: false },
+    where: {
+      disposition: "PENDING",
+      suppressed: false,
+      ...(opts.blitzId ? { blitzId: opts.blitzId } : {}),
+    },
     select: { id: true, streetNumber: true, streetName: true, zip: true },
   })
 

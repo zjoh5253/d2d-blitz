@@ -2,6 +2,10 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { importScannerInventory } from "@/lib/blitz-area"
+import { applyCustomerSuppression } from "@/lib/leads/customer-suppression"
+
+export const maxDuration = 300
 
 const blitzCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -11,12 +15,13 @@ const blitzCreateSchema = z.object({
   repCap: z.coerce.number().int().positive("Rep cap must be a positive integer"),
   housingPlan: z.string().optional().or(z.literal("")),
   managerId: z.string().min(1, "Manager is required"),
+  sourceZip: z.string().regex(/^\d{5}$/, "Select a valid address inventory").optional(),
 })
 
 export async function GET(request: Request) {
   try {
     const session = await auth()
-    if (!session) {
+    if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -45,8 +50,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session) {
+    if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+    if (session.user.role !== "ADMIN" && session.user.role !== "FIELD_MANAGER") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
     const body = await request.json()
@@ -58,7 +66,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const { name, marketId, startDate, endDate, repCap, housingPlan, managerId } = parsed.data
+    const { name, marketId, startDate, endDate, repCap, housingPlan, managerId, sourceZip } = parsed.data
 
     const blitz = await db.blitz.create({
       data: {
@@ -77,7 +85,46 @@ export async function POST(request: Request) {
       },
     })
 
-    return NextResponse.json(blitz, { status: 201 })
+    if (!sourceZip) {
+      return NextResponse.json(blitz, { status: 201 })
+    }
+
+    let inventory
+    try {
+      inventory = await importScannerInventory({
+        zip: sourceZip,
+        blitzId: blitz.id,
+        uploadedById: session.user.id!,
+      })
+    } catch (error) {
+      await db.blitz.delete({ where: { id: blitz.id } }).catch(() => undefined)
+      throw error
+    }
+    if (inventory.imported === 0) {
+      await db.blitz.delete({ where: { id: blitz.id } })
+      return NextResponse.json(
+        { error: "No complete addresses are currently loaded for that ZIP" },
+        { status: 409 }
+      )
+    }
+
+    let suppressed = 0
+    try {
+      const suppression = await applyCustomerSuppression({ blitzId: blitz.id })
+      suppressed = suppression.updated
+    } catch (error) {
+      console.error("[blitzes POST suppression]", error)
+    }
+
+    return NextResponse.json({
+      ...blitz,
+      preparation: {
+        imported: inventory.imported,
+        suppressed,
+        readyToScan: inventory.imported - suppressed,
+        uploadBatchId: inventory.uploadBatchId,
+      },
+    }, { status: 201 })
   } catch (error) {
     console.error("[blitzes POST]", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

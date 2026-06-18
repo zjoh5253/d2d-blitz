@@ -1,42 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
 import Link from "next/link"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useRouter, useSearchParams } from "next/navigation"
+import { CalendarDays, Check, Loader2, MapPin, Search, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-
-const blitzSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  marketId: z.string().min(1, "Market is required"),
-  startDate: z.string().min(1, "Start date is required"),
-  endDate: z.string().min(1, "End date is required"),
-  repCap: z.string().min(1, "Rep cap is required").transform((val) => {
-    const n = parseInt(val, 10)
-    if (isNaN(n) || n <= 0) throw new Error("Rep cap must be a positive integer")
-    return n
-  }),
-  housingPlan: z.string().optional().or(z.literal("")),
-  managerId: z.string().min(1, "Manager is required"),
-})
-
-type BlitzFormInput = {
-  name: string
-  marketId: string
-  startDate: string
-  endDate: string
-  repCap: string
-  housingPlan?: string
-  managerId: string
-}
-type BlitzFormValues = z.infer<typeof blitzSchema>
 
 interface Market {
   id: string
@@ -50,14 +23,49 @@ interface Manager {
   email: string
 }
 
+interface AreaCandidate {
+  zip: string
+  city: string
+  state: string
+  addressCount: number
+  inventoryReady: boolean
+}
+
+interface FormState {
+  name: string
+  marketId: string
+  startDate: string
+  endDate: string
+  repCap: string
+  housingPlan: string
+  managerId: string
+}
+
+const initialForm: FormState = {
+  name: "",
+  marketId: "",
+  startDate: "",
+  endDate: "",
+  repCap: "10",
+  housingPlan: "",
+  managerId: "",
+}
+
 export default function NewBlitzPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const preselectedMarketId = searchParams.get("marketId") ?? ""
-
   const [markets, setMarkets] = React.useState<Market[]>([])
   const [managers, setManagers] = React.useState<Manager[]>([])
   const [loadingData, setLoadingData] = React.useState(true)
+  const [form, setForm] = React.useState<FormState>({
+    ...initialForm,
+    marketId: searchParams.get("marketId") ?? "",
+  })
+  const [areaQuery, setAreaQuery] = React.useState("")
+  const [areaResults, setAreaResults] = React.useState<AreaCandidate[]>([])
+  const [selectedArea, setSelectedArea] = React.useState<AreaCandidate | null>(null)
+  const [searching, setSearching] = React.useState(false)
+  const [submitting, setSubmitting] = React.useState(false)
   const [serverError, setServerError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -73,157 +81,320 @@ export default function NewBlitzPage() {
     fetchData()
   }, [])
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<BlitzFormInput, any, BlitzFormValues>({
-    resolver: zodResolver(blitzSchema),
-    defaultValues: {
-      marketId: preselectedMarketId,
-      repCap: "10",
-    },
-  })
+  function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
+    setForm((current) => ({ ...current, [key]: value }))
+  }
 
-  async function onSubmit(values: BlitzFormValues) {
+  async function searchArea(event: React.FormEvent) {
+    event.preventDefault()
     setServerError(null)
-    const res = await fetch("/api/blitzes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
-    })
+    setSelectedArea(null)
+    setSearching(true)
+    try {
+      const response = await fetch(`/api/blitzes/area-search?q=${encodeURIComponent(areaQuery)}`)
+      const data = await response.json()
+      if (!response.ok) {
+        setAreaResults([])
+        setServerError(data.error ?? "Could not search that area")
+        return
+      }
+      setAreaResults(data.candidates ?? [])
+      if ((data.candidates ?? []).length === 0) {
+        setServerError("No matching town or ZIP was found")
+      }
+    } catch {
+      setServerError("Could not reach the area search service")
+    } finally {
+      setSearching(false)
+    }
+  }
 
-    if (!res.ok) {
-      const data = await res.json()
-      setServerError(data.error ?? "Failed to create blitz")
+  function chooseArea(area: AreaCandidate) {
+    setSelectedArea(area)
+    setServerError(null)
+    if (!form.name) {
+      const place = [area.city, area.state].filter(Boolean).join(", ")
+      updateForm("name", `${place || area.zip} Blitz`)
+    }
+  }
+
+  async function createBlitz(event: React.FormEvent) {
+    event.preventDefault()
+    setServerError(null)
+    if (!selectedArea?.inventoryReady) {
+      setServerError("Select an area with a loaded address inventory")
+      return
+    }
+    if (!form.name || !form.marketId || !form.startDate || !form.endDate || !form.managerId) {
+      setServerError("Complete the required blitz details")
       return
     }
 
-    const blitz = await res.json()
-    router.push(`/dashboard/blitzes/${blitz.id}`)
+    setSubmitting(true)
+    try {
+      const response = await fetch("/api/blitzes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          repCap: Number(form.repCap),
+          sourceZip: selectedArea.zip,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        setServerError(data.error ?? "Failed to create blitz")
+        return
+      }
+      router.push(`/dashboard/blitzes/${data.id}?created=area`)
+    } catch {
+      setServerError("The blitz could not be created")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   if (loadingData) {
     return (
-      <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
-        Loading...
+      <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        Loading
       </div>
     )
   }
 
+  const selectedMarket = markets.find((market) => market.id === form.marketId)
+  const isKinetic = selectedMarket?.carrier.name.toLowerCase().includes("kinetic") ?? false
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-          <Link href="/dashboard/blitzes" className="hover:underline">
-            Blitzes
-          </Link>
+        <div className="mb-1 flex items-center gap-2 text-sm text-muted-foreground">
+          <Link href="/dashboard/blitzes" className="hover:underline">Blitzes</Link>
           <span>/</span>
           <span>New</span>
         </div>
         <h1 className="text-2xl font-semibold tracking-tight">Create Blitz</h1>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Blitz Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            {serverError && (
-              <div className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
-                {serverError}
-              </div>
-            )}
+      {serverError && (
+        <div className="rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {serverError}
+        </div>
+      )}
 
-            <div className="space-y-1">
-              <Label htmlFor="name">Blitz Name</Label>
-              <Input id="name" {...register("name")} placeholder="e.g. Phoenix Summer 2025" />
-              {errors.name && (
-                <p className="text-xs text-destructive">{errors.name.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="marketId">Market</Label>
-              <Select
-                id="marketId"
-                {...register("marketId")}
-                placeholder="Select market"
-                options={markets.map((m) => ({
-                  value: m.id,
-                  label: `${m.name} (${m.carrier.name})`,
-                }))}
-              />
-              {errors.marketId && (
-                <p className="text-xs text-destructive">{errors.marketId.message}</p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label htmlFor="startDate">Start Date</Label>
-                <Input id="startDate" type="date" {...register("startDate")} />
-                {errors.startDate && (
-                  <p className="text-xs text-destructive">{errors.startDate.message}</p>
-                )}
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="endDate">End Date</Label>
-                <Input id="endDate" type="date" {...register("endDate")} />
-                {errors.endDate && (
-                  <p className="text-xs text-destructive">{errors.endDate.message}</p>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="repCap">Rep Cap</Label>
-              <Input id="repCap" type="number" min={1} {...register("repCap")} />
-              {errors.repCap && (
-                <p className="text-xs text-destructive">{errors.repCap.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="managerId">Field Manager</Label>
-              <Select
-                id="managerId"
-                {...register("managerId")}
-                placeholder="Select manager"
-                options={managers.map((u) => ({
-                  value: u.id,
-                  label: u.name ?? u.email,
-                }))}
-              />
-              {errors.managerId && (
-                <p className="text-xs text-destructive">{errors.managerId.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="housingPlan">Housing Plan</Label>
-              <Textarea
-                id="housingPlan"
-                {...register("housingPlan")}
-                placeholder="Housing arrangements, address, details..."
-                rows={3}
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Creating..." : "Create Blitz"}
-              </Button>
-              <Link href="/dashboard/blitzes">
-                <Button type="button" variant="outline">
-                  Cancel
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <div className="space-y-6">
+          <Card className="rounded-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="h-5 w-5 text-primary" />
+                Territory
+              </CardTitle>
+              <CardDescription>Find the town or ZIP that the team will work.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <form onSubmit={searchArea} className="flex gap-2">
+                <Input
+                  value={areaQuery}
+                  onChange={(event) => setAreaQuery(event.target.value)}
+                  placeholder="Town, state or ZIP"
+                  aria-label="Town, state or ZIP"
+                />
+                <Button type="submit" disabled={searching || areaQuery.trim().length < 2}>
+                  {searching ? <Loader2 className="animate-spin" /> : <Search />}
+                  Search
                 </Button>
-              </Link>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+              </form>
+
+              {areaResults.length > 0 && (
+                <div className="divide-y rounded-md border">
+                  {areaResults.map((area) => {
+                    const selected = selectedArea?.zip === area.zip
+                    return (
+                      <button
+                        key={area.zip}
+                        type="button"
+                        onClick={() => chooseArea(area)}
+                        disabled={!area.inventoryReady}
+                        className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors first:rounded-t-md last:rounded-b-md hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-55"
+                      >
+                        <span>
+                          <span className="block text-sm font-medium">
+                            {[area.city, area.state].filter(Boolean).join(", ") || area.zip}
+                          </span>
+                          <span className="block text-xs text-muted-foreground">ZIP {area.zip}</span>
+                        </span>
+                        <span className="flex items-center gap-3">
+                          <span className="text-right">
+                            <span className="block text-sm font-medium">
+                              {area.addressCount.toLocaleString()}
+                            </span>
+                            <span className="block text-xs text-muted-foreground">
+                              {area.inventoryReady ? "addresses loaded" : "inventory unavailable"}
+                            </span>
+                          </span>
+                          <span className="flex h-6 w-6 items-center justify-center">
+                            {selected && <Check className="h-5 w-5 text-primary" />}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarDays className="h-5 w-5 text-primary" />
+                Campaign
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form id="create-blitz-form" onSubmit={createBlitz} className="space-y-4">
+                <div className="space-y-1">
+                  <Label htmlFor="name">Blitz name</Label>
+                  <Input
+                    id="name"
+                    value={form.name}
+                    onChange={(event) => updateForm("name", event.target.value)}
+                    placeholder="Lockhart Fiber Blitz"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="marketId">Market and provider</Label>
+                  <Select
+                    id="marketId"
+                    value={form.marketId}
+                    onChange={(event) => updateForm("marketId", event.target.value)}
+                    placeholder="Select market"
+                    options={markets.map((market) => ({
+                      value: market.id,
+                      label: `${market.name} (${market.carrier.name})`,
+                    }))}
+                  />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="startDate">Start date</Label>
+                    <Input
+                      id="startDate"
+                      type="date"
+                      value={form.startDate}
+                      onChange={(event) => updateForm("startDate", event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="endDate">End date</Label>
+                    <Input
+                      id="endDate"
+                      type="date"
+                      value={form.endDate}
+                      onChange={(event) => updateForm("endDate", event.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="repCap">Rep cap</Label>
+                    <Input
+                      id="repCap"
+                      type="number"
+                      min={1}
+                      value={form.repCap}
+                      onChange={(event) => updateForm("repCap", event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="managerId">Field manager</Label>
+                    <Select
+                      id="managerId"
+                      value={form.managerId}
+                      onChange={(event) => updateForm("managerId", event.target.value)}
+                      placeholder="Select manager"
+                      options={managers.map((manager) => ({
+                        value: manager.id,
+                        label: manager.name ?? manager.email,
+                      }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="housingPlan">Housing plan</Label>
+                  <Textarea
+                    id="housingPlan"
+                    value={form.housingPlan}
+                    onChange={(event) => updateForm("housingPlan", event.target.value)}
+                    placeholder="Housing arrangements, address, details..."
+                    rows={3}
+                  />
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-6">
+          <Card className="rounded-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-primary" />
+                Lead preparation
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+              <div className="flex items-center justify-between border-b pb-3">
+                <span className="text-muted-foreground">Selected ZIP</span>
+                <span className="font-medium">{selectedArea?.zip ?? "Not selected"}</span>
+              </div>
+              <div className="flex items-center justify-between border-b pb-3">
+                <span className="text-muted-foreground">Address inventory</span>
+                <span className="font-medium">
+                  {selectedArea ? selectedArea.addressCount.toLocaleString() : "—"}
+                </span>
+              </div>
+              <div className="flex items-start gap-3">
+                <Check className="mt-0.5 h-4 w-4 text-emerald-600" />
+                <span>Known customers and previously scanned unreachable addresses are suppressed immediately.</span>
+              </div>
+              <div className="flex items-start gap-3">
+                <Check className="mt-0.5 h-4 w-4 text-emerald-600" />
+                <span>Duplicate street addresses are removed before leads are created.</span>
+              </div>
+              <div className="flex items-start gap-3">
+                <Check className="mt-0.5 h-4 w-4 text-emerald-600" />
+                <span>
+                  {isKinetic
+                    ? "Remaining addresses will be eligible for the Kinetic direct-provider scan."
+                    : "Direct-provider scanning is currently available for Kinetic markets."}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex gap-3">
+            <Button
+              type="submit"
+              form="create-blitz-form"
+              className="flex-1"
+              disabled={submitting || !selectedArea?.inventoryReady}
+            >
+              {submitting ? <Loader2 className="animate-spin" /> : <MapPin />}
+              {submitting ? "Preparing blitz..." : "Create and prepare"}
+            </Button>
+            <Link href="/dashboard/blitzes">
+              <Button type="button" variant="outline">Cancel</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
