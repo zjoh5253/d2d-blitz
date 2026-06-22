@@ -16,6 +16,13 @@ const ROLE_PROTECTED_ROUTES: Array<{ prefix: string; roles: string[] }> = [
   { prefix: "/dashboard/governance", roles: ["ADMIN", "FIELD_MANAGER"] },
   { prefix: "/dashboard/compliance", roles: ["ADMIN", "FIELD_MANAGER"] },
   { prefix: "/dashboard/inbound", roles: ["ADMIN", "CALL_CENTER"] },
+  // Sales & Activity CSV report — managers need it too, so it's opened up
+  // wider than the exec-only financial reports. Must precede the generic
+  // /dashboard/reports rule below (first prefix match wins).
+  {
+    prefix: "/dashboard/reports/sales-activity",
+    roles: ["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"],
+  },
   { prefix: "/dashboard/reports", roles: ["ADMIN", "EXECUTIVE"] },
   { prefix: "/dashboard/manager", roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"] },
   // Mobile-web rep experience. Admins/managers can access for QA.

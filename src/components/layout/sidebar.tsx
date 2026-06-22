@@ -23,6 +23,7 @@ import {
   ClipboardList,
   Timer,
   Radar,
+  FileSpreadsheet,
 } from "lucide-react";
 
 interface NavItem {
@@ -200,6 +201,12 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/dashboard/kinetic-intel",
         icon: <Radar className="size-[18px]" />,
         roles: ["ADMIN", "FIELD_MANAGER"],
+      },
+      {
+        title: "Sales Report (CSV)",
+        href: "/dashboard/reports/sales-activity",
+        icon: <FileSpreadsheet className="size-[18px]" />,
+        roles: ["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"],
       },
       {
         title: "Time-Log Edits",
