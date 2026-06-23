@@ -66,6 +66,7 @@ interface BlitzTabsProps {
     endDate: string
     repCap: number
     housingPlan: string | null
+    leadPrepStatus: string
     market: { name: string; carrier: { name: string; revenuePerInstall: number } }
     manager: { name: string | null; email: string }
     assignments: Assignment[]
@@ -92,6 +93,20 @@ export function BlitzTabs({ blitz, availableReps }: BlitzTabsProps) {
   const [expenseOpen, setExpenseOpen] = React.useState(false)
   const [editingExpense, setEditingExpense] = React.useState<Expense | null>(null)
   const [transitioning, setTransitioning] = React.useState(false)
+  const [deleting, setDeleting] = React.useState(false)
+
+  async function deleteBlitz() {
+    if (!window.confirm("Delete this blitz? This permanently removes the blitz and all of its imported leads. This can't be undone.")) return
+    setDeleting(true)
+    const res = await fetch(`/api/blitzes/${blitz.id}`, { method: "DELETE" })
+    if (res.ok) {
+      router.push("/dashboard/blitzes")
+      return
+    }
+    const d = await res.json().catch(() => ({}))
+    window.alert(d.error ?? "Could not delete the blitz")
+    setDeleting(false)
+  }
 
   async function deleteExpense(expenseId: string) {
     if (!window.confirm("Delete this expense? This can't be undone.")) return
@@ -242,23 +257,38 @@ export function BlitzTabs({ blitz, availableReps }: BlitzTabsProps) {
 
   return (
     <>
-      {/* Status transition */}
-      <div className="flex items-center justify-end gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Change status:</span>
-          <Select
-            value={blitz.status}
-            onChange={handleStatusSelect}
-            disabled={transitioning}
-            className="h-9 w-40"
-            options={STATUS_ORDER.map((s) => ({ value: s, label: s }))}
-          />
+      {/* Status transition + delete */}
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          {blitz.status === "PLANNING" && (
+            <Button
+              variant="outline"
+              onClick={deleteBlitz}
+              disabled={deleting}
+              className="border-destructive/30 text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleting ? "Deleting..." : "Delete blitz"}
+            </Button>
+          )}
         </div>
-        {transition && (
-          <Button onClick={handleStatusTransition} disabled={transitioning}>
-            {transitioning ? "Updating..." : transition.label}
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Change status:</span>
+            <Select
+              value={blitz.status}
+              onChange={handleStatusSelect}
+              disabled={transitioning}
+              className="h-9 w-40"
+              options={STATUS_ORDER.map((s) => ({ value: s, label: s }))}
+            />
+          </div>
+          {transition && (
+            <Button onClick={handleStatusTransition} disabled={transitioning}>
+              {transitioning ? "Updating..." : transition.label}
+            </Button>
+          )}
+        </div>
       </div>
 
       <Tabs defaultValue="overview">
@@ -326,6 +356,7 @@ export function BlitzTabs({ blitz, availableReps }: BlitzTabsProps) {
             blitzId={blitz.id}
             assignments={blitz.assignments}
             availableReps={availableReps}
+            leadPrepStatus={blitz.leadPrepStatus}
           />
         </TabsContent>
 

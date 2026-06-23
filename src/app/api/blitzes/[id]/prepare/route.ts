@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { applyCustomerSuppression, keyFromParts } from "@/lib/leads/customer-suppression"
+import { advanceBlitzFiltering } from "@/lib/blitz-prep"
+
+// Allow a long-ish scan batch (Vercel caps at the plan limit).
+export const maxDuration = 300
 
 function hasCronAccess(request: Request): boolean {
   const secret = process.env.CRON_SECRET
@@ -20,18 +23,18 @@ export async function POST(
   }
 
   const { id } = await context.params
-  const blitz = await db.blitz.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      market: { select: { carrier: { select: { name: true } } } },
-    },
-  })
-  if (!blitz) {
+
+  // batch=0 disables scanning (report-only); otherwise scan that many fresh
+  // addresses through the rotating IP Royal proxy before re-suppressing.
+  const url = new URL(request.url)
+  const batchParam = url.searchParams.get("batch")
+  const batch = batchParam === null ? undefined : Math.max(0, parseInt(batchParam, 10) || 0)
+
+  const result = await advanceBlitzFiltering(id, batch === undefined ? {} : { batch })
+  if (!result) {
     return NextResponse.json({ error: "Blitz not found" }, { status: 404 })
   }
 
-  const suppression = await applyCustomerSuppression({ blitzId: id })
   const [total, visible] = await Promise.all([
     db.doorKnockLead.count({ where: { blitzId: id } }),
     db.doorKnockLead.count({
@@ -39,26 +42,18 @@ export async function POST(
     }),
   ])
 
-  const uncached = await db.doorKnockLead.findMany({
-    where: { blitzId: id, disposition: "PENDING", suppressed: false },
-    select: { streetNumber: true, streetName: true, zip: true },
-  })
-  const keys = uncached
-    .map((lead) => keyFromParts(lead.streetNumber, lead.streetName, lead.zip))
-    .filter((key): key is string => Boolean(key))
-  const cached = await db.kineticAddressStatus.count({
-    where: { addressKey: { in: keys } },
-  })
-
-  const kinetic = blitz.market.carrier.name.toLowerCase().includes("kinetic")
   return NextResponse.json({
     blitzId: id,
     total,
     suppressed: total - visible,
     visible,
-    cached,
-    pendingProviderChecks: kinetic ? Math.max(0, keys.length - cached) : 0,
-    providerScanRequired: kinetic && keys.length > cached,
-    suppression,
+    cached: result.checked,
+    leadPrepTotal: result.total,
+    leadPrepChecked: result.checked,
+    leadPrepStatus: result.leadPrepStatus,
+    pendingProviderChecks: result.pending,
+    providerScanRequired: result.kinetic && result.pending > 0,
+    scannedThisCall: result.scanned,
+    customersThisCall: result.customers,
   })
 }

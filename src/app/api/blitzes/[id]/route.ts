@@ -108,8 +108,11 @@ export async function DELETE(
 ) {
   try {
     const session = await auth()
-    if (!session) {
+    if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+    if (session.user.role !== "ADMIN" && session.user.role !== "FIELD_MANAGER") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
     const { id } = await params
@@ -125,9 +128,30 @@ export async function DELETE(
       )
     }
 
-    await db.blitz.delete({ where: { id } })
+    // Block deletion if the blitz has real work attached (these FKs are
+    // RESTRICT and a PLANNING test blitz shouldn't have any).
+    const [assignments, sales, reports] = await Promise.all([
+      db.blitzAssignment.count({ where: { blitzId: id } }),
+      db.sale.count({ where: { blitzId: id } }),
+      db.dailyReport.count({ where: { blitzId: id } }),
+    ])
+    if (assignments + sales + reports > 0) {
+      return NextResponse.json(
+        { error: "This blitz has reps, sales, or reports attached — remove those before deleting." },
+        { status: 409 }
+      )
+    }
 
-    return NextResponse.json({ success: true })
+    // door_knock_leads / gps_sessions are ON DELETE SET NULL, so a bare
+    // blitz.delete would ORPHAN every imported lead (blitz_id → NULL) into the
+    // pool. Delete them first so nothing is left behind. All-or-nothing.
+    const [leads] = await db.$transaction([
+      db.doorKnockLead.deleteMany({ where: { blitzId: id } }),
+      db.gpsSession.deleteMany({ where: { blitzId: id } }),
+      db.blitz.delete({ where: { id } }),
+    ])
+
+    return NextResponse.json({ success: true, deletedLeads: leads.count })
   } catch (error) {
     console.error("[blitzes/[id] DELETE]", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

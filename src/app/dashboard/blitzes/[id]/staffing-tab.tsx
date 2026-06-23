@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { UserPlus, Trash2 } from "lucide-react"
+import { UserPlus, Trash2, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
 import { StatusBadge } from "@/components/ui/status-badge"
@@ -46,9 +46,10 @@ interface StaffingTabProps {
   blitzId: string
   assignments: Assignment[]
   availableReps: Rep[]
+  leadPrepStatus: string
 }
 
-export function StaffingTab({ blitzId, assignments: initialAssignments, availableReps }: StaffingTabProps) {
+export function StaffingTab({ blitzId, assignments: initialAssignments, availableReps, leadPrepStatus }: StaffingTabProps) {
   const router = useRouter()
   const [assignments, setAssignments] = React.useState(initialAssignments)
   const [assignOpen, setAssignOpen] = React.useState(false)
@@ -121,13 +122,26 @@ export function StaffingTab({ blitzId, assignments: initialAssignments, availabl
     }
   }
 
+  const filtering = leadPrepStatus === "FILTERING"
+
   return (
     <div className="space-y-4">
+      {filtering && (
+        <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <Loader2 className="mt-0.5 h-4 w-4 animate-spin text-amber-600" />
+          <div>
+            <div className="font-medium">Staffing locked — this blitz is still filtering out current customers</div>
+            <div className="text-amber-800">
+              You&apos;ll be able to assign reps once the lead list finishes filtering. Progress shows on the Blitzes list.
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {assignments.length} rep{assignments.length !== 1 ? "s" : ""} assigned
         </p>
-        <Button size="sm" onClick={() => setAssignOpen(true)}>
+        <Button size="sm" onClick={() => setAssignOpen(true)} disabled={filtering}>
           <UserPlus className="mr-1.5 h-4 w-4" />
           Assign Rep
         </Button>

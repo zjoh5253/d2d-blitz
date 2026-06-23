@@ -29,6 +29,7 @@ interface AreaCandidate {
   state: string
   addressCount: number
   inventoryReady: boolean
+  discoverable: boolean
 }
 
 interface FormState {
@@ -51,6 +52,37 @@ const initialForm: FormState = {
   managerId: "",
 }
 
+// US state abbreviation → full name, so a monopoly's "OH" can match the
+// "Kinetic Ohio" market by name.
+const STATE_NAMES: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+  CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
+  MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio",
+  OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
+  SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
+  VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+}
+
+// Find the Kinetic market for a state abbreviation (e.g. OH → "Kinetic Ohio").
+function matchMarket(markets: Market[], state: string, carrier: string): Market | undefined {
+  const stateName = STATE_NAMES[state.toUpperCase()]?.toLowerCase()
+  if (!stateName) return undefined
+  const wantCarrier = (carrier || "kinetic").toLowerCase()
+  return markets.find(
+    (m) =>
+      m.carrier.name.toLowerCase().includes(wantCarrier) &&
+      m.name.toLowerCase().includes(stateName)
+  )
+}
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
 export default function NewBlitzPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -67,6 +99,10 @@ export default function NewBlitzPage() {
   const [searching, setSearching] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
   const [serverError, setServerError] = React.useState<string | null>(null)
+  // Set when arriving from the map-scanner "Create blitz" button — we try to
+  // create the blitz with no further input and jump straight to the list.
+  const [autoCreating, setAutoCreating] = React.useState(searchParams.get("auto") === "1")
+  const autoRanRef = React.useRef(false)
 
   React.useEffect(() => {
     async function fetchData() {
@@ -74,15 +110,89 @@ export default function NewBlitzPage() {
         fetch("/api/markets"),
         fetch("/api/users?role=FIELD_MANAGER"),
       ])
-      if (marketsRes.ok) setMarkets(await marketsRes.json())
-      if (managersRes.ok) setManagers(await managersRes.json())
+      const loadedMarkets: Market[] = marketsRes.ok ? await marketsRes.json() : []
+      const loadedManagers: Manager[] = managersRes.ok ? await managersRes.json() : []
+      setMarkets(loadedMarkets)
+      setManagers(loadedManagers)
       setLoadingData(false)
+      // Auto-create path (from a monopoly row): try to create immediately.
+      if (searchParams.get("auto") === "1" && !autoRanRef.current) {
+        autoRanRef.current = true
+        autoCreate(loadedMarkets, loadedManagers)
+      }
     }
     fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  // One-click create from the map-scanner monopoly button. Resolves the market
+  // from carrier+state and applies sensible defaults; on success jumps to the
+  // filtering list. If it can't resolve a market/manager, it falls back to the
+  // normal form, prefilled with what we know.
+  async function autoCreate(loadedMarkets: Market[], loadedManagers: Manager[]) {
+    const zip = (searchParams.get("zip") ?? "").replace(/\D/g, "").slice(0, 5)
+    const city = searchParams.get("city") ?? ""
+    const state = (searchParams.get("state") ?? "").toUpperCase()
+    const carrier = searchParams.get("carrier") ?? "kinetic"
+
+    const area: AreaCandidate = {
+      zip, city, state, addressCount: 0, inventoryReady: false, discoverable: true,
+    }
+    const place = [city, state].filter(Boolean).join(", ")
+    const name = `${place || zip} Blitz`
+    const market = matchMarket(loadedMarkets, state, carrier)
+    const manager = loadedManagers[0]
+
+    // Prefill the form regardless, so the fallback path is ready to complete.
+    setSelectedArea(area)
+    setAreaResults([area])
+    setForm((cur) => ({
+      ...cur,
+      name,
+      marketId: market?.id ?? cur.marketId,
+      managerId: manager?.id ?? cur.managerId,
+    }))
+
+    if (!zip || !market || !manager) {
+      // Can't fully resolve — let the user finish in the form.
+      setAutoCreating(false)
+      if (!market) setServerError(`No ${carrier} market found for ${state || "that state"} — pick a market to continue.`)
+      else if (!manager) setServerError("No field manager available — add one, then create.")
+      return
+    }
+
+    const today = new Date()
+    const end = new Date(today)
+    end.setDate(end.getDate() + 14)
+    try {
+      const response = await fetch("/api/blitzes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          marketId: market.id,
+          startDate: isoDate(today),
+          endDate: isoDate(end),
+          repCap: 10,
+          managerId: manager.id,
+          sourceZip: zip,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        setAutoCreating(false)
+        setServerError(data.error ?? "Could not create the blitz — review the details and try again.")
+        return
+      }
+      router.push("/dashboard/blitzes?filtering=1")
+    } catch {
+      setAutoCreating(false)
+      setServerError("Could not create the blitz — review the details and try again.")
+    }
   }
 
   async function searchArea(event: React.FormEvent) {
@@ -98,10 +208,16 @@ export default function NewBlitzPage() {
         setServerError(data.error ?? "Could not search that area")
         return
       }
-      setAreaResults(data.candidates ?? [])
-      if ((data.candidates ?? []).length === 0) {
+      const candidates: AreaCandidate[] = data.candidates ?? []
+      setAreaResults(candidates)
+      if (candidates.length === 0) {
         setServerError("No matching town or ZIP was found")
+        return
       }
+      // Auto-select when there's only one usable result so the user doesn't
+      // have to make a separate click before the Create button enables.
+      const usable = candidates.filter((c) => c.inventoryReady || c.discoverable)
+      if (usable.length === 1) chooseArea(usable[0])
     } catch {
       setServerError("Could not reach the area search service")
     } finally {
@@ -121,8 +237,8 @@ export default function NewBlitzPage() {
   async function createBlitz(event: React.FormEvent) {
     event.preventDefault()
     setServerError(null)
-    if (!selectedArea?.inventoryReady) {
-      setServerError("Select an area with a loaded address inventory")
+    if (!selectedArea || (!selectedArea.inventoryReady && !selectedArea.discoverable)) {
+      setServerError("Select an area to canvass")
       return
     }
     if (!form.name || !form.marketId || !form.startDate || !form.endDate || !form.managerId) {
@@ -146,7 +262,11 @@ export default function NewBlitzPage() {
         setServerError(data.error ?? "Failed to create blitz")
         return
       }
-      router.push(`/dashboard/blitzes/${data.id}?created=area`)
+      // Blitz + addresses exist and known customers are already filtered. The
+      // live provider (IP Royal) filter continues in the background — send the
+      // user to the list, where its progress shows and staffing stays locked
+      // until it's done.
+      router.push("/dashboard/blitzes?filtering=1")
     } catch {
       setServerError("The blitz could not be created")
     } finally {
@@ -154,11 +274,18 @@ export default function NewBlitzPage() {
     }
   }
 
-  if (loadingData) {
+  if (loadingData || autoCreating) {
     return (
-      <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        Loading
+      <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-sm text-muted-foreground">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        {autoCreating ? (
+          <>
+            <span className="font-medium text-foreground">Creating blitz…</span>
+            <span>Pulling addresses and starting the customer filter.</span>
+          </>
+        ) : (
+          <span>Loading</span>
+        )}
       </div>
     )
   }
@@ -216,7 +343,7 @@ export default function NewBlitzPage() {
                         key={area.zip}
                         type="button"
                         onClick={() => chooseArea(area)}
-                        disabled={!area.inventoryReady}
+                        disabled={!area.inventoryReady && !area.discoverable}
                         className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors first:rounded-t-md last:rounded-b-md hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-55"
                       >
                         <span>
@@ -228,10 +355,14 @@ export default function NewBlitzPage() {
                         <span className="flex items-center gap-3">
                           <span className="text-right">
                             <span className="block text-sm font-medium">
-                              {area.addressCount.toLocaleString()}
+                              {area.inventoryReady ? area.addressCount.toLocaleString() : "—"}
                             </span>
                             <span className="block text-xs text-muted-foreground">
-                              {area.inventoryReady ? "addresses loaded" : "inventory unavailable"}
+                              {area.inventoryReady
+                                ? "addresses loaded"
+                                : area.discoverable
+                                  ? "pull on create"
+                                  : "inventory unavailable"}
                             </span>
                           </span>
                           <span className="flex h-6 w-6 items-center justify-center">
@@ -357,7 +488,11 @@ export default function NewBlitzPage() {
               <div className="flex items-center justify-between border-b pb-3">
                 <span className="text-muted-foreground">Address inventory</span>
                 <span className="font-medium">
-                  {selectedArea ? selectedArea.addressCount.toLocaleString() : "—"}
+                  {!selectedArea
+                    ? "—"
+                    : selectedArea.inventoryReady
+                      ? selectedArea.addressCount.toLocaleString()
+                      : "Pulled on create"}
                 </span>
               </div>
               <div className="flex items-start gap-3">
@@ -384,7 +519,7 @@ export default function NewBlitzPage() {
               type="submit"
               form="create-blitz-form"
               className="flex-1"
-              disabled={submitting || !selectedArea?.inventoryReady}
+              disabled={submitting || !selectedArea || (!selectedArea.inventoryReady && !selectedArea.discoverable)}
             >
               {submitting ? <Loader2 className="animate-spin" /> : <MapPin />}
               {submitting ? "Preparing blitz..." : "Create and prepare"}

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { Prisma } from "@prisma/client"
 import { db } from "@/lib/db"
+import { getAddressProvider } from "@/lib/address-source"
 
 const NOMINATIM = "https://nominatim.openstreetmap.org/search"
 const USER_AGENT = "d2d-blitz/1.0 (+https://d2d-blitz-navy.vercel.app)"
@@ -11,6 +12,10 @@ export interface AreaCandidate {
   state: string
   addressCount: number
   inventoryReady: boolean
+  // True for any valid 5-digit ZIP: even with no pre-loaded inventory we can
+  // pull addresses on-demand at create time (OSM fallback), so the UI lets the
+  // user select it.
+  discoverable: boolean
 }
 
 interface InventoryRow {
@@ -70,6 +75,7 @@ async function inventoryForZip(zip: string): Promise<AreaCandidate | null> {
     state: row.state,
     addressCount: row.addressCount,
     inventoryReady: row.addressCount > 0,
+    discoverable: true,
   }
 }
 
@@ -118,6 +124,7 @@ async function searchInventoryByTown(town: string, state: string): Promise<AreaC
     state: row.state,
     addressCount: row.addressCount,
     inventoryReady: row.addressCount > 0,
+    discoverable: true,
   }))
 }
 
@@ -153,6 +160,7 @@ async function searchNominatim(query: string): Promise<AreaCandidate[]> {
       state: stateCode || address.state || "",
       addressCount: 0,
       inventoryReady: false,
+      discoverable: true,
     })
   }
   return [...byZip.values()]
@@ -184,6 +192,7 @@ export async function searchBlitzAreas(rawQuery: string): Promise<AreaCandidate[
       state: address?.["ISO3166-2-lvl4"]?.replace("US-", "") ?? address?.state ?? "",
       addressCount: 0,
       inventoryReady: false,
+      discoverable: true,
     }]
   }
 
@@ -191,6 +200,92 @@ export async function searchBlitzAreas(rawQuery: string): Promise<AreaCandidate[
   const inventoryResults = await searchInventoryByTown(town, state)
   if (inventoryResults.length > 0) return inventoryResults
   return searchNominatim(query)
+}
+
+// scanner_addresses.zip_code has an FK to scanner_zips(zip_code); the parent
+// row must exist before inserting addresses. Idempotent.
+async function ensureZipParent(
+  zip: string,
+  state: string,
+  city: string | null,
+  client: Prisma.TransactionClient | typeof db = db
+): Promise<void> {
+  await client.$executeRawUnsafe(
+    `INSERT INTO scanner_zips (zip_code, state, city)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (zip_code) DO UPDATE
+       SET state = COALESCE(NULLIF(EXCLUDED.state, ''), scanner_zips.state),
+           city  = COALESCE(scanner_zips.city, EXCLUDED.city)`,
+    zip, state, city
+  )
+}
+
+export interface EnsureInventoryResult {
+  zip: string
+  addressCount: number
+  source: "cache" | "osm"
+}
+
+// Guarantee that `scanner_addresses` holds usable inventory for a ZIP, pulling
+// it on-demand if it's empty. ZIPs we've pre-loaded from OpenAddresses (the
+// good, fully-addressed data) hit the cache path. Anything else falls back to
+// the OSM provider — we keep only pins with a real house number + street, since
+// the create flow's street regex and the gokinetic customer filter both require
+// one (street-less OSM pins would be silently dropped downstream anyway).
+export async function ensureInventoryForZip(rawZip: string): Promise<EnsureInventoryResult> {
+  const zip = normalizeZip(rawZip)
+  if (zip.length !== 5) throw new Error("A valid 5-digit ZIP is required")
+
+  const existing = await inventoryForZip(zip)
+  if (existing && existing.addressCount > 0) {
+    return { zip, addressCount: existing.addressCount, source: "cache" }
+  }
+
+  const provider = await getAddressProvider()
+  const discovered = await provider.discoverAddressesForZip(zip)
+  const usable = discovered.filter((a) => a.streetNumber && a.streetName)
+  if (usable.length === 0) {
+    return { zip, addressCount: 0, source: "osm" }
+  }
+
+  // Parent ZIP row — best-effort state/city from the discovered pins.
+  const state = (usable.find((a) => a.state)?.state ?? "").toUpperCase()
+  const city = usable.find((a) => a.city)?.city ?? null
+  await ensureZipParent(zip, state, city ? city.toUpperCase() : null)
+
+  // Bulk insert in batches via multi-row VALUES. kind is the literal 'LEAD'
+  // (unknown-typed → coerced to the enum). De-dup on the PK so re-runs no-op.
+  const CHUNK = 500
+  let inserted = 0
+  for (let i = 0; i < usable.length; i += CHUNK) {
+    const slice = usable.slice(i, i + CHUNK)
+    const tuples: string[] = []
+    const params: unknown[] = []
+    slice.forEach((a, j) => {
+      const b = j * 8
+      tuples.push(`($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8},'LEAD',NOW(),NOW())`)
+      params.push(
+        `osm_${a.externalId ?? `${zip}_${a.streetNumber}_${a.streetName}`}`.replace(/\s+/g, "_").slice(0, 200),
+        `${a.streetNumber} ${a.streetName}`.toUpperCase(),
+        (a.city ?? city ?? "").toUpperCase(),
+        (a.state ?? state ?? "").toUpperCase(),
+        a.zip || zip,
+        a.lat,
+        a.lng,
+        a.externalId ?? null,
+      )
+    })
+    inserted += await db.$executeRawUnsafe(
+      `INSERT INTO scanner_addresses
+         (id, street, city, state, zip_code, lat, lng, external_id, kind, created_at, updated_at)
+       VALUES ${tuples.join(",")}
+       ON CONFLICT (id) DO NOTHING`,
+      ...params
+    )
+  }
+
+  const after = await inventoryForZip(zip)
+  return { zip, addressCount: after?.addressCount ?? inserted, source: "osm" }
 }
 
 export async function importScannerInventory(opts: {

@@ -54,6 +54,29 @@ export function keyFromFullAddress(full: string | null): string | null {
   return `${canon}|${z}`
 }
 
+// Provider-check progress for one blitz: how many distinct knockable addresses
+// need a gokinetic check (total), how many are already cached (checked), and how
+// many remain (pending). Drives the create-flow prep state + list-view bar.
+export async function getProviderCheckCounts(
+  blitzId: string
+): Promise<{ total: number; checked: number; pending: number }> {
+  const leads = await db.doorKnockLead.findMany({
+    where: { blitzId, disposition: "PENDING", suppressed: false },
+    select: { streetNumber: true, streetName: true, zip: true },
+  })
+  const keys = new Set<string>()
+  for (const l of leads) {
+    const k = keyFromParts(l.streetNumber, l.streetName, l.zip)
+    if (k) keys.add(k)
+  }
+  const total = keys.size
+  if (total === 0) return { total: 0, checked: 0, pending: 0 }
+  const checked = await db.kineticAddressStatus.count({
+    where: { addressKey: { in: [...keys] } },
+  })
+  return { total, checked, pending: Math.max(0, total - checked) }
+}
+
 export type SuppressReason = string
 
 // Gather the set of addresses that should be hidden from reps → human reason.

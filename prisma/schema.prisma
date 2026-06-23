@@ -471,6 +471,15 @@ model Blitz {
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
+  // Lead-filtering pipeline state (area-created blitzes). PENDING -> FILTERING
+  // -> READY. Defaults to READY so existing / non-area blitzes are never gated.
+  // Staffing is hard-blocked until READY. Total/checked drive the list-view
+  // progress bar; updatedAt powers staleness + ETA.
+  leadPrepStatus    String    @default("READY") @map("lead_prep_status")
+  leadPrepTotal     Int       @default(0) @map("lead_prep_total")
+  leadPrepChecked   Int       @default(0) @map("lead_prep_checked")
+  leadPrepUpdatedAt DateTime? @map("lead_prep_updated_at")
+
   market  Market @relation(fields: [marketId], references: [id])
   manager User   @relation(fields: [managerId], references: [id])
 

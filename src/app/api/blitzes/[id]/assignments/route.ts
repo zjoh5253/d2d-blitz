@@ -60,9 +60,22 @@ export async function POST(
     const { repId, housingAssignment, travelCoordination, arrivalConfirmed } = parsed.data
 
     // Check blitz exists
-    const blitz = await db.blitz.findUnique({ where: { id }, select: { id: true } })
+    const blitz = await db.blitz.findUnique({
+      where: { id },
+      select: { id: true, leadPrepStatus: true },
+    })
     if (!blitz) {
       return NextResponse.json({ error: "Blitz not found" }, { status: 404 })
+    }
+
+    // Hard-block staffing until lead filtering finishes, so reps are never
+    // assigned to a blitz that still contains current customers / unreachable
+    // addresses. Matches the FILTERING state shown on the blitz list.
+    if (blitz.leadPrepStatus === "FILTERING") {
+      return NextResponse.json(
+        { error: "This blitz is still filtering out current customers. Staffing unlocks once filtering completes." },
+        { status: 409 }
+      )
     }
 
     // Check not already assigned
