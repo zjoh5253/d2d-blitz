@@ -129,39 +129,39 @@ export default function NewBlitzPage() {
     setForm((current) => ({ ...current, [key]: value }))
   }
 
-  // One-click create from the map-scanner monopoly button. Resolves the market
-  // from carrier+state and applies sensible defaults; on success jumps to the
-  // filtering list. If it can't resolve a market/manager, it falls back to the
-  // normal form, prefilled with what we know.
+  // One-click create from the map-scanner monopoly button (any carrier). The
+  // server resolves/creates the market from carrier+state, so we just need a
+  // ZIP and a manager. Applies sensible defaults and jumps to the filtering
+  // list; falls back to the prefilled form only if there's no manager.
   async function autoCreate(loadedMarkets: Market[], loadedManagers: Manager[]) {
     const zip = (searchParams.get("zip") ?? "").replace(/\D/g, "").slice(0, 5)
     const city = searchParams.get("city") ?? ""
     const state = (searchParams.get("state") ?? "").toUpperCase()
     const carrier = searchParams.get("carrier") ?? "kinetic"
+    const carrierName = searchParams.get("carrierName") ?? carrier
 
     const area: AreaCandidate = {
       zip, city, state, addressCount: 0, inventoryReady: false, discoverable: true,
     }
     const place = [city, state].filter(Boolean).join(", ")
     const name = `${place || zip} Blitz`
-    const market = matchMarket(loadedMarkets, state, carrier)
     const manager = loadedManagers[0]
 
-    // Prefill the form regardless, so the fallback path is ready to complete.
+    // Prefill the form (best-effort market match) for the fallback path.
     setSelectedArea(area)
     setAreaResults([area])
     setForm((cur) => ({
       ...cur,
       name,
-      marketId: market?.id ?? cur.marketId,
+      marketId: matchMarket(loadedMarkets, state, carrier)?.id ?? cur.marketId,
       managerId: manager?.id ?? cur.managerId,
     }))
 
-    if (!zip || !market || !manager) {
-      // Can't fully resolve — let the user finish in the form.
+    if (!zip || !manager || !state) {
       setAutoCreating(false)
-      if (!market) setServerError(`No ${carrier} market found for ${state || "that state"} — pick a market to continue.`)
-      else if (!manager) setServerError("No field manager available — add one, then create.")
+      setServerError(
+        !manager ? "No field manager available — add one, then create." : "Missing ZIP or state — complete the form to continue."
+      )
       return
     }
 
@@ -174,7 +174,9 @@ export default function NewBlitzPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
-          marketId: market.id,
+          carrierSlug: carrier,
+          carrierName,
+          state,
           startDate: isoDate(today),
           endDate: isoDate(end),
           repCap: 10,

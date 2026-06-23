@@ -4,12 +4,18 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { inventoryForZip, importScannerInventory } from "@/lib/blitz-area"
 import { applyCustomerSuppression, getProviderCheckCounts } from "@/lib/leads/customer-suppression"
+import { resolveOrCreateMarket } from "@/lib/market-resolve"
 
 export const maxDuration = 300
 
 const blitzCreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  marketId: z.string().min(1, "Market is required"),
+  // marketId for the manual form; carrier+state for the auto-create flow (the
+  // server resolves/creates the market). One of the two must be present.
+  marketId: z.string().min(1).optional(),
+  carrierSlug: z.string().optional(),
+  carrierName: z.string().optional(),
+  state: z.string().optional(),
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().min(1, "End date is required"),
   repCap: z.coerce.number().int().positive("Rep cap must be a positive integer"),
@@ -66,7 +72,22 @@ export async function POST(request: Request) {
       )
     }
 
-    const { name, marketId, startDate, endDate, repCap, housingPlan, managerId, sourceZip } = parsed.data
+    const { name, startDate, endDate, repCap, housingPlan, managerId, sourceZip, carrierSlug, carrierName, state } = parsed.data
+
+    // Resolve the market: explicit marketId (manual form) or create-on-demand
+    // from carrier + state (auto-create from a monopoly row, any carrier).
+    let marketId = parsed.data.marketId
+    if (!marketId) {
+      if (!carrierName || !state) {
+        return NextResponse.json({ error: "A market, or carrier + state, is required" }, { status: 400 })
+      }
+      try {
+        marketId = await resolveOrCreateMarket({ carrierSlug, carrierName, state, ownerId: session.user.id! })
+      } catch (error) {
+        console.error("[blitzes POST market-resolve]", error)
+        return NextResponse.json({ error: "Could not resolve a market for that carrier/state" }, { status: 500 })
+      }
+    }
 
     const blitz = await db.blitz.create({
       data: {
