@@ -51,8 +51,10 @@ export async function POST(
     leadPrepTotal: result.total,
     leadPrepChecked: result.checked,
     leadPrepStatus: result.leadPrepStatus,
+    leadPrepSource: result.source,
     pendingProviderChecks: result.pending,
     providerScanRequired: result.kinetic && result.pending > 0,
+    pulledThisCall: result.pulled,
     scannedThisCall: result.scanned,
     customersThisCall: result.customers,
   })

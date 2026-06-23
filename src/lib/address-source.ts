@@ -23,9 +23,16 @@ export interface DiscoveredAddress {
   externalId?: string | null // provider-specific stable ID for dedup
 }
 
+export interface DiscoverOptions {
+  // Skip the (slow) Census reverse-geocode enrichment. Keeps only pins that
+  // already carry street tags — far fewer, but fast enough to run inside a
+  // serverless request/background tick without timing out.
+  skipReverseGeocode?: boolean
+}
+
 export interface AddressProvider {
   readonly name: string
-  discoverAddressesForZip(zip: string): Promise<DiscoveredAddress[]>
+  discoverAddressesForZip(zip: string, opts?: DiscoverOptions): Promise<DiscoveredAddress[]>
 }
 
 export async function getAddressProvider(): Promise<AddressProvider> {

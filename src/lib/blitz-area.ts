@@ -51,7 +51,7 @@ function parseTownQuery(query: string): { town: string; state: string } {
   }
 }
 
-async function inventoryForZip(zip: string): Promise<AreaCandidate | null> {
+export async function inventoryForZip(zip: string): Promise<AreaCandidate | null> {
   const rows = await db.$queryRaw<InventoryRow[]>`
     SELECT
       a.zip_code AS zip,
@@ -232,7 +232,10 @@ export interface EnsureInventoryResult {
 // the OSM provider — we keep only pins with a real house number + street, since
 // the create flow's street regex and the gokinetic customer filter both require
 // one (street-less OSM pins would be silently dropped downstream anyway).
-export async function ensureInventoryForZip(rawZip: string): Promise<EnsureInventoryResult> {
+export async function ensureInventoryForZip(
+  rawZip: string,
+  opts: { skipReverseGeocode?: boolean } = {}
+): Promise<EnsureInventoryResult> {
   const zip = normalizeZip(rawZip)
   if (zip.length !== 5) throw new Error("A valid 5-digit ZIP is required")
 
@@ -242,7 +245,7 @@ export async function ensureInventoryForZip(rawZip: string): Promise<EnsureInven
   }
 
   const provider = await getAddressProvider()
-  const discovered = await provider.discoverAddressesForZip(zip)
+  const discovered = await provider.discoverAddressesForZip(zip, { skipReverseGeocode: opts.skipReverseGeocode })
   const usable = discovered.filter((a) => a.streetNumber && a.streetName)
   if (usable.length === 0) {
     return { zip, addressCount: 0, source: "osm" }
@@ -269,7 +272,9 @@ export async function ensureInventoryForZip(rawZip: string): Promise<EnsureInven
         `${a.streetNumber} ${a.streetName}`.toUpperCase(),
         (a.city ?? city ?? "").toUpperCase(),
         (a.state ?? state ?? "").toUpperCase(),
-        a.zip || zip,
+        // Always store under the requested ZIP — the OSM bbox spans neighboring
+        // ZIPs, and only this ZIP's scanner_zips parent is guaranteed to exist.
+        zip,
         a.lat,
         a.lng,
         a.externalId ?? null,

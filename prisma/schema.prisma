@@ -479,6 +479,11 @@ model Blitz {
   leadPrepTotal     Int       @default(0) @map("lead_prep_total")
   leadPrepChecked   Int       @default(0) @map("lead_prep_checked")
   leadPrepUpdatedAt DateTime? @map("lead_prep_updated_at")
+  // For deferred (background) address discovery: the ZIP to pull when a blitz
+  // is created for an un-loaded ZIP, and where its addresses came from
+  // ("openaddresses" = full, "osm" = partial fallback).
+  leadPrepZip       String?   @map("lead_prep_zip")
+  leadPrepSource    String?   @map("lead_prep_source")
 
   market  Market @relation(fields: [marketId], references: [id])
   manager User   @relation(fields: [managerId], references: [id])

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { ensureInventoryForZip, importScannerInventory } from "@/lib/blitz-area"
+import { inventoryForZip, importScannerInventory } from "@/lib/blitz-area"
 import { applyCustomerSuppression, getProviderCheckCounts } from "@/lib/leads/customer-suppression"
 
 export const maxDuration = 300
@@ -89,21 +89,35 @@ export async function POST(request: Request) {
       return NextResponse.json(blitz, { status: 201 })
     }
 
-    // Pull addresses on-demand if this ZIP has no pre-loaded inventory. ZIPs we
-    // already loaded from OpenAddresses return instantly; anything else falls
-    // back to live OSM discovery (can take ~30-60s for a cold ZIP).
-    let discovery
-    try {
-      discovery = await ensureInventoryForZip(sourceZip)
-    } catch (error) {
-      await db.blitz.delete({ where: { id: blitz.id } }).catch(() => undefined)
-      console.error("[blitzes POST discovery]", error)
-      return NextResponse.json(
-        { error: "Could not pull addresses for that ZIP. Try again or pick another area." },
-        { status: 502 }
-      )
+    const isKineticMarket = blitz.market.carrier.name.toLowerCase().includes("kinetic")
+
+    // Cheap cache check — NO discovery here. Slow address-pulling (OSM) must
+    // never run inside the create request (it would time out the function).
+    const inv = await inventoryForZip(sourceZip)
+
+    if (!inv || inv.addressCount === 0) {
+      // DEFERRED: no pre-loaded inventory for this ZIP. Record the ZIP and let
+      // the background prep (list-view poll + cron) pull addresses via the OSM
+      // fallback, then filter. Create returns instantly.
+      await db.blitz.update({
+        where: { id: blitz.id },
+        data: {
+          leadPrepStatus: "FILTERING",
+          leadPrepZip: sourceZip,
+          leadPrepSource: "osm",
+          leadPrepTotal: 0,
+          leadPrepChecked: 0,
+          leadPrepUpdatedAt: new Date(),
+        },
+      })
+      return NextResponse.json({
+        ...blitz,
+        leadPrepStatus: "FILTERING",
+        preparation: { deferred: true, source: "osm", imported: 0, suppressed: 0 },
+      }, { status: 201 })
     }
 
+    // CACHED PATH: full inventory exists — import now (fast SQL) + filter state.
     let inventory
     try {
       inventory = await importScannerInventory({
@@ -118,11 +132,7 @@ export async function POST(request: Request) {
     if (inventory.imported === 0) {
       await db.blitz.delete({ where: { id: blitz.id } })
       return NextResponse.json(
-        {
-          error: discovery.source === "osm"
-            ? "No street-level addresses could be found for that ZIP."
-            : "No complete addresses are currently loaded for that ZIP",
-        },
+        { error: "No complete addresses are currently loaded for that ZIP" },
         { status: 409 }
       )
     }
@@ -135,10 +145,8 @@ export async function POST(request: Request) {
       console.error("[blitzes POST suppression]", error)
     }
 
-    // Initialize lead-filtering state. A Kinetic blitz with addresses still
-    // needing a provider check starts FILTERING (staffing blocked until READY);
-    // everything else (non-Kinetic, or already fully cached) is READY now.
-    const isKineticMarket = blitz.market.carrier.name.toLowerCase().includes("kinetic")
+    // A Kinetic blitz with addresses still needing a provider check starts
+    // FILTERING (staffing blocked until READY); everything else is READY now.
     let prepStatus: "READY" | "FILTERING" = "READY"
     let prepCounts = { total: 0, checked: 0, pending: 0 }
     if (isKineticMarket) {
@@ -152,6 +160,8 @@ export async function POST(request: Request) {
         leadPrepTotal: prepCounts.total,
         leadPrepChecked: prepCounts.checked,
         leadPrepUpdatedAt: new Date(),
+        leadPrepSource: "openaddresses",
+        leadPrepZip: null,
       },
     })
 
@@ -163,7 +173,7 @@ export async function POST(request: Request) {
         suppressed,
         readyToScan: inventory.imported - suppressed,
         uploadBatchId: inventory.uploadBatchId,
-        source: discovery.source,
+        source: "openaddresses",
         leadPrepStatus: prepStatus,
         leadPrepTotal: prepCounts.total,
         leadPrepChecked: prepCounts.checked,

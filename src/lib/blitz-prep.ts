@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
 import { runScan } from "@/lib/kinetic/scan"
+import { ensureInventoryForZip, importScannerInventory } from "@/lib/blitz-area"
 import { applyCustomerSuppression, getProviderCheckCounts } from "@/lib/leads/customer-suppression"
 
 // One step of a blitz's lead-filtering pipeline: scan a bounded batch of its
@@ -20,6 +21,10 @@ export interface AdvanceResult {
   checked: number
   pending: number
   leadPrepStatus: "READY" | "FILTERING"
+  // True when this call pulled addresses (vs scanned) — progress was made even
+  // though scanned is 0, so the poller shouldn't treat it as a stall.
+  pulled: boolean
+  source: string | null
 }
 
 const DEFAULT_BATCH = 150
@@ -34,10 +39,53 @@ export async function advanceBlitzFiltering(
 
   const blitz = await db.blitz.findUnique({
     where: { id: blitzId },
-    select: { id: true, market: { select: { carrier: { select: { name: true } } } } },
+    select: {
+      id: true, managerId: true, leadPrepZip: true, leadPrepSource: true,
+      market: { select: { carrier: { select: { name: true } } } },
+    },
   })
   if (!blitz) return null
   const kinetic = blitz.market.carrier.name.toLowerCase().includes("kinetic")
+
+  // PULL PHASE: a blitz created for an un-loaded ZIP carries leadPrepZip and has
+  // no leads yet. Pull its addresses first (fast OSM fallback — full data if a
+  // bulk-load has since populated scanner_addresses), then later ticks filter.
+  if (blitz.leadPrepZip) {
+    const existingLeads = await db.doorKnockLead.count({ where: { blitzId } })
+    if (existingLeads === 0) {
+      let source = "osm"
+      try {
+        const ens = await ensureInventoryForZip(blitz.leadPrepZip, { skipReverseGeocode: true })
+        source = ens.source === "cache" ? "openaddresses" : "osm"
+        if (ens.addressCount > 0) {
+          await importScannerInventory({ zip: blitz.leadPrepZip, blitzId, uploadedById: blitz.managerId })
+        }
+      } catch (error) {
+        console.error("[advanceBlitzFiltering pull]", error)
+      }
+      const imported = await db.doorKnockLead.count({ where: { blitzId } })
+      if (imported === 0) {
+        // Nothing found even via OSM — terminal; stop looping so it's not stuck.
+        await db.blitz.update({
+          where: { id: blitzId },
+          data: { leadPrepStatus: "READY", leadPrepZip: null, leadPrepSource: source, leadPrepUpdatedAt: new Date() },
+        })
+        return { blitzId, kinetic, scanned: 0, customers: 0, total: 0, checked: 0, pending: 0, leadPrepStatus: "READY", pulled: true, source }
+      }
+      await applyCustomerSuppression({ blitzId })
+      const counts = await getProviderCheckCounts(blitzId)
+      const pending = kinetic ? counts.pending : 0
+      const status: "READY" | "FILTERING" = !kinetic || pending === 0 ? "READY" : "FILTERING"
+      await db.blitz.update({
+        where: { id: blitzId },
+        data: {
+          leadPrepStatus: status, leadPrepTotal: counts.total, leadPrepChecked: counts.checked,
+          leadPrepSource: source, leadPrepZip: null, leadPrepUpdatedAt: new Date(),
+        },
+      })
+      return { blitzId, kinetic, scanned: 0, customers: 0, total: counts.total, checked: counts.checked, pending, leadPrepStatus: status, pulled: true, source }
+    }
+  }
 
   let scanned = 0
   let customers = 0
@@ -84,5 +132,7 @@ export async function advanceBlitzFiltering(
     checked: counts.checked,
     pending,
     leadPrepStatus,
+    pulled: false,
+    source: blitz.leadPrepSource ?? null,
   }
 }

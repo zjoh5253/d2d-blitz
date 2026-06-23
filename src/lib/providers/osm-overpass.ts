@@ -200,7 +200,7 @@ async function enrichMissingAddressesViaCensus(
   return addresses
 }
 
-async function discover(zip: string): Promise<DiscoveredAddress[]> {
+async function discover(zip: string, opts?: { skipReverseGeocode?: boolean }): Promise<DiscoveredAddress[]> {
   const bbox = await getZipBoundingBox(zip)
   if (!bbox) throw new Error(`OSM Nominatim returned no result for ZIP ${zip}`)
   console.log(`  bbox: S=${bbox.south} W=${bbox.west} N=${bbox.north} E=${bbox.east}`)
@@ -208,12 +208,15 @@ async function discover(zip: string): Promise<DiscoveredAddress[]> {
   const buildings = await queryOverpassBuildings(bbox)
   console.log(`  OSM returned ${buildings.length} building elements`)
 
-  const enriched = await enrichMissingAddressesViaCensus(buildings, zip)
+  // Census reverse-geocoding is the slow part. When skipped (on-demand path
+  // running inside a request/tick), we keep only the OSM-tagged pins — fewer,
+  // but no risk of timing out.
+  const enriched = opts?.skipReverseGeocode
+    ? buildings
+    : await enrichMissingAddressesViaCensus(buildings, zip)
   const matched = enriched.filter((a) => a.streetNumber || a.streetName).length
-  console.log(`  ${matched}/${enriched.length} pins have resolved street info; rest keep lat/lng with placeholder`)
+  console.log(`  ${matched}/${enriched.length} pins have resolved street info${opts?.skipReverseGeocode ? " (reverse-geocode skipped)" : ""}`)
 
-  // Keep every building — lat/lng is the canvassing signal. Rep app can
-  // reverse-geocode on tap when the rep wants the precise street label.
   return enriched.map((a) => ({ ...a, zip: a.zip || zip }))
 }
 

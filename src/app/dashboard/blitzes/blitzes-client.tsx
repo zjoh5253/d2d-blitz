@@ -22,6 +22,7 @@ interface Blitz {
   leadPrepStatus: string
   leadPrepTotal: number
   leadPrepChecked: number
+  leadPrepSource: string | null
   market: {
     id: string
     name: string
@@ -46,6 +47,7 @@ interface Prog {
   stalled: boolean
   startedAt: number
   baseChecked: number
+  source: string | null
 }
 
 function formatDuration(totalSeconds: number): string {
@@ -62,7 +64,28 @@ function formatDuration(totalSeconds: number): string {
 function FilteringCell({ prog, fallback, now }: { prog: Prog | undefined; fallback: Blitz; now: number }) {
   const total = prog?.total ?? fallback.leadPrepTotal
   const checked = prog?.checked ?? fallback.leadPrepChecked
-  const pct = total > 0 ? Math.min(100, Math.round((checked / total) * 100)) : 0
+  const source = prog?.source ?? fallback.leadPrepSource
+  const osmBadge =
+    source === "osm" ? (
+      <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-700">partial (OSM)</span>
+    ) : null
+
+  // total === 0 while FILTERING means addresses haven't been pulled yet.
+  if (total === 0) {
+    return (
+      <div className="min-w-[160px]">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Pulling addresses…
+        </div>
+        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-amber-400" />
+        </div>
+      </div>
+    )
+  }
+
+  const pct = Math.min(100, Math.round((checked / total) * 100))
   const remaining = Math.max(0, total - checked)
   const elapsed = prog ? Math.max(0, (now - prog.startedAt) / 1000) : 0
   const sessionDone = prog ? checked - prog.baseChecked : 0
@@ -78,7 +101,7 @@ function FilteringCell({ prog, fallback, now }: { prog: Prog | undefined; fallba
     <div className="min-w-[160px]">
       <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600">
         <Loader2 className="h-3 w-3 animate-spin" />
-        Filtering · {pct}%
+        Filtering · {pct}%{osmBadge}
       </div>
       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
         <div className="h-full bg-amber-500 transition-all duration-500" style={{ width: `${pct}%` }} />
@@ -112,7 +135,9 @@ export function BlitzesClient({ blitzes }: BlitzesClientProps) {
           leadPrepStatus: "FILTERING" | "READY"
           leadPrepTotal: number
           leadPrepChecked: number
+          leadPrepSource: string | null
           providerScanRequired: boolean
+          pulledThisCall: boolean
           scannedThisCall: number
           customersThisCall: number
         }
@@ -136,6 +161,7 @@ export function BlitzesClient({ blitzes }: BlitzesClientProps) {
               stalled: false,
               startedAt: cur?.startedAt ?? Date.now(),
               baseChecked: cur?.baseChecked ?? d.leadPrepChecked - (d.scannedThisCall ?? 0),
+              source: d.leadPrepSource ?? cur?.source ?? null,
             },
           }
         })
@@ -143,8 +169,9 @@ export function BlitzesClient({ blitzes }: BlitzesClientProps) {
           router.refresh() // pull fresh server status so the row flips to its real badge
           return
         }
-        if ((d.scannedThisCall ?? 0) === 0) {
-          // No progress this tick (throttle) — hand off to the cron backstop.
+        // No scan progress AND nothing pulled this tick = throttle stall; hand
+        // off to the cron backstop. (A pull tick scans 0 but made progress.)
+        if ((d.scannedThisCall ?? 0) === 0 && !d.pulledThisCall) {
           setProg((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], stalled: true } } : prev))
           return
         }
@@ -167,6 +194,7 @@ export function BlitzesClient({ blitzes }: BlitzesClientProps) {
                   stalled: false,
                   startedAt: Date.now(),
                   baseChecked: b.leadPrepChecked,
+                  source: b.leadPrepSource,
                 },
               }
         )
