@@ -48,6 +48,12 @@ async function getKineticScannerZips(limit: number): Promise<string[]> {
     SELECT DISTINCT sm.zip_code
     FROM scanner_markets sm
     WHERE sm.is_blitz_ready = true
+      AND EXISTS (
+        SELECT 1
+        FROM scanner_addresses a
+        WHERE a.zip_code = sm.zip_code
+          AND a.kind = 'LEAD'
+      )
     ORDER BY sm.zip_code ASC
     LIMIT ${limit}
   `
