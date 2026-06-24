@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
   }
 
   const url = new URL(request.url)
-  const limit = Math.min(500, Math.max(1, parseInt(url.searchParams.get("limit") ?? process.env.PRECREATE_KINETIC_SCAN_BATCH ?? "150", 10) || 150))
-  const concurrency = Math.min(30, Math.max(1, parseInt(url.searchParams.get("concurrency") ?? process.env.PRECREATE_KINETIC_SCAN_CONCURRENCY ?? "10", 10) || 10))
+  const limit = Math.min(500, Math.max(1, parseInt(url.searchParams.get("limit") ?? process.env.PRECREATE_KINETIC_SCAN_BATCH ?? "300", 10) || 300))
+  const concurrency = Math.min(30, Math.max(1, parseInt(url.searchParams.get("concurrency") ?? process.env.PRECREATE_KINETIC_SCAN_CONCURRENCY ?? "20", 10) || 20))
 
   const result = await scanKineticScannerPool({ limit, concurrency })
   return NextResponse.json({ ok: true, ...result })

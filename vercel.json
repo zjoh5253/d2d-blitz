@@ -5,6 +5,6 @@
   "installCommand": "npm install",
   "crons": [
     { "path": "/api/cron/suppress", "schedule": "0 9 * * *" },
-    { "path": "/api/cron/precreate-scan", "schedule": "0 * * * *" }
+    { "path": "/api/cron/precreate-scan", "schedule": "0 10 * * *" }
   ]
 }
