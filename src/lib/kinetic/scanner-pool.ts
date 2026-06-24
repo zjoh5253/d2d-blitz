@@ -128,8 +128,11 @@ async function collectTodo(opts: {
   limit: number
   maxAgeDays: number
   zipLimit: number
+  zipCodes?: string[]
 }): Promise<{ zipsQueued: number; candidatesConsidered: number; todo: ScanRep[] }> {
-  const zips = await getKineticScannerZips(opts.zipLimit)
+  const zips = opts.zipCodes?.length
+    ? [...new Set(opts.zipCodes.map((z) => z.replace(/\D/g, "").slice(0, 5)).filter((z) => z.length === 5))]
+    : await getKineticScannerZips(opts.zipLimit)
   const cutoff = new Date(Date.now() - opts.maxAgeDays * 86_400_000)
   const byKey = new Map<string, ScanRep>()
   let candidatesConsidered = 0
@@ -180,13 +183,19 @@ export async function scanKineticScannerPool(opts: {
   maxAgeDays?: number
   zipLimit?: number
   minDelayMs?: number
+  zipCodes?: string[]
 } = {}): Promise<ScannerPoolScanResult> {
   const limit = Math.max(1, opts.limit ?? 150)
   const concurrency = Math.max(1, opts.concurrency ?? 10)
   const maxAgeDays = Math.max(1, opts.maxAgeDays ?? 30)
   const zipLimit = Math.max(1, opts.zipLimit ?? 50)
   const minDelayMs = Math.max(0, opts.minDelayMs ?? 100)
-  const { zipsQueued, candidatesConsidered, todo } = await collectTodo({ limit, maxAgeDays, zipLimit })
+  const { zipsQueued, candidatesConsidered, todo } = await collectTodo({
+    limit,
+    maxAgeDays,
+    zipLimit,
+    zipCodes: opts.zipCodes,
+  })
 
   let scanned = 0
   let serviceable = 0

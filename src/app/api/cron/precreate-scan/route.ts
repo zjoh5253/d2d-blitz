@@ -18,7 +18,12 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url)
   const limit = Math.min(500, Math.max(1, parseInt(url.searchParams.get("limit") ?? process.env.PRECREATE_KINETIC_SCAN_BATCH ?? "300", 10) || 300))
   const concurrency = Math.min(30, Math.max(1, parseInt(url.searchParams.get("concurrency") ?? process.env.PRECREATE_KINETIC_SCAN_CONCURRENCY ?? "20", 10) || 20))
+  const zipParam = url.searchParams.get("zip")
+  const zipCodes = zipParam
+    ?.split(",")
+    .map((zip) => zip.replace(/\D/g, "").slice(0, 5))
+    .filter((zip) => zip.length === 5)
 
-  const result = await scanKineticScannerPool({ limit, concurrency })
+  const result = await scanKineticScannerPool({ limit, concurrency, zipCodes })
   return NextResponse.json({ ok: true, ...result })
 }
