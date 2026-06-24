@@ -1,0 +1,24 @@
+import { NextRequest, NextResponse } from "next/server"
+import { scanKineticScannerPool } from "@/lib/kinetic/scanner-pool"
+
+export const maxDuration = 300
+
+export async function GET(request: NextRequest) {
+  const secret = process.env.CRON_SECRET
+  if (!secret) {
+    return NextResponse.json({ error: "CRON_SECRET not set" }, { status: 500 })
+  }
+
+  const auth = request.headers.get("authorization")
+  const token = new URL(request.url).searchParams.get("token")
+  if (auth !== `Bearer ${secret}` && token !== secret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const url = new URL(request.url)
+  const limit = Math.min(500, Math.max(1, parseInt(url.searchParams.get("limit") ?? process.env.PRECREATE_KINETIC_SCAN_BATCH ?? "150", 10) || 150))
+  const concurrency = Math.min(30, Math.max(1, parseInt(url.searchParams.get("concurrency") ?? process.env.PRECREATE_KINETIC_SCAN_CONCURRENCY ?? "10", 10) || 10))
+
+  const result = await scanKineticScannerPool({ limit, concurrency })
+  return NextResponse.json({ ok: true, ...result })
+}
