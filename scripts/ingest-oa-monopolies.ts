@@ -12,7 +12,8 @@ import { PrismaPg } from "@prisma/adapter-pg"
 //
 // Usage (PROD): npx tsx scripts/ingest-oa-monopolies.ts --prod
 //        (LOCAL): npx tsx scripts/ingest-oa-monopolies.ts --allow-local
-// Optional: --states OH,TX  (limit to certain states)
+// Optional: --states OH,TX        (limit to certain states)
+//           --all-carriers        (every carrier's monopoly ZIPs, not just Kinetic)
 
 const OA_BASE = "C:/Users/marie/Desktop/dev/map-scanner/data/oa/extracted"
 const REGIONS = ["midwest", "northeast", "south", "west"]
@@ -53,6 +54,7 @@ interface Row {
 async function main() {
   const wantProd = process.argv.includes("--prod")
   const allowLocal = process.argv.includes("--allow-local")
+  const allCarriers = process.argv.includes("--all-carriers")
   const statesIdx = process.argv.indexOf("--states")
   const statesArg = statesIdx >= 0
     ? (process.argv[statesIdx + 1] ?? "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean)
@@ -67,9 +69,12 @@ async function main() {
 
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) })
   try {
-    // 1. Kinetic monopoly ZIPs (+ state) from the shared scanner table.
+    // 1. Monopoly ZIPs (+ state) from the shared scanner table. Default to
+    //    Kinetic only (historical behavior); --all-carriers covers every brand.
     const monos = await db.$queryRawUnsafe<{ zip_code: string; state: string }[]>(
-      `SELECT zip_code, state FROM carrier_monopolies WHERE provider_slug = 'kinetic'`
+      allCarriers
+        ? `SELECT zip_code, state FROM carrier_monopolies`
+        : `SELECT zip_code, state FROM carrier_monopolies WHERE provider_slug = 'kinetic'`
     )
     const byState = new Map<string, Set<string>>()
     for (const m of monos) {
@@ -79,7 +84,7 @@ async function main() {
       byState.get(s)!.add(m.zip_code)
     }
     const totalZips = [...byState.values()].reduce((n, s) => n + s.size, 0)
-    console.log(`Kinetic monopoly ZIPs: ${totalZips} across ${byState.size} states\n`)
+    console.log(`${allCarriers ? "All-carrier" : "Kinetic"} monopoly ZIPs: ${totalZips} across ${byState.size} states\n`)
     if (totalZips === 0) { console.log("Nothing to load."); return }
 
     const perZip = new Map<string, number>()
