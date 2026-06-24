@@ -30,6 +30,9 @@ interface Blitz {
   }
   manager: { id: string; name: string | null; email: string }
   _count: { assignments: number; sales: number }
+  // Address counts for the list hover. `filtered` = knockable (suppressed=false),
+  // `suppressed` = filtered out as current-customer / not-serviceable.
+  addresses: { filtered: number; suppressed: number; total: number }
 }
 
 interface BlitzesClientProps {
@@ -279,6 +282,31 @@ export function BlitzesClient({ blitzes }: BlitzesClientProps) {
     {
       key: "repCap",
       label: "Rep Cap",
+    },
+    {
+      // key drives sorting (numeric on the filtered count); render uses the
+      // full object. The headline is the FILTERED (knockable) count — addresses
+      // left after customer-suppression — with the breakdown on hover. Native
+      // title tooltip avoids the table Card's overflow-hidden clipping.
+      key: "addresses.filtered",
+      label: "Addresses",
+      sortable: true,
+      render: (_: unknown, row: Blitz) => {
+        const a = row.addresses
+        const filtering = (prog[row.id]?.status ?? row.leadPrepStatus) === "FILTERING"
+        const title = [
+          `${a.total.toLocaleString()} addresses imported`,
+          `${a.filtered.toLocaleString()} knockable (after customer filter)`,
+          `${a.suppressed.toLocaleString()} filtered out (current customer / not serviceable)`,
+          ...(filtering ? ["Still filtering — count not final yet"] : []),
+        ].join("\n")
+        return (
+          <span className="cursor-help tabular-nums font-medium" title={title}>
+            {a.filtered.toLocaleString()}
+            {filtering && <span className="ml-1 text-xs text-amber-600">…</span>}
+          </span>
+        )
+      },
     },
     {
       key: "status",
