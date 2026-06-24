@@ -944,6 +944,13 @@ model DoorKnockLead {
   // CSV-imported leads may not have them.
   lat             Float?
   lng             Float?
+  // Coordinate provenance. When a rep dispositions a door, their phone GPS
+  // (if a good fix) overwrites lat/lng in place — the rep standing at the
+  // door is the most accurate source we have. coordSource records where the
+  // current lat/lng came from ("rep_gps" once verified in the field, else the
+  // import source) so a later bulk re-import never clobbers a rep-verified pin.
+  coordSource     String?              @map("coord_source")
+  coordsUpdatedAt DateTime?            @map("coords_updated_at")
   disposition     DoorKnockDisposition @default(PENDING)
   notes           String?
   assignedRepId   String?              @map("assigned_rep_id")

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSessionFromRequest } from "@/lib/auth-mobile"
 import { db } from "@/lib/db"
+import { computeGpsPinCorrection } from "@/lib/gps-pin-correction"
 import type { DoorKnockDisposition } from "@prisma/client"
 
 const VALID_DISPOSITIONS: DoorKnockDisposition[] = [
@@ -98,6 +99,23 @@ export async function PUT(
 
     if (body.notes !== undefined) {
       data.notes = body.notes || null
+    }
+
+    // Promote the rep's at-the-door GPS fix to the lead's canonical pin when it
+    // passes the accuracy + proximity gate (see computeGpsPinCorrection).
+    const pinUpdate = computeGpsPinCorrection({
+      isRealDisposition: !!data.disposition && data.disposition !== "PENDING",
+      leadLat: lead.lat,
+      leadLng: lead.lng,
+      gpsLat: body.gpsLat,
+      gpsLng: body.gpsLng,
+      gpsAccuracy: body.gpsAccuracy,
+    })
+    if (pinUpdate) {
+      data.lat = pinUpdate.lat
+      data.lng = pinUpdate.lng
+      data.coordSource = pinUpdate.coordSource
+      data.coordsUpdatedAt = pinUpdate.coordsUpdatedAt
     }
 
     if (body.goBackId !== undefined) {

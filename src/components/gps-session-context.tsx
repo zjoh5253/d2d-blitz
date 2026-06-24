@@ -59,7 +59,8 @@ function routeMiles(route: GpsRoutePoint[]): number {
 export interface GpsSessionValue {
   active: boolean;
   paused: boolean;
-  current: { lat: number; lng: number } | null;
+  /** Latest fix. `accuracy` is the GPS radius in meters (lower = better). */
+  current: { lat: number; lng: number; accuracy: number | null } | null;
   seconds: number;
   miles: number;
   knockCount: number;
@@ -83,7 +84,7 @@ export function useGpsSession(): GpsSessionValue {
 
 export function GpsSessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<SessionState | null>(() => loadSession());
-  const [current, setCurrent] = useState<{ lat: number; lng: number } | null>(null);
+  const [current, setCurrent] = useState<{ lat: number; lng: number; accuracy: number | null } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [permissionState, setPermissionState] = useState<PermissionState>("prompt");
   const watchIdRef = useRef<number | null>(null);
@@ -106,7 +107,7 @@ export function GpsSessionProvider({ children }: { children: React.ReactNode }) 
     }
     if (!session || paused) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => setCurrent({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (pos) => setCurrent({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy ?? null }),
         () => {},
         { enableHighAccuracy: true, timeout: 10000 }
       );
@@ -115,7 +116,7 @@ export function GpsSessionProvider({ children }: { children: React.ReactNode }) 
     const id = navigator.geolocation.watchPosition(
       (pos) => {
         const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        setCurrent(p);
+        setCurrent({ ...p, accuracy: pos.coords.accuracy ?? null });
         setSession((prev) => {
           if (!prev) return prev;
           const last = prev.route[prev.route.length - 1];

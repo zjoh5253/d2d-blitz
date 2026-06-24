@@ -3,28 +3,11 @@
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { spiderfyFeatures, SPIDERFY_ZOOM, type RepLeadPin } from "./spiderfy";
+
+export type { RepLeadPin };
 
 const BASE_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
-
-export type RepLeadPin = {
-  id: string;
-  lat: number;
-  lng: number;
-  street: string;
-  disposition: "PENDING" | "NOT_HOME" | "GO_BACK" | "SOLD" | "NOT_INTERESTED";
-};
-
-// Map pin palette (rep-requested 2026-06-04):
-//   yellow = no answer (Not Home), blue = follow up (Go Back),
-//   red = no sale (Not Interested), green = sale made (Sold).
-// PENDING (not yet knocked) stays gray.
-const DISPO_COLOR: Record<RepLeadPin["disposition"], string> = {
-  PENDING: "#6B7280",        // gray-500  — not yet knocked
-  NOT_HOME: "#EAB308",       // yellow-500 — no answer
-  GO_BACK: "#3B82F6",        // blue-500   — follow up
-  SOLD: "#22C55E",           // green-500  — sale made
-  NOT_INTERESTED: "#EF4444", // red-500    — no sale made
-};
 
 export function RepLeadsMap({
   pins,
@@ -105,21 +88,24 @@ export function RepLeadsMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || pins.length === 0) return;
-    const apply = () => {
-      const features = pins.map((p) => ({
-        type: "Feature" as const,
-        geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
-        properties: {
-          id: p.id,
-          street: p.street,
-          disposition: p.disposition,
-          color: DISPO_COLOR[p.disposition],
-          lat: p.lat,
-          lng: p.lng,
-        },
-      }));
+
+    // Stacked pins are untappable, so once the rep zooms to street level we
+    // "spiderfy" each coincident group onto a small ring (see spiderfy.ts).
+    // Only worth re-fanning on zoom when something actually overlaps.
+    const counts = new Map<string, number>();
+    for (const p of pins) {
+      const key = `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const hasOverlap = [...counts.values()].some((c) => c > 1);
+
+    const build = () => {
       const src = map.getSource("leads") as maplibregl.GeoJSONSource | undefined;
-      src?.setData({ type: "FeatureCollection", features });
+      src?.setData({ type: "FeatureCollection", features: spiderfyFeatures(pins, map.getZoom()) });
+    };
+
+    const apply = () => {
+      build();
       if (!hasFitRef.current) {
         let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
         for (const p of pins) {
@@ -134,8 +120,16 @@ export function RepLeadsMap({
         }
       }
     };
+
     if (map.loaded() && map.isStyleLoaded()) apply();
     else map.once("load", apply);
+
+    // Re-fan as the rep crosses the spiderfy zoom threshold (only worth wiring
+    // up when there's actually an overlapping group to fan).
+    if (hasOverlap) {
+      map.on("zoomend", build);
+      return () => { map.off("zoomend", build); };
+    }
   }, [pins]);
 
   return <div ref={containerRef} className="h-full w-full" />;

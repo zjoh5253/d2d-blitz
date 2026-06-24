@@ -255,6 +255,19 @@ export default function RepLeadsPage() {
     setGoBackMode(true);
   };
 
+  // The rep is physically at the door when they disposition it, so their live
+  // GPS fix is the most accurate coordinate we'll ever have for this address.
+  // Send it with the disposition; the server promotes it to the lead's pin if
+  // it passes the accuracy + proximity gate (see route.ts). Returns {} when
+  // there's no fix so the PUT body is unchanged.
+  const gpsFields = (): Record<string, number> => {
+    const c = gps.current;
+    if (!c) return {};
+    const f: Record<string, number> = { gpsLat: c.lat, gpsLng: c.lng };
+    if (typeof c.accuracy === "number") f.gpsAccuracy = c.accuracy;
+    return f;
+  };
+
   // Logging a disposition on the map doubles as a knock for the active GPS
   // session (Teki #7: knock count updates without screen-switching).
   const recordKnock = (d: Disposition, lead: Lead) => {
@@ -274,7 +287,7 @@ export default function RepLeadsPage() {
       const res = await fetch(`/api/door-knock-leads/${selectedLead.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disposition }),
+        body: JSON.stringify({ disposition, ...gpsFields() }),
       });
       if (res.ok) {
         recordKnock(disposition, selectedLead);
@@ -300,6 +313,7 @@ export default function RepLeadsPage() {
         body: JSON.stringify({
           disposition: "GO_BACK",
           goBack: { followUpDate: goBackDate, notes: goBackNotes },
+          ...gpsFields(),
         }),
       });
       if (res.ok) {
@@ -324,7 +338,7 @@ export default function RepLeadsPage() {
       const res = await fetch(`/api/door-knock-leads/${selectedLead.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disposition: "NOT_INTERESTED", notes: reasonNotes }),
+        body: JSON.stringify({ disposition: "NOT_INTERESTED", notes: reasonNotes, ...gpsFields() }),
       });
       if (res.ok) {
         recordKnock("NOT_INTERESTED", selectedLead);
