@@ -49,35 +49,71 @@ function splitStreet(street: string): { streetNumber: string; streetName: string
 }
 
 async function getKineticScannerZips(limit: number): Promise<string[]> {
-  const readyRows = await db.$queryRaw<Array<{ zip_code: string }>>`
-    SELECT DISTINCT sm.zip_code
-    FROM scanner_markets sm
-    WHERE sm.is_blitz_ready = true
-      AND EXISTS (
-        SELECT 1
-        FROM scanner_addresses a
-        WHERE a.zip_code = sm.zip_code
-          AND a.kind = 'LEAD'
-      )
-    ORDER BY sm.zip_code ASC
-    LIMIT ${limit}
-  `
-
   let monopolyRows: Array<{ zip_code: string }> = []
   const monopolyTable = await db.$queryRaw<Array<{ exists: boolean }>>`
     SELECT to_regclass('public.carrier_monopolies') IS NOT NULL AS exists
   `
   if (monopolyTable[0]?.exists) {
     monopolyRows = await db.$queryRaw<Array<{ zip_code: string }>>`
-      SELECT DISTINCT zip_code
-      FROM carrier_monopolies
-      WHERE provider_slug = 'kinetic'
-      ORDER BY zip_code ASC
+      WITH inventory AS (
+        SELECT zip_code, COUNT(*)::int AS loaded
+        FROM scanner_addresses
+        WHERE kind = 'LEAD'
+        GROUP BY zip_code
+      ),
+      status AS (
+        SELECT
+          split_part(address_key, '|', 2) AS zip_code,
+          COUNT(*)::int AS checked,
+          SUM(
+            CASE
+              WHEN serviceable
+                AND NOT "isCustomer"
+                AND (
+                  COALESCE(UPPER(tech_type), '') LIKE '%FIBER%'
+                  OR COALESCE(UPPER(max_qual), '') LIKE '%FIBER%'
+                )
+              THEN 1 ELSE 0
+            END
+          )::int AS reachable
+        FROM kinetic_address_status
+        GROUP BY split_part(address_key, '|', 2)
+      )
+      SELECT cm.zip_code
+      FROM carrier_monopolies cm
+      JOIN inventory i ON i.zip_code = cm.zip_code
+      LEFT JOIN status s ON s.zip_code = cm.zip_code
+      WHERE cm.provider_slug = 'kinetic'
+        AND i.loaded >= 20
+        AND NOT (
+          COALESCE(s.checked, 0) >= LEAST(i.loaded, ${MAX_REAL_LEADS_PER_ZIP})
+          AND COALESCE(s.reachable, 0) <= 10
+        )
+      ORDER BY
+        COALESCE(s.reachable, 0) DESC,
+        (LEAST(i.loaded, ${MAX_REAL_LEADS_PER_ZIP}) - COALESCE(s.checked, 0)) DESC,
+        cm.zip_code ASC
       LIMIT ${limit}
     `
   }
 
-  return [...new Set([...readyRows, ...monopolyRows].map((r) => r.zip_code))].slice(0, limit)
+  const readyRows = await db.$queryRaw<Array<{ zip_code: string }>>`
+    WITH inventory AS (
+      SELECT zip_code, COUNT(*)::int AS loaded
+      FROM scanner_addresses
+      WHERE kind = 'LEAD'
+      GROUP BY zip_code
+    )
+    SELECT DISTINCT sm.zip_code
+    FROM scanner_markets sm
+    JOIN inventory i ON i.zip_code = sm.zip_code
+    WHERE sm.is_blitz_ready = true
+      AND i.loaded >= 20
+    ORDER BY sm.zip_code ASC
+    LIMIT ${limit}
+  `
+
+  return [...new Set([...monopolyRows, ...readyRows].map((r) => r.zip_code))].slice(0, limit)
 }
 
 async function getScannerAddressesForZip(zip: string): Promise<ScannerAddress[]> {
