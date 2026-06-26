@@ -80,6 +80,17 @@ export interface KineticStatus {
   raw: string
 }
 
+export function isKineticFiberQualified(status: {
+  serviceable: boolean
+  maxQual?: string | null
+  techType?: string | null
+}): boolean {
+  if (!status.serviceable) return false
+  const tech = status.techType?.toUpperCase() ?? ""
+  const qual = status.maxQual?.toUpperCase() ?? ""
+  return tech.includes("FIBER") || qual.includes("FIBER")
+}
+
 function normalize(json: Record<string, unknown>): KineticStatus {
   const addr = (json.address ?? {}) as Record<string, unknown>
   const bb = (json.broadbandService ?? {}) as Record<string, unknown>

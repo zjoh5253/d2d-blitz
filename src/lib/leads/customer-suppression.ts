@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
 import { canonicalizeAddress } from "@/lib/installs/match"
+import { isKineticFiberQualified } from "@/lib/kinetic/availability"
 
 // Suppress door-knock leads whose address matches a KNOWN CURRENT CUSTOMER,
 // so reps don't waste time knocking doors that already have service.
@@ -89,7 +90,7 @@ export async function gatherKnownCustomerKeys(): Promise<Map<string, SuppressRea
     if (k && !keys.has(k)) keys.set(k, reason)
   }
 
-  const [installs, sales, soldLeads, kineticCustomers, servicedAddresses, nonServiceable] = await Promise.all([
+  const [installs, sales, soldLeads, kineticCustomers, servicedAddresses, nonFiberReady] = await Promise.all([
     db.installRecord.findMany({ select: { customerAddress: true } }),
     db.sale.findMany({ select: { customerAddress: true } }),
     db.doorKnockLead.findMany({
@@ -111,10 +112,28 @@ export async function gatherKnownCustomerKeys(): Promise<Map<string, SuppressRea
     // them. `comingSoon` (future fiber) gets a distinct reason so those can be
     // un-suppressed when the area goes live. Distinct reason strings keep these
     // separable from customer suppressions for one-query reversal.
-    db.kineticAddressStatus.findMany({
-      where: { serviceable: false },
-      select: { addressKey: true, comingSoon: true },
-    }),
+    db.$queryRaw<
+      Array<{
+        addressKey: string
+        serviceable: boolean
+        comingSoon: boolean
+        maxQual: string | null
+        techType: string | null
+      }>
+    >`
+      SELECT
+        address_key AS "addressKey",
+        serviceable,
+        "comingSoon",
+        max_qual AS "maxQual",
+        tech_type AS "techType"
+      FROM kinetic_address_status
+      WHERE serviceable = false
+        OR NOT (
+          COALESCE(UPPER(tech_type), '') LIKE '%FIBER%'
+          OR COALESCE(UPPER(max_qual), '') LIKE '%FIBER%'
+        )
+    `,
   ])
 
   for (const r of installs) add(keyFromFullAddress(r.customerAddress), "Current customer (install on record)")
@@ -124,8 +143,11 @@ export async function gatherKnownCustomerKeys(): Promise<Map<string, SuppressRea
   for (const s of servicedAddresses) add(s.addressKey, `Current customer (${s.source})`)
   // Added last so a customer/serviced match (added above) wins the reason for
   // any key that is both.
-  for (const a of nonServiceable)
-    add(a.addressKey, a.comingSoon ? "Kinetic coming-soon (gokinetic)" : "Not Kinetic-serviceable (gokinetic)")
+  for (const a of nonFiberReady) {
+    if (a.comingSoon) add(a.addressKey, "Kinetic coming-soon (gokinetic)")
+    else if (!a.serviceable) add(a.addressKey, "Not Kinetic-serviceable (gokinetic)")
+    else if (!isKineticFiberQualified(a)) add(a.addressKey, "Not Kinetic fiber-serviceable (gokinetic)")
+  }
 
   return keys
 }

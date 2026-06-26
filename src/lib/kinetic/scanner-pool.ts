@@ -1,5 +1,10 @@
 import { db } from "@/lib/db"
-import { KineticClient, KineticThrottledError, type KineticStatus } from "@/lib/kinetic/availability"
+import {
+  isKineticFiberQualified,
+  KineticClient,
+  KineticThrottledError,
+  type KineticStatus,
+} from "@/lib/kinetic/availability"
 import { keyFromParts } from "@/lib/leads/customer-suppression"
 
 type ScannerAddress = {
@@ -221,9 +226,10 @@ export async function scanKineticScannerPool(opts: {
         })
         await cacheStatus(address.key, status)
         scanned++
-        if (status.serviceable && !status.isCustomer) serviceable++
+        const fiberQualified = isKineticFiberQualified(status)
+        if (fiberQualified && !status.isCustomer) serviceable++
         if (status.isCustomer) customers++
-        if (status.isCustomer || status.comingSoon || !status.serviceable) filtered++
+        if (status.isCustomer || status.comingSoon || !fiberQualified) filtered++
       } catch (error) {
         if (error instanceof KineticThrottledError) {
           throttled++
