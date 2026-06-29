@@ -137,6 +137,9 @@ export function StaffingTab({ blitzId, assignments: initialAssignments, availabl
           </div>
         </div>
       )}
+
+      <BlitzSignupRoster blitzId={blitzId} />
+
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {assignments.length} rep{assignments.length !== 1 ? "s" : ""} assigned
@@ -295,6 +298,99 @@ export function StaffingTab({ blitzId, assignments: initialAssignments, availabl
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+// ── Job-board signups ───────────────────────────────────────────────────────
+// Reps who self-claimed this blitz from the rep app. CLAIMED reps need
+// territory (assign it on the Leads map → they flip to Active automatically);
+// WAITLISTED reps are queued. Decline frees the spot + promotes the waitlist.
+
+interface Signup {
+  id: string
+  repId: string
+  status: "CLAIMED" | "ACTIVE" | "WAITLISTED"
+  waitPosition: number | null
+  rep: { id: string; name: string | null; email: string }
+}
+
+function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
+  const router = useRouter()
+  const [signups, setSignups] = React.useState<Signup[] | null>(null)
+  const [busy, setBusy] = React.useState<string | null>(null)
+
+  const load = React.useCallback(async () => {
+    const res = await fetch(`/api/blitzes/${blitzId}/signups`)
+    if (res.ok) setSignups(await res.json())
+  }, [blitzId])
+  React.useEffect(() => { load() }, [load])
+
+  async function decline(repId: string) {
+    if (!window.confirm("Remove this rep from the blitz?")) return
+    setBusy(repId)
+    try {
+      const res = await fetch(`/api/blitzes/${blitzId}/signups/${repId}/decline`, { method: "POST" })
+      if (res.ok) { await load(); router.refresh() }
+    } finally { setBusy(null) }
+  }
+
+  if (!signups || signups.length === 0) return null
+
+  const needsTerritory = signups.filter((s) => s.status === "CLAIMED")
+  const active = signups.filter((s) => s.status === "ACTIVE")
+  const waitlist = signups.filter((s) => s.status === "WAITLISTED").sort((a, b) => (a.waitPosition ?? 0) - (b.waitPosition ?? 0))
+
+  const Row = ({ s, badge }: { s: Signup; badge: React.ReactNode }) => (
+    <div className="flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2 text-sm">
+      <div className="min-w-0">
+        <div className="font-medium truncate">{s.rep.name ?? s.rep.email}</div>
+        <div className="text-xs text-muted-foreground truncate">{s.rep.email}</div>
+      </div>
+      <div className="flex items-center gap-2">
+        {badge}
+        <Button variant="ghost" size="sm" disabled={busy === s.repId} onClick={() => decline(s.repId)}>
+          {busy === s.repId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+        </Button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+      <div className="text-sm font-medium">
+        Job-board signups
+        <span className="ml-2 text-xs font-normal text-muted-foreground">
+          {needsTerritory.length} awaiting territory · {active.length} active · {waitlist.length} waitlisted
+        </span>
+      </div>
+
+      {needsTerritory.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-amber-700">Needs territory — assign leads on the Leads map to activate</div>
+          {needsTerritory.map((s) => (
+            <Row key={s.id} s={s} badge={<span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Reserved</span>} />
+          ))}
+        </div>
+      )}
+
+      {active.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-muted-foreground">Active</div>
+          {active.map((s) => (
+            <Row key={s.id} s={s} badge={<span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Active</span>} />
+          ))}
+        </div>
+      )}
+
+      {waitlist.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-muted-foreground">Waitlist</div>
+          {waitlist.map((s) => (
+            <Row key={s.id} s={s} badge={<span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">#{s.waitPosition}</span>} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

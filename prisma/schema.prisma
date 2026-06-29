@@ -58,6 +58,14 @@ enum BlitzAssignmentStatus {
   REMOVED
 }
 
+enum BlitzSignupStatus {
+  CLAIMED // reserved a spot (under repCap), awaiting territory
+  WAITLISTED // over repCap, in the queue
+  ACTIVE // manager assigned territory → live on the blitz
+  DECLINED // manager removed the claim
+  WITHDRAWN // rep backed out
+}
+
 enum ExpenseCategory {
   HOUSING
   TRAVEL
@@ -241,6 +249,9 @@ model User {
 
   // Blitz assignments (as rep)
   blitzAssignments BlitzAssignment[]
+
+  // Job-board signups (as rep)
+  blitzSignups BlitzSignup[]
 
   // Daily reports
   dailyReports DailyReport[]
@@ -485,10 +496,16 @@ model Blitz {
   leadPrepZip       String?   @map("lead_prep_zip")
   leadPrepSource    String?   @map("lead_prep_source")
 
+  // Job board: when true, this blitz appears on the rep self-signup board.
+  // Auto-set true once lead_prep reaches READY (so reps never claim an
+  // unfiltered blitz). repCap caps claimed spots; overflow waitlists.
+  openForSignup Boolean @default(false) @map("open_for_signup")
+
   market  Market @relation(fields: [marketId], references: [id])
   manager User   @relation(fields: [managerId], references: [id])
 
   assignments   BlitzAssignment[]
+  signups       BlitzSignup[]
   expenses      BlitzExpense[]
   dailyReports  DailyReport[]
   goBacksRecorded GoBack[]
@@ -523,6 +540,31 @@ model BlitzAssignment {
   @@index([repId])
   @@index([status])
   @@map("blitz_assignments")
+}
+
+// Rep self-service job-board claim. Sits in front of BlitzAssignment: a rep
+// claims a spot (CLAIMED if under repCap, else WAITLISTED); a manager then
+// assigns territory, which flips the claim to ACTIVE and mirrors it into a
+// BlitzAssignment so the rest of the app (counts, rep's blitz list) is
+// unchanged. Withdraw/decline frees a spot and promotes the next waitlister.
+model BlitzSignup {
+  id           String            @id @default(cuid())
+  blitzId      String            @map("blitz_id")
+  repId        String            @map("rep_id")
+  status       BlitzSignupStatus @default(CLAIMED)
+  waitPosition Int?              @map("wait_position") // 1-based; set only when WAITLISTED
+  claimedAt    DateTime          @default(now()) @map("claimed_at")
+  activatedAt  DateTime?         @map("activated_at")
+  decidedById  String?           @map("decided_by_id")
+  decidedAt    DateTime?         @map("decided_at")
+
+  blitz Blitz @relation(fields: [blitzId], references: [id], onDelete: Cascade)
+  rep   User  @relation(fields: [repId], references: [id])
+
+  @@unique([blitzId, repId]) // one claim per rep per blitz
+  @@index([blitzId, status])
+  @@index([repId])
+  @@map("blitz_signups")
 }
 
 model BlitzExpense {

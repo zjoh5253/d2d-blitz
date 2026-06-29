@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { Home, ClipboardList, MapPin, DollarSign, Wallet, User } from "lucide-react";
+import { Home, ClipboardList, MapPin, DollarSign, Wallet, User, Briefcase } from "lucide-react";
 import { GpsSessionProvider } from "@/components/gps-session-context";
 import { InstallPrompt } from "@/components/install-prompt";
 
@@ -15,6 +15,7 @@ import { InstallPrompt } from "@/components/install-prompt";
 
 const TABS = [
   { href: "/rep", label: "Home", icon: Home, match: (p: string) => p === "/rep" },
+  { href: "/rep/board", label: "Board", icon: Briefcase, match: (p: string) => p.startsWith("/rep/board") },
   { href: "/rep/leads", label: "Leads", icon: ClipboardList, match: (p: string) => p.startsWith("/rep/leads") },
   { href: "/rep/gps", label: "GPS", icon: MapPin, match: (p: string) => p.startsWith("/rep/gps") },
   { href: "/rep/sales", label: "Sales", icon: DollarSign, match: (p: string) => p.startsWith("/rep/sales") },

@@ -120,6 +120,10 @@ export async function advanceBlitzFiltering(
       leadPrepTotal: counts.total,
       leadPrepChecked: counts.checked,
       leadPrepUpdatedAt: new Date(),
+      // Once filtering is done, the blitz is eligible for the rep job board.
+      // Only flips true (never back to false here) so a manager can't have it
+      // yanked off the board by a re-filter.
+      ...(leadPrepStatus === "READY" ? { openForSignup: true } : {}),
     },
   })
 

@@ -45,6 +45,39 @@ export async function PUT(request: NextRequest) {
       data: { assignedRepId: repId },
     })
 
+    // Job board: assigning territory to a rep who CLAIMED this blitz on the
+    // board activates their signup + mirrors it into a BlitzAssignment so the
+    // existing staffing/counts work unchanged. No signup (the old direct-assign
+    // flow) → leave behavior as-is.
+    if (result.count > 0) {
+      const lead = await db.doorKnockLead.findFirst({
+        where: { id: { in: leadIds } },
+        select: { blitzId: true },
+      })
+      if (lead?.blitzId) {
+        const blitzId = lead.blitzId
+        const signup = await db.blitzSignup.findUnique({
+          where: { blitzId_repId: { blitzId, repId } },
+        })
+        if (signup && signup.status !== "ACTIVE" && signup.status !== "DECLINED" && signup.status !== "WITHDRAWN") {
+          await db.blitzSignup.update({
+            where: { id: signup.id },
+            data: {
+              status: "ACTIVE",
+              activatedAt: new Date(),
+              decidedById: session.user.id,
+              decidedAt: new Date(),
+              waitPosition: null,
+            },
+          })
+          const existingAssignment = await db.blitzAssignment.findFirst({ where: { blitzId, repId } })
+          if (!existingAssignment) {
+            await db.blitzAssignment.create({ data: { blitzId, repId, status: "ACTIVE" } })
+          }
+        }
+      }
+    }
+
     return NextResponse.json({
       assigned: result.count,
       repId,
