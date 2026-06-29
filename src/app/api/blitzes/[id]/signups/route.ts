@@ -13,12 +13,19 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     }
     const { id } = await params
 
-    const signups = await db.blitzSignup.findMany({
-      where: { blitzId: id, status: { in: ["CLAIMED", "ACTIVE", "WAITLISTED"] } },
-      include: { rep: { select: { id: true, name: true, email: true } } },
-      orderBy: [{ status: "asc" }, { waitPosition: "asc" }, { claimedAt: "asc" }],
+    const [blitz, signups] = await Promise.all([
+      db.blitz.findUnique({ where: { id }, select: { openForSignup: true, boardNotifiedAt: true } }),
+      db.blitzSignup.findMany({
+        where: { blitzId: id, status: { in: ["CLAIMED", "ACTIVE", "WAITLISTED"] } },
+        include: { rep: { select: { id: true, name: true, email: true } } },
+        orderBy: [{ status: "asc" }, { waitPosition: "asc" }, { claimedAt: "asc" }],
+      }),
+    ])
+    return NextResponse.json({
+      openForSignup: blitz?.openForSignup ?? false,
+      boardNotifiedAt: blitz?.boardNotifiedAt ?? null,
+      signups,
     })
-    return NextResponse.json(signups)
   } catch (error) {
     console.error("[GET /api/blitzes/:id/signups]", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

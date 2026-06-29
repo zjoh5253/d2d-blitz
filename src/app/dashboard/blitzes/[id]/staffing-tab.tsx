@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { UserPlus, Trash2, Loader2 } from "lucide-react"
+import { UserPlus, Trash2, Loader2, Bell } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
 import { StatusBadge } from "@/components/ui/status-badge"
@@ -315,14 +315,21 @@ interface Signup {
   rep: { id: string; name: string | null; email: string }
 }
 
+interface BoardData {
+  openForSignup: boolean
+  boardNotifiedAt: string | null
+  signups: Signup[]
+}
+
 function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
   const router = useRouter()
-  const [signups, setSignups] = React.useState<Signup[] | null>(null)
+  const [data, setData] = React.useState<BoardData | null>(null)
   const [busy, setBusy] = React.useState<string | null>(null)
+  const [notifying, setNotifying] = React.useState(false)
 
   const load = React.useCallback(async () => {
     const res = await fetch(`/api/blitzes/${blitzId}/signups`)
-    if (res.ok) setSignups(await res.json())
+    if (res.ok) setData(await res.json())
   }, [blitzId])
   React.useEffect(() => { load() }, [load])
 
@@ -335,8 +342,30 @@ function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
     } finally { setBusy(null) }
   }
 
-  if (!signups || signups.length === 0) return null
+  async function notify() {
+    const already = !!data?.boardNotifiedAt
+    if (!window.confirm(
+      already
+        ? "Reps were already notified for this blitz. Send another push to all reps?"
+        : "Send a push notification to every rep who's enabled notifications?"
+    )) return
+    setNotifying(true)
+    try {
+      const res = await fetch(`/api/blitzes/${blitzId}/notify-signup`, { method: "POST" })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok) {
+        window.alert(`Sent to ${d.reps} rep${d.reps === 1 ? "" : "s"} (${d.sent} notification${d.sent === 1 ? "" : "s"}${d.stale ? `, ${d.stale} stale removed` : ""}).`)
+        await load()
+      } else {
+        window.alert(d.error ?? "Couldn't send notifications.")
+      }
+    } finally { setNotifying(false) }
+  }
 
+  // Only blitzes that are actually on the rep board show this panel.
+  if (!data || !data.openForSignup) return null
+
+  const signups = data.signups
   const needsTerritory = signups.filter((s) => s.status === "CLAIMED")
   const active = signups.filter((s) => s.status === "ACTIVE")
   const waitlist = signups.filter((s) => s.status === "WAITLISTED").sort((a, b) => (a.waitPosition ?? 0) - (b.waitPosition ?? 0))
@@ -358,12 +387,31 @@ function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
 
   return (
     <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-      <div className="text-sm font-medium">
-        Job-board signups
-        <span className="ml-2 text-xs font-normal text-muted-foreground">
-          {needsTerritory.length} awaiting territory · {active.length} active · {waitlist.length} waitlisted
-        </span>
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-sm font-medium">
+          Job-board signups
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            {needsTerritory.length} awaiting territory · {active.length} active · {waitlist.length} waitlisted
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {data.boardNotifiedAt && (
+            <span className="text-xs text-muted-foreground">
+              Notified {new Date(data.boardNotifiedAt).toLocaleDateString()}
+            </span>
+          )}
+          <Button size="sm" variant={data.boardNotifiedAt ? "outline" : "default"} disabled={notifying} onClick={notify}>
+            {notifying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Bell className="mr-1.5 h-3.5 w-3.5" />}
+            {data.boardNotifiedAt ? "Notify again" : "Notify reps"}
+          </Button>
+        </div>
       </div>
+
+      {signups.length === 0 && (
+        <div className="text-xs text-muted-foreground">
+          No reps have claimed this blitz yet. They can find it on the board now; tap “Notify reps” to push an announcement.
+        </div>
+      )}
 
       {needsTerritory.length > 0 && (
         <div className="space-y-1.5">

@@ -500,6 +500,10 @@ model Blitz {
   // Auto-set true once lead_prep reaches READY (so reps never claim an
   // unfiltered blitz). repCap caps claimed spots; overflow waitlists.
   openForSignup Boolean @default(false) @map("open_for_signup")
+  // When a manager last broadcast this blitz to reps via push ("Notify reps").
+  // Notifications are EXPLICIT/manual — opening for signup never auto-notifies,
+  // so test blitzes don't spam reps. Null = never announced.
+  boardNotifiedAt DateTime? @map("board_notified_at")
 
   market  Market @relation(fields: [marketId], references: [id])
   manager User   @relation(fields: [managerId], references: [id])
