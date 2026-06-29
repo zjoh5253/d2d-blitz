@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Briefcase, MapPin, Calendar, Users, Loader2, CheckCircle2, Clock } from "lucide-react";
 import Link from "next/link";
+import { BoardNotifyBanner } from "./notify-banner";
 
 type SignupStatus = "CLAIMED" | "WAITLISTED" | "ACTIVE" | "DECLINED" | "WITHDRAWN";
 
@@ -85,6 +86,8 @@ export default function RepBoardPage() {
         <h1 className="text-lg font-bold">Blitz Board</h1>
         <p className="text-xs text-gray-500">Claim a spot on an upcoming blitz</p>
       </header>
+
+      <BoardNotifyBanner />
 
       <div className="flex rounded-full bg-gray-100 p-1 text-sm font-medium">
         {(["board", "mine"] as const).map((v) => (
