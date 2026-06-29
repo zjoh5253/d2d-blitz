@@ -22,6 +22,14 @@ const blitzCreateSchema = z.object({
   housingPlan: z.string().optional().or(z.literal("")),
   managerId: z.string().min(1, "Manager is required"),
   sourceZip: z.string().regex(/^\d{5}$/, "Select a valid address inventory").optional(),
+  // FBOS v2 staffing fields (all optional — older callers / auto-create unaffected).
+  compTierId: z.string().optional(),
+  travelModel: z.enum(["company_fronted", "rep_fronted_reimburse"]).optional(),
+  travelCostCap: z.coerce.number().int().nonnegative().optional(), // cents
+  minScoreRequired: z.coerce.number().int().min(0).max(100).optional(),
+  experienceMonths: z.coerce.number().int().nonnegative().optional(),
+  carrierCredential: z.string().optional(),
+  distributionMode: z.enum(["invites", "board", "both"]).optional(),
 })
 
 export async function GET(request: Request) {
@@ -72,7 +80,16 @@ export async function POST(request: Request) {
       )
     }
 
-    const { name, startDate, endDate, repCap, housingPlan, managerId, sourceZip, carrierSlug, carrierName, state } = parsed.data
+    const {
+      name, startDate, endDate, repCap, housingPlan, managerId, sourceZip, carrierSlug, carrierName, state,
+      compTierId, travelModel, travelCostCap, minScoreRequired, experienceMonths, carrierCredential, distributionMode,
+    } = parsed.data
+
+    // Qualification filters are stored as JSON; only include keys that were set.
+    const qualificationFilters =
+      carrierCredential || experienceMonths != null
+        ? { carrierCredentials: carrierCredential || undefined, experienceMonths: experienceMonths ?? undefined }
+        : undefined
 
     // Resolve the market: explicit marketId (manual form) or create-on-demand
     // from carrier + state (auto-create from a monopoly row, any carrier).
@@ -99,6 +116,12 @@ export async function POST(request: Request) {
         housingPlan: housingPlan || null,
         managerId,
         status: "PLANNING",
+        compTierId: compTierId || null,
+        travelModel: travelModel ?? null,
+        travelCostCap: travelCostCap ?? null,
+        minScoreRequired: minScoreRequired ?? null,
+        qualificationFilters,
+        ...(distributionMode ? { distributionMode } : {}),
       },
       include: {
         market: { include: { carrier: true } },

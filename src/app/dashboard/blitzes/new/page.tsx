@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { CalendarDays, Check, Loader2, MapPin, Search, ShieldCheck } from "lucide-react"
+import { BadgeDollarSign, CalendarDays, Check, Loader2, MapPin, Search, ShieldCheck, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -32,6 +32,11 @@ interface AreaCandidate {
   discoverable: boolean
 }
 
+interface CompTier {
+  id: string
+  name: string
+}
+
 interface FormState {
   name: string
   marketId: string
@@ -40,6 +45,14 @@ interface FormState {
   repCap: string
   housingPlan: string
   managerId: string
+  // FBOS v2 staffing fields
+  compTierId: string
+  travelModel: string
+  travelCostCap: string // dollars in the UI; converted to cents on submit
+  minScoreRequired: string // "" = any; "60"/"75"/"90" = band floor
+  experienceMonths: string
+  carrierCredential: string
+  distributionMode: string
 }
 
 const initialForm: FormState = {
@@ -50,6 +63,13 @@ const initialForm: FormState = {
   repCap: "10",
   housingPlan: "",
   managerId: "",
+  compTierId: "",
+  travelModel: "company_fronted",
+  travelCostCap: "",
+  minScoreRequired: "75", // spec default: Standard band, 75+
+  experienceMonths: "",
+  carrierCredential: "",
+  distributionMode: "both", // spec default: invites first 24h, then board
 }
 
 // US state abbreviation → full name, so a monopoly's "OH" can match the
@@ -88,6 +108,8 @@ export default function NewBlitzPage() {
   const searchParams = useSearchParams()
   const [markets, setMarkets] = React.useState<Market[]>([])
   const [managers, setManagers] = React.useState<Manager[]>([])
+  const [compTiers, setCompTiers] = React.useState<CompTier[]>([])
+  const [qualifiedCount, setQualifiedCount] = React.useState<number | null>(null)
   const [loadingData, setLoadingData] = React.useState(true)
   const [form, setForm] = React.useState<FormState>({
     ...initialForm,
@@ -106,14 +128,17 @@ export default function NewBlitzPage() {
 
   React.useEffect(() => {
     async function fetchData() {
-      const [marketsRes, managersRes] = await Promise.all([
+      const [marketsRes, managersRes, tiersRes] = await Promise.all([
         fetch("/api/markets"),
         fetch("/api/users?role=FIELD_MANAGER"),
+        fetch("/api/comp-tiers"),
       ])
       const loadedMarkets: Market[] = marketsRes.ok ? await marketsRes.json() : []
       const loadedManagers: Manager[] = managersRes.ok ? await managersRes.json() : []
+      const loadedTiers: CompTier[] = tiersRes.ok ? await tiersRes.json() : []
       setMarkets(loadedMarkets)
       setManagers(loadedManagers)
+      setCompTiers(loadedTiers)
       setLoadingData(false)
       // Auto-create path (from a monopoly row): try to create immediately.
       if (searchParams.get("auto") === "1" && !autoRanRef.current) {
@@ -124,6 +149,19 @@ export default function NewBlitzPage() {
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Live "how many reps qualify" preview as the minimum score band changes.
+  React.useEffect(() => {
+    let cancelled = false
+    const params = new URLSearchParams()
+    if (form.minScoreRequired) params.set("minScore", form.minScoreRequired)
+    setQualifiedCount(null)
+    fetch(`/api/blitzes/qualified-count?${params.toString()}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d) setQualifiedCount(d.count) })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [form.minScoreRequired])
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -250,14 +288,30 @@ export default function NewBlitzPage() {
 
     setSubmitting(true)
     try {
+      // Build the payload explicitly so empty optional fields are omitted (an
+      // empty enum/number string would otherwise fail validation or coerce to 0).
+      const payload: Record<string, unknown> = {
+        name: form.name,
+        marketId: form.marketId,
+        startDate: form.startDate,
+        endDate: form.endDate,
+        repCap: Number(form.repCap),
+        housingPlan: form.housingPlan,
+        managerId: form.managerId,
+        sourceZip: selectedArea.zip,
+        travelModel: form.travelModel,
+        distributionMode: form.distributionMode,
+      }
+      if (form.compTierId) payload.compTierId = form.compTierId
+      if (form.travelCostCap) payload.travelCostCap = Math.round(Number(form.travelCostCap) * 100) // dollars -> cents
+      if (form.minScoreRequired) payload.minScoreRequired = Number(form.minScoreRequired)
+      if (form.experienceMonths) payload.experienceMonths = Number(form.experienceMonths)
+      if (form.carrierCredential) payload.carrierCredential = form.carrierCredential
+
       const response = await fetch("/api/blitzes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          repCap: Number(form.repCap),
-          sourceZip: selectedArea.zip,
-        }),
+        body: JSON.stringify(payload),
       })
       const data = await response.json()
       if (!response.ok) {
@@ -470,6 +524,116 @@ export default function NewBlitzPage() {
                   />
                 </div>
               </form>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BadgeDollarSign className="h-5 w-5 text-primary" />
+                Compensation &amp; qualification
+              </CardTitle>
+              <CardDescription>Comp tier, travel terms, who can claim, and how seats fill.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="compTierId">Comp tier</Label>
+                  <Select
+                    id="compTierId"
+                    value={form.compTierId}
+                    onChange={(event) => updateForm("compTierId", event.target.value)}
+                    placeholder={compTiers.length ? "Select comp tier" : "No tiers configured"}
+                    options={compTiers.map((tier) => ({ value: tier.id, label: tier.name }))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="travelModel">Travel</Label>
+                  <Select
+                    id="travelModel"
+                    value={form.travelModel}
+                    onChange={(event) => updateForm("travelModel", event.target.value)}
+                    options={[
+                      { value: "company_fronted", label: "Company-fronted" },
+                      { value: "rep_fronted_reimburse", label: "Rep-fronted (reimbursed)" },
+                    ]}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="travelCostCap">Travel cost cap ($)</Label>
+                  <Input
+                    id="travelCostCap"
+                    type="number"
+                    min={0}
+                    value={form.travelCostCap}
+                    onChange={(event) => updateForm("travelCostCap", event.target.value)}
+                    placeholder="Optional"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="distributionMode">Seat distribution</Label>
+                  <Select
+                    id="distributionMode"
+                    value={form.distributionMode}
+                    onChange={(event) => updateForm("distributionMode", event.target.value)}
+                    options={[
+                      { value: "both", label: "Invites first, then board" },
+                      { value: "invites", label: "Targeted invites only" },
+                      { value: "board", label: "Open board only" },
+                    ]}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="minScoreRequired">Minimum readiness</Label>
+                  <Select
+                    id="minScoreRequired"
+                    value={form.minScoreRequired}
+                    onChange={(event) => updateForm("minScoreRequired", event.target.value)}
+                    options={[
+                      { value: "", label: "Any rep" },
+                      { value: "60", label: "Restricted (60+)" },
+                      { value: "75", label: "Standard (75+)" },
+                      { value: "90", label: "Premium (90+)" },
+                    ]}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="experienceMonths">Min experience (months)</Label>
+                  <Input
+                    id="experienceMonths"
+                    type="number"
+                    min={0}
+                    value={form.experienceMonths}
+                    onChange={(event) => updateForm("experienceMonths", event.target.value)}
+                    placeholder="Optional"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="carrierCredential">Required carrier credential</Label>
+                <Input
+                  id="carrierCredential"
+                  value={form.carrierCredential}
+                  onChange={(event) => updateForm("carrierCredential", event.target.value)}
+                  placeholder="e.g. Kinetic certified (optional)"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                <Users className="h-4 w-4 text-primary" />
+                <span className="text-muted-foreground">
+                  {qualifiedCount == null
+                    ? "Checking qualified reps…"
+                    : `${qualifiedCount.toLocaleString()} rep${qualifiedCount === 1 ? "" : "s"} qualify at this minimum.`}
+                </span>
+              </div>
             </CardContent>
           </Card>
         </div>

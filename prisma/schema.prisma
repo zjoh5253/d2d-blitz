@@ -537,6 +537,7 @@ model Blitz {
   repSeatsBackup       Int      @default(0) @map("rep_seats_backup")
   publicCardEnabled    Boolean  @default(false) @map("public_card_enabled")
   publicCardToken      String?  @unique @map("public_card_token")
+  distributionMode     String   @default("both") @map("distribution_mode") // invites | board | both
 
   market   Market    @relation(fields: [marketId], references: [id])
   manager  User      @relation(fields: [managerId], references: [id])
