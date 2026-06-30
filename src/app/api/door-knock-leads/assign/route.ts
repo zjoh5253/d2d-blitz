@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { z } from "zod"
+import { scheduleGatesForSlot } from "@/lib/gates"
 
 const assignSchema = z.object({
   leadIds: z.array(z.string()).min(1, "At least one lead is required"),
@@ -74,6 +75,9 @@ export async function PUT(request: NextRequest) {
           if (!existingAssignment) {
             await db.blitzAssignment.create({ data: { blitzId, repId, status: "ACTIVE" } })
           }
+          // Activation kicks off the check-in gate sequence (G0 auto-done).
+          const b = await db.blitz.findUnique({ where: { id: blitzId }, select: { startDate: true, endDate: true } })
+          if (b) await scheduleGatesForSlot(signup.id, b)
         }
       }
     }

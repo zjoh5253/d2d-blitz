@@ -15,6 +15,7 @@ type UserRole =
   | "RECRUITER"
   | "MARKET_OWNER"
   | "FIELD_MANAGER"
+  | "TEAM_LEAD"
   | "FIELD_REP"
   | "CALL_CENTER";
 
@@ -40,6 +41,7 @@ const ROLE_OPTIONS = [
   { value: "RECRUITER", label: "Recruiter" },
   { value: "MARKET_OWNER", label: "Market Owner" },
   { value: "FIELD_MANAGER", label: "Field Manager" },
+  { value: "TEAM_LEAD", label: "Team Lead" },
   { value: "FIELD_REP", label: "Field Rep" },
   { value: "CALL_CENTER", label: "Call Center" },
 ];
@@ -50,6 +52,7 @@ const ROLE_LABEL: Record<string, string> = {
   RECRUITER: "Recruiter",
   MARKET_OWNER: "Market Owner",
   FIELD_MANAGER: "Field Manager",
+  TEAM_LEAD: "Team Lead",
   FIELD_REP: "Field Rep",
   CALL_CENTER: "Call Center",
 };
