@@ -48,6 +48,8 @@ export async function GET(req: NextRequest) {
             id: activeAssignment.id,
             status: activeAssignment.status,
             arrivalConfirmed: activeAssignment.arrivalConfirmed,
+            housingAssignment: activeAssignment.housingAssignment,
+            travelCoordination: activeAssignment.travelCoordination,
             blitz: {
               id: activeAssignment.blitz.id,
               name: activeAssignment.blitz.name,
@@ -154,6 +156,8 @@ export async function PATCH(req: NextRequest) {
         id: updated.id,
         status: updated.status,
         arrivalConfirmed: updated.arrivalConfirmed,
+        housingAssignment: updated.housingAssignment,
+        travelCoordination: updated.travelCoordination,
         blitz: {
           id: updated.blitz.id,
           name: updated.blitz.name,
