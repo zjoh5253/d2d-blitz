@@ -28,39 +28,72 @@ export const GATE_DEFS = [
 export const GEOFENCE_RADIUS_M = 8000; // ~5mi fallback around the lead centroid
 const SIX_MONTHS_MS = 182 * 24 * 60 * 60 * 1000;
 
-function atHourUTC(date: Date, hour: number): Date {
-  const d = new Date(date);
-  d.setUTCHours(hour, 0, 0, 0);
-  return d;
-}
 function addDaysUTC(date: Date, n: number): Date {
   const d = new Date(date);
   d.setUTCDate(d.getUTCDate() + n);
   return d;
 }
 
-// When each gate should fire, relative to the blitz window (UTC approximation —
-// these drive notifications, not money).
-export function gateTriggerTime(gateId: string, start: Date, end: Date, now: Date): Date {
+// Default blitz timezone when one isn't stored (central US — a reasonable middle
+// of the footprint). Gate times are "local to the blitz location" (Teki #3).
+export const DEFAULT_BLITZ_TZ = "America/Chicago";
+
+// Rough US state → IANA timezone (dominant zone for split states). Used to stamp
+// blitz.timezone at creation so gate times land in the blitz's local time.
+const STATE_TZ: Record<string, string> = {
+  CT: "America/New_York", DE: "America/New_York", FL: "America/New_York", GA: "America/New_York",
+  IN: "America/New_York", ME: "America/New_York", MD: "America/New_York", MA: "America/New_York",
+  MI: "America/New_York", NH: "America/New_York", NJ: "America/New_York", NY: "America/New_York",
+  NC: "America/New_York", OH: "America/New_York", PA: "America/New_York", RI: "America/New_York",
+  SC: "America/New_York", VT: "America/New_York", VA: "America/New_York", WV: "America/New_York", KY: "America/New_York",
+  AL: "America/Chicago", AR: "America/Chicago", IL: "America/Chicago", IA: "America/Chicago",
+  KS: "America/Chicago", LA: "America/Chicago", MN: "America/Chicago", MS: "America/Chicago",
+  MO: "America/Chicago", NE: "America/Chicago", ND: "America/Chicago", OK: "America/Chicago",
+  SD: "America/Chicago", TN: "America/Chicago", TX: "America/Chicago", WI: "America/Chicago",
+  AZ: "America/Phoenix", CO: "America/Denver", ID: "America/Denver", MT: "America/Denver",
+  NM: "America/Denver", UT: "America/Denver", WY: "America/Denver",
+  CA: "America/Los_Angeles", NV: "America/Los_Angeles", OR: "America/Los_Angeles", WA: "America/Los_Angeles",
+  AK: "America/Anchorage", HI: "Pacific/Honolulu",
+};
+
+export function timezoneForState(state?: string | null): string | null {
+  if (!state) return null;
+  return STATE_TZ[state.toUpperCase()] ?? null;
+}
+
+// Resolve a wall-clock time (HH:MM on the calendar date of `base`) in `tz` to the
+// correct UTC instant, DST-aware. Uses the Intl offset trick (no tz library).
+function zonedWallClock(base: Date, hour: number, minute: number, tz: string): Date {
+  const naiveUtc = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), hour, minute));
+  const inTz = new Date(naiveUtc.toLocaleString("en-US", { timeZone: tz }));
+  const inUtc = new Date(naiveUtc.toLocaleString("en-US", { timeZone: "UTC" }));
+  const offset = inTz.getTime() - inUtc.getTime();
+  return new Date(naiveUtc.getTime() - offset);
+}
+
+// When each gate should fire, in the blitz's LOCAL time (Teki #3). G5 = 11:30pm
+// local for daily production numbers + pipeline submissions (Teki #6).
+export function gateTriggerTime(gateId: string, start: Date, end: Date, now: Date, tz: string = DEFAULT_BLITZ_TZ): Date {
   switch (gateId) {
     case "G0": return now; // immediate on activation
-    case "G1": return atHourUTC(addDaysUTC(start, -7), 9);
-    case "G2": return atHourUTC(addDaysUTC(start, -3), 18);
-    case "G3": return atHourUTC(addDaysUTC(start, -1), 10);
-    case "G4": return atHourUTC(start, 9);
-    case "G5": return atHourUTC(end, 20);
+    case "G1": return zonedWallClock(addDaysUTC(start, -7), 9, 0, tz);
+    case "G2": return zonedWallClock(addDaysUTC(start, -3), 18, 0, tz);
+    case "G3": return zonedWallClock(addDaysUTC(start, -1), 10, 0, tz);
+    case "G4": return zonedWallClock(start, 9, 0, tz);
+    case "G5": return zonedWallClock(end, 23, 30, tz);
     default: return now;
   }
 }
 
 /** Create the 6 gates for a freshly-activated slot. Idempotent. */
-export async function scheduleGatesForSlot(slotId: string, blitz: { startDate: Date; endDate: Date }): Promise<void> {
+export async function scheduleGatesForSlot(slotId: string, blitz: { startDate: Date; endDate: Date; timezone?: string | null }): Promise<void> {
   const now = new Date();
+  const tz = blitz.timezone || DEFAULT_BLITZ_TZ;
   await db.checkInGate.createMany({
     data: GATE_DEFS.map((g) => ({
       blitzSlotId: slotId,
       gateId: g.id,
-      scheduledTriggerTime: gateTriggerTime(g.id, blitz.startDate, blitz.endDate, now),
+      scheduledTriggerTime: gateTriggerTime(g.id, blitz.startDate, blitz.endDate, now, tz),
       requiredActionType: g.action,
       scoreImpact: g.weight,
       // G0 is satisfied by the act of accepting; everything else is pending.
@@ -127,12 +160,14 @@ export async function completeGate(
     }
   }
 
+  // How many nudges it took drives the score: 0 = first push (100), 1 (80),
+  // 2+ (50) — see readiness-score gateOutcomeScore.
   await db.$transaction([
     db.checkInGate.update({ where: { id: gate.id }, data: { status: "COMPLETED" } }),
     db.gateCompletion.upsert({
       where: { blitzSlotId_gateId: { blitzSlotId: slotId, gateId } },
-      create: { blitzSlotId: slotId, gateId, completedAt: new Date(), onFirstPush: true, nudgesRequired: 0 },
-      update: { completedAt: new Date() },
+      create: { blitzSlotId: slotId, gateId, completedAt: new Date(), onFirstPush: gate.nudges === 0, nudgesRequired: gate.nudges },
+      update: { completedAt: new Date(), onFirstPush: gate.nudges === 0, nudgesRequired: gate.nudges },
     }),
   ]);
 

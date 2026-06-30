@@ -76,7 +76,7 @@ export async function PUT(request: NextRequest) {
             await db.blitzAssignment.create({ data: { blitzId, repId, status: "ACTIVE" } })
           }
           // Activation kicks off the check-in gate sequence (G0 auto-done).
-          const b = await db.blitz.findUnique({ where: { id: blitzId }, select: { startDate: true, endDate: true } })
+          const b = await db.blitz.findUnique({ where: { id: blitzId }, select: { startDate: true, endDate: true, timezone: true } })
           if (b) await scheduleGatesForSlot(signup.id, b)
         }
       }

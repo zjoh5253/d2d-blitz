@@ -683,6 +683,8 @@ model CheckInGate {
   status               GateStatus @default(PENDING)
   escalationTargetId   String?    @map("escalation_target_id")
   scoreImpact          Float      @default(0) @map("score_impact")
+  nudges               Int        @default(0)
+  lastNudgedAt         DateTime?  @map("last_nudged_at")
   createdAt            DateTime   @default(now()) @map("created_at")
 
   slot             BlitzSignup @relation(fields: [blitzSlotId], references: [id], onDelete: Cascade)

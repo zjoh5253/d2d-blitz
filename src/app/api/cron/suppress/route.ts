@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
   // Daily backstop for the check-in gate sweep, so overdue gates are still
   // handled even if the dedicated frequent gate-sweep cron isn't running (e.g.
   // Vercel Hobby, which caps crons). Idempotent; failures don't block the sweep.
-  let gates: Awaited<ReturnType<typeof sweepGates>> | { error: true } = { missed: 0, reopened: 0, escalated: 0 }
+  let gates: Awaited<ReturnType<typeof sweepGates>> | { error: true } = { nudged: 0, missed: 0, escalated: 0 }
   try {
     gates = await sweepGates()
   } catch (e) {

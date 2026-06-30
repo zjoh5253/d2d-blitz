@@ -6,6 +6,7 @@ import { inventoryForZip, importScannerInventory } from "@/lib/blitz-area"
 import { applyCustomerSuppression, getProviderCheckCounts } from "@/lib/leads/customer-suppression"
 import { resolveOrCreateMarket } from "@/lib/market-resolve"
 import { generateCardToken } from "@/lib/public-card"
+import { timezoneForState } from "@/lib/gates"
 
 export const maxDuration = 300
 
@@ -127,6 +128,8 @@ export async function POST(request: Request) {
         // is on unless the blitz is invite-only distribution.
         publicCardToken: generateCardToken(),
         publicCardEnabled: distributionMode !== "invites",
+        // Gate times run in the blitz's local time (Teki #3) — derive from state.
+        timezone: timezoneForState(state) ?? undefined,
       },
       include: {
         market: { include: { carrier: true } },

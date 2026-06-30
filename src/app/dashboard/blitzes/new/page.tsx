@@ -299,6 +299,7 @@ export default function NewBlitzPage() {
         housingPlan: form.housingPlan,
         managerId: form.managerId,
         sourceZip: selectedArea.zip,
+        state: selectedArea.state || undefined, // for blitz-local gate timezone
         travelModel: form.travelModel,
         distributionMode: form.distributionMode,
       }
