@@ -154,7 +154,8 @@ export async function recomputeReadiness(repId: string): Promise<{ score: number
       select: { gateId: true, onFirstPush: true, nudgesRequired: true },
     }),
     db.checkInGate.findMany({
-      where: { slot: { repId }, status: "MISSED", scheduledTriggerTime: { gte: since }, gateId: { not: "G0" } },
+      // Both auto-reopened (MISSED) and escalated gates score as a miss (0).
+      where: { slot: { repId }, status: { in: ["MISSED", "ESCALATED"] }, scheduledTriggerTime: { gte: since }, gateId: { not: "G0" } },
       select: { gateId: true, scheduledTriggerTime: true },
     }),
   ]);
