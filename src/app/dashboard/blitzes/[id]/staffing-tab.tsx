@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { UserPlus, Trash2, Loader2, Bell } from "lucide-react"
+import { UserPlus, Trash2, Loader2, Bell, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
 import { StatusBadge } from "@/components/ui/status-badge"
@@ -137,6 +137,8 @@ export function StaffingTab({ blitzId, assignments: initialAssignments, availabl
           </div>
         </div>
       )}
+
+      <BlitzInvitePanel blitzId={blitzId} disabled={filtering} />
 
       <BlitzSignupRoster blitzId={blitzId} />
 
@@ -298,6 +300,89 @@ export function StaffingTab({ blitzId, assignments: initialAssignments, availabl
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+// ── Targeted invites ────────────────────────────────────────────────────────
+// Manager fires qualification-filtered invites (push + SMS) and watches the
+// sent→viewed→accepted funnel. Firing is explicit — never automatic — so test
+// blitzes never invite anyone.
+
+interface InviteFunnel {
+  total: number
+  pending: number
+  viewed: number
+  accepted: number
+  declined: number
+  expired: number
+  committed: number
+}
+
+function BlitzInvitePanel({ blitzId, disabled }: { blitzId: string; disabled: boolean }) {
+  const [funnel, setFunnel] = React.useState<InviteFunnel | null>(null)
+  const [sending, setSending] = React.useState(false)
+
+  const load = React.useCallback(async () => {
+    const res = await fetch(`/api/blitzes/${blitzId}/invite`)
+    if (res.ok) setFunnel(await res.json())
+  }, [blitzId])
+  React.useEffect(() => { load() }, [load])
+
+  async function send() {
+    if (!window.confirm("Send invites to all qualified reps who haven't been invited yet?")) return
+    setSending(true)
+    try {
+      const res = await fetch(`/api/blitzes/${blitzId}/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: "both" }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok) {
+        window.alert(
+          d.invited > 0
+            ? `Invited ${d.invited} rep${d.invited === 1 ? "" : "s"} (${d.pushSent} push sent${d.alreadyInvited ? `, ${d.alreadyInvited} already invited` : ""}).`
+            : `No new reps to invite${d.alreadyInvited ? ` — ${d.alreadyInvited} already invited.` : "."}`
+        )
+        await load()
+      } else {
+        window.alert(d.error ?? "Couldn't send invites.")
+      }
+    } finally { setSending(false) }
+  }
+
+  const stat = (label: string, value: number, cls = "text-foreground") => (
+    <div className="text-center">
+      <div className={`text-base font-semibold ${cls}`}>{value}</div>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+    </div>
+  )
+
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-sm font-medium">
+          Targeted invites
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            {funnel ? `${funnel.total} sent` : "—"}
+          </span>
+        </div>
+        <Button size="sm" disabled={disabled || sending} onClick={send}>
+          {sending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
+          {funnel && funnel.total > 0 ? "Invite more" : "Send invites"}
+        </Button>
+      </div>
+      {funnel && funnel.total > 0 && (
+        <div className="grid grid-cols-6 gap-1 rounded-md border bg-card px-2 py-2">
+          {stat("Pending", funnel.pending)}
+          {stat("Viewed", funnel.viewed, "text-blue-600")}
+          {stat("Accepted", funnel.accepted, "text-green-600")}
+          {stat("Declined", funnel.declined, "text-muted-foreground")}
+          {stat("Expired", funnel.expired, "text-muted-foreground")}
+          {stat("Committed", funnel.committed, "text-green-700")}
+        </div>
+      )}
     </div>
   )
 }
