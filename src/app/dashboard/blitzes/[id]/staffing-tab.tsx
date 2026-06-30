@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { UserPlus, Trash2, Loader2, Bell, Send } from "lucide-react"
+import { UserPlus, Trash2, Loader2, Bell, Send, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
 import { StatusBadge } from "@/components/ui/status-badge"
@@ -143,6 +143,8 @@ export function StaffingTab({ blitzId, assignments: initialAssignments, availabl
       <BlitzSignupRoster blitzId={blitzId} />
 
       <BlitzGatesPanel blitzId={blitzId} />
+
+      <BlitzBackfillPanel blitzId={blitzId} />
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
@@ -454,6 +456,84 @@ function BlitzGatesPanel({ blitzId }: { blitzId: string }) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// ── Backfill queue ──────────────────────────────────────────────────────────
+// Warm prospects to pull in when a spot frees up (spec §5.2): reps invited but
+// who didn't claim (declined / expired / still pending), plus the standby
+// waitlist. Re-invite resets a prospect's invite + re-pings them.
+
+interface BackfillPerson { repId: string; name: string; email: string; waitPosition?: number | null }
+interface BackfillData {
+  declined: BackfillPerson[]
+  expired: BackfillPerson[]
+  pending: BackfillPerson[]
+  waitlist: BackfillPerson[]
+}
+
+function BlitzBackfillPanel({ blitzId }: { blitzId: string }) {
+  const [data, setData] = React.useState<BackfillData | null>(null)
+  const [busy, setBusy] = React.useState<string | null>(null)
+
+  const load = React.useCallback(async () => {
+    const res = await fetch(`/api/blitzes/${blitzId}/backfill`)
+    if (res.ok) setData(await res.json())
+  }, [blitzId])
+  React.useEffect(() => { load() }, [load])
+
+  async function reinvite(repId: string) {
+    setBusy(repId)
+    try {
+      const res = await fetch(`/api/blitzes/${blitzId}/backfill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repId }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) window.alert(d.error ?? "Couldn't re-invite.")
+      await load()
+    } finally { setBusy(null) }
+  }
+
+  if (!data) return null
+  const total = data.declined.length + data.expired.length + data.pending.length + data.waitlist.length
+  if (total === 0) return null
+
+  const Group = ({ label, people, reinvitable }: { label: string; people: BackfillPerson[]; reinvitable?: boolean }) =>
+    people.length === 0 ? null : (
+      <div className="space-y-1.5">
+        <div className="text-xs font-medium text-muted-foreground">{label}</div>
+        {people.map((p) => (
+          <div key={p.repId} className="flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2 text-sm">
+            <div className="min-w-0">
+              <div className="font-medium truncate">{p.name}{p.waitPosition != null ? ` · #${p.waitPosition}` : ""}</div>
+              <div className="text-xs text-muted-foreground truncate">{p.email}</div>
+            </div>
+            {reinvitable && (
+              <Button size="sm" variant="outline" disabled={busy === p.repId} onClick={() => reinvite(p.repId)}>
+                {busy === p.repId ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="mr-1.5 h-3.5 w-3.5" />}
+                Re-invite
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
+    )
+
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+      <div className="text-sm font-medium">
+        Backfill queue
+        <span className="ml-2 text-xs font-normal text-muted-foreground">
+          {data.waitlist.length} standby · {data.declined.length + data.expired.length} warm
+        </span>
+      </div>
+      <Group label="Standby (waitlist)" people={data.waitlist} />
+      <Group label="Awaiting response" people={data.pending} />
+      <Group label="Declined" people={data.declined} reinvitable />
+      <Group label="Invite expired" people={data.expired} reinvitable />
     </div>
   )
 }

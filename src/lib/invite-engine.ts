@@ -166,6 +166,31 @@ export async function declineInvite(inviteId: string, repId: string): Promise<
   return { code: 200 };
 }
 
+/**
+ * Re-invite a single rep from the backfill queue — resets their existing invite
+ * to a fresh 48h SENT and re-pings them. Used when a spot frees up and the
+ * manager wants to pull a warm prospect (declined/expired) back in.
+ */
+export async function reinviteRep(blitzId: string, repId: string): Promise<{ ok: boolean; reason?: string }> {
+  const [invite, signup] = await Promise.all([
+    db.blitzInvite.findUnique({ where: { blitzId_repId: { blitzId, repId } } }),
+    db.blitzSignup.findUnique({ where: { blitzId_repId: { blitzId, repId } } }),
+  ]);
+  if (!invite) return { ok: false, reason: "No prior invite for this rep." };
+  if (signup && (signup.status === "CLAIMED" || signup.status === "ACTIVE")) {
+    return { ok: false, reason: "Rep already holds a spot." };
+  }
+
+  await db.blitzInvite.update({
+    where: { id: invite.id },
+    data: { status: "SENT", sentAt: new Date(), expiresAt: new Date(Date.now() + INVITE_TTL_MS), viewedAt: null, declinedAt: null, acceptedAt: null, timeToAccept: null },
+  });
+
+  const blitz = await db.blitz.findUnique({ where: { id: blitzId }, select: { id: true, name: true } });
+  if (blitz) await deliverInvites(blitz, [repId], "both");
+  return { ok: true };
+}
+
 /** Manager funnel: sent → viewed → accepted, plus declined/expired + committed. */
 export async function inviteFunnel(blitzId: string) {
   const [invites, committed] = await Promise.all([
