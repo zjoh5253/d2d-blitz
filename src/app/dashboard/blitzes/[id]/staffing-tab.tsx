@@ -142,6 +142,8 @@ export function StaffingTab({ blitzId, assignments: initialAssignments, availabl
 
       <BlitzSignupRoster blitzId={blitzId} />
 
+      <BlitzGatesPanel blitzId={blitzId} />
+
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {assignments.length} rep{assignments.length !== 1 ? "s" : ""} assigned
@@ -383,6 +385,75 @@ function BlitzInvitePanel({ blitzId, disabled }: { blitzId: string; disabled: bo
           {stat("Committed", funnel.committed, "text-green-700")}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Check-in gate status ────────────────────────────────────────────────────
+// Per-rep gate progress across the blitz's slots (spec §5.2 at-risk roster).
+// At-risk reps (a missed/escalated gate) float to the top and are flagged.
+
+interface GateMatrix {
+  order: { id: string; label: string }[]
+  reps: { repId: string; repName: string; gates: Record<string, string>; atRisk: boolean }[]
+}
+
+const GATE_DOT: Record<string, string> = {
+  COMPLETED: "bg-green-500",
+  PENDING: "bg-gray-200",
+  SENT: "bg-blue-400",
+  MISSED: "bg-rose-500",
+  ESCALATED: "bg-amber-500",
+}
+
+function BlitzGatesPanel({ blitzId }: { blitzId: string }) {
+  const [data, setData] = React.useState<GateMatrix | null>(null)
+
+  React.useEffect(() => {
+    fetch(`/api/blitzes/${blitzId}/gates`).then((r) => (r.ok ? r.json() : null)).then((d) => d && setData(d))
+  }, [blitzId])
+
+  // Nothing to show until reps are activated (gates are created on activation).
+  if (!data || data.reps.length === 0) return null
+
+  const atRisk = data.reps.filter((r) => r.atRisk).length
+
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-medium">
+          Check-in gates
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            {data.reps.length} active{atRisk > 0 ? ` · ${atRisk} at-risk` : ""}
+          </span>
+        </div>
+        <div className="hidden sm:flex items-center gap-2 text-[10px] text-muted-foreground">
+          {data.order.map((g) => <span key={g.id} title={g.label} className="w-5 text-center font-medium">{g.id}</span>)}
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        {data.reps.map((r) => (
+          <div key={r.repId} className={`flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2 text-sm ${r.atRisk ? "border-rose-300" : ""}`}>
+            <div className="min-w-0 truncate font-medium">
+              {r.repName}
+              {r.atRisk && <span className="ml-2 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">At risk</span>}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {data.order.map((g) => {
+                const st = r.gates[g.id]
+                return (
+                  <span
+                    key={g.id}
+                    title={`${g.label}: ${st ?? "—"}`}
+                    className={`h-2.5 w-2.5 rounded-full ${st ? GATE_DOT[st] ?? "bg-gray-300" : "bg-gray-100 ring-1 ring-inset ring-gray-200"}`}
+                  />
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

@@ -1,9 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Briefcase, MapPin, Calendar, Users, Loader2, CheckCircle2, Clock, Mail, X } from "lucide-react";
+import { Briefcase, MapPin, Calendar, Users, Loader2, CheckCircle2, Clock, Mail, X, ClipboardCheck, Navigation } from "lucide-react";
 import Link from "next/link";
 import { BoardNotifyBanner } from "./notify-banner";
+
+interface RepGate {
+  id: string;
+  gateId: string;
+  label: string;
+  action: string | null;
+  scheduledAt: string | null;
+  status: string;
+  blitz: { id: string; name: string };
+}
 
 type SignupStatus = "CLAIMED" | "WAITLISTED" | "ACTIVE" | "DECLINED" | "WITHDRAWN";
 type InviteStatus = "pending" | "viewed" | "accepted" | "declined" | "expired";
@@ -46,6 +56,7 @@ function dateRange(a: string, b: string) {
 export default function RepBoardPage() {
   const [blitzes, setBlitzes] = useState<BoardBlitz[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
+  const [gates, setGates] = useState<RepGate[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"board" | "invites" | "mine">("board");
   const [busy, setBusy] = useState<string | null>(null);
@@ -53,17 +64,52 @@ export default function RepBoardPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [boardRes, invRes] = await Promise.all([
+      const [boardRes, invRes, gatesRes] = await Promise.all([
         fetch("/api/blitz-board"),
         fetch("/api/blitz-invites"),
+        fetch("/api/rep/gates"),
       ]);
       if (boardRes.ok) setBlitzes(await boardRes.json());
       if (invRes.ok) setInvites(await invRes.json());
+      if (gatesRes.ok) setGates(await gatesRes.json());
     } finally {
       setLoading(false);
     }
   };
   useEffect(() => { load(); }, []);
+
+  // Pending check-in gates the rep must act on, soonest first.
+  const pendingGates = useMemo(
+    () => gates.filter((g) => g.status === "PENDING").sort((a, b) => (a.scheduledAt ?? "").localeCompare(b.scheduledAt ?? "")),
+    [gates]
+  );
+
+  const completeGate = async (g: RepGate) => {
+    setBusy(g.id);
+    try {
+      let body: Record<string, number> = {};
+      // Geofence gates need the rep's current location.
+      if (g.action === "geofence") {
+        const pos = await new Promise<GeolocationPosition | null>((resolve) =>
+          navigator.geolocation
+            ? navigator.geolocation.getCurrentPosition((p) => resolve(p), () => resolve(null), { enableHighAccuracy: true, timeout: 10000 })
+            : resolve(null)
+        );
+        if (!pos) { alert("Location is required to check in. Enable location and try again."); return; }
+        body = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      }
+      const res = await fetch(`/api/rep/gates/${g.id}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error ?? "Couldn't complete this check-in.");
+      }
+      await load();
+    } finally { setBusy(null); }
+  };
 
   const mine = useMemo(() => blitzes.filter((b) => activeSignup(b)), [blitzes]);
   // Invites still awaiting a decision drive the tab badge.
@@ -115,6 +161,18 @@ export default function RepBoardPage() {
       </header>
 
       <BoardNotifyBanner />
+
+      {/* Actionable check-in gates surface at the top regardless of tab */}
+      {pendingGates.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-900">
+            <ClipboardCheck className="size-4 text-blue-600" /> Check-ins due
+          </div>
+          {pendingGates.map((g) => (
+            <GateCard key={g.id} g={g} busy={busy === g.id} onComplete={completeGate} />
+          ))}
+        </div>
+      )}
 
       <div className="flex rounded-full bg-gray-100 p-1 text-sm font-medium">
         {(["board", "invites", "mine"] as const).map((v) => (
@@ -233,6 +291,27 @@ function Pill({ className, children }: { className: string; children: React.Reac
     <span className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${className}`}>
       {children}
     </span>
+  );
+}
+
+function GateCard({ g, busy, onComplete }: { g: RepGate; busy: boolean; onComplete: (g: RepGate) => void }) {
+  const isGeofence = g.action === "geofence";
+  const due = g.scheduledAt ? new Date(g.scheduledAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : null;
+  return (
+    <div className="bg-white rounded-lg border border-blue-200 p-3 flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <div className="font-medium text-sm text-gray-900 truncate">{g.label}</div>
+        <div className="text-xs text-gray-500 truncate">{g.blitz.name}{due ? ` · due ${due}` : ""}</div>
+      </div>
+      <button
+        onClick={() => onComplete(g)}
+        disabled={busy}
+        className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+      >
+        {busy ? <Loader2 className="size-4 animate-spin" /> : isGeofence ? <Navigation className="size-4" /> : <CheckCircle2 className="size-4" />}
+        {isGeofence ? "Check in" : "Done"}
+      </button>
+    </div>
   );
 }
 
