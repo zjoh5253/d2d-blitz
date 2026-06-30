@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { agreementSchema } from "@/lib/validators/common";
+import { deleteRepDocument } from "@/lib/blob-storage";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -63,6 +64,19 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params;
+
+    // RETENTION: best-effort delete private blobs from all acceptances before
+    // the DB row is removed. The DB cascade handles the acceptance rows; this
+    // prevents orphaned blobs in Vercel Blob storage.
+    const acceptancesWithDocs = await db.agreementAcceptance.findMany({
+      where: { agreementId: id, documentUrl: { not: null } },
+      select: { documentUrl: true },
+    });
+    for (const acc of acceptancesWithDocs) {
+      if (acc.documentUrl) {
+        void deleteRepDocument(acc.documentUrl);
+      }
+    }
 
     await db.agreement.delete({ where: { id } });
 
