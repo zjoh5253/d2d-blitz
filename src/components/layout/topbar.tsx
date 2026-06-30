@@ -74,6 +74,7 @@ function getSubLabel(pathname: string): string | null {
     "recruiting-roi": "Recruiting ROI",
     reps: "Reps",
     blitzes: "Blitzes",
+    agreements: "Agreements",
   };
   return subMap[sub] ?? null;
 }

@@ -219,3 +219,22 @@ export const interviewSchema = z.object({
 });
 
 export type InterviewFormValues = z.infer<typeof interviewSchema>;
+
+// ─── Agreement ────────────────────────────────────────────────────────────────
+
+export const agreementSchema = z.object({
+  type: z.enum(["REP_AGREEMENT", "GPS_CONSENT", "TAX_W9", "BACKGROUND_CHECK"]),
+  title: z.string().min(1, "Title is required"),
+  body: z.string().min(1, "Body is required"),
+  version: z.coerce
+    .number({ error: "Must be a number" })
+    .int("Must be a whole number")
+    .positive("Must be greater than 0")
+    .default(1),
+  required: z.boolean().default(true),
+  blocking: z.boolean().default(true),
+  requiresUpload: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+});
+
+export type AgreementFormValues = z.infer<typeof agreementSchema>;
