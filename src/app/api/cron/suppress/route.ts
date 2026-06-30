@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { applyCustomerSuppression } from "@/lib/leads/customer-suppression"
 import { advanceBlitzFiltering } from "@/lib/blitz-prep"
+import { sweepGates } from "@/lib/gate-sweep"
 
 // Scheduled suppression sweep + lead-filtering backstop.
 //
@@ -49,5 +50,16 @@ export async function GET(request: NextRequest) {
     if (r) advanced.push({ blitzId: r.blitzId, scanned: r.scanned, pending: r.pending, status: r.leadPrepStatus })
   }
 
-  return NextResponse.json({ ok: true, suppression, advanced })
+  // Daily backstop for the check-in gate sweep, so overdue gates are still
+  // handled even if the dedicated frequent gate-sweep cron isn't running (e.g.
+  // Vercel Hobby, which caps crons). Idempotent; failures don't block the sweep.
+  let gates: Awaited<ReturnType<typeof sweepGates>> | { error: true } = { missed: 0, reopened: 0, escalated: 0 }
+  try {
+    gates = await sweepGates()
+  } catch (e) {
+    console.error("[cron/suppress gate-sweep backstop]", e)
+    gates = { error: true }
+  }
+
+  return NextResponse.json({ ok: true, suppression, advanced, gates })
 }

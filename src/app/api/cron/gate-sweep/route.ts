@@ -13,6 +13,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await sweepGates();
-  return NextResponse.json({ ok: true, ...result });
+  try {
+    const result = await sweepGates();
+    return NextResponse.json({ ok: true, ...result });
+  } catch (error) {
+    console.error("[GET /api/cron/gate-sweep]", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
