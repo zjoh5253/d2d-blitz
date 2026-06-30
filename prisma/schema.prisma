@@ -521,6 +521,8 @@ model Blitz {
   // Notifications are EXPLICIT/manual — opening for signup never auto-notifies,
   // so test blitzes don't spam reps. Null = never announced.
   boardNotifiedAt DateTime? @map("board_notified_at")
+  // When this blitz first became claimable — anchors the premium 24h window.
+  openedForSignupAt DateTime? @map("opened_for_signup_at")
 
   // Fiber Blitz OS v2 staffing spec (Sprint 1). All nullable/defaulted — added
   // ahead of the build, inert until the creation form + invite engine use them.

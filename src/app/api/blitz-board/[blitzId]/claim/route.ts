@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSessionFromRequest } from "@/lib/auth-mobile"
 import { db } from "@/lib/db"
 import { reflowWaitlist } from "@/lib/blitz-signups"
+import { boardGatingEnabled, claimGate, repScoreOrDefault } from "@/lib/board-gating"
 
 // Rep claims / withdraws a job-board spot.
 //
@@ -21,6 +22,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     const repId = session.user.id
     const { blitzId } = await params
+
+    // Band gate (flag-gated): a Locked or under-floor rep can't claim from the
+    // board. Invite-accept bypasses this (the manager chose them directly).
+    if (boardGatingEnabled()) {
+      const [me, gateBlitz] = await Promise.all([
+        db.user.findUnique({ where: { id: repId }, select: { blitzReadinessScore: true } }),
+        db.blitz.findUnique({ where: { id: blitzId }, select: { minScoreRequired: true, openedForSignupAt: true } }),
+      ])
+      if (gateBlitz) {
+        const gate = claimGate(repScoreOrDefault(me?.blitzReadinessScore), gateBlitz)
+        if (!gate.allowed) return NextResponse.json({ error: gate.reason ?? "Not eligible for this blitz." }, { status: 403 })
+      }
+    }
 
     const result = await db.$transaction(async (tx) => {
       const locked = await tx.$queryRaw<LockedBlitz[]>`

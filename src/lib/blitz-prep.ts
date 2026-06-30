@@ -122,8 +122,9 @@ export async function advanceBlitzFiltering(
       leadPrepUpdatedAt: new Date(),
       // Once filtering is done, the blitz is eligible for the rep job board.
       // Only flips true (never back to false here) so a manager can't have it
-      // yanked off the board by a re-filter.
-      ...(leadPrepStatus === "READY" ? { openForSignup: true } : {}),
+      // yanked off the board by a re-filter. Stamp the open time once (anchors
+      // the premium 24h early-access window).
+      ...(leadPrepStatus === "READY" ? { openForSignup: true, openedForSignupAt: new Date() } : {}),
     },
   })
 
