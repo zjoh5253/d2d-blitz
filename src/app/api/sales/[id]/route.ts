@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getSessionFromRequest } from "@/lib/auth-mobile"
 import { db } from "@/lib/db"
 import { z } from "zod"
 import { parseISO } from "date-fns"
@@ -47,9 +47,9 @@ const updateSchema = z.object({
   cancellationReason: z.string().optional(),
 })
 
-export async function GET(_request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const session = await auth()
+    const session = await getSessionFromRequest(request)
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -89,7 +89,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
-    const session = await auth()
+    const session = await getSessionFromRequest(request)
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
