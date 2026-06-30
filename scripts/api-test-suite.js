@@ -165,6 +165,30 @@ async function testUploadEndpoints() {
   });
 }
 
+// ==================== ONBOARDING & MOBILE ENDPOINTS ====================
+
+async function testOnboardingEndpoints() {
+  await test('GET /api/onboarding/agreements requires auth', async () => {
+    const { status } = await request('/api/onboarding/agreements');
+    if (status !== 401) throw new Error(`Expected 401, got ${status}`);
+  });
+
+  await test('GET /api/onboarding/status requires auth', async () => {
+    const { status } = await request('/api/onboarding/status');
+    if (status !== 401) throw new Error(`Expected 401, got ${status}`);
+  });
+
+  await test('GET /api/mobile/payouts requires auth', async () => {
+    const { status } = await request('/api/mobile/payouts');
+    if (status !== 401) throw new Error(`Expected 401, got ${status}`);
+  });
+
+  await test('GET /api/agreements requires auth', async () => {
+    const { status } = await request('/api/agreements');
+    if (status !== 401) throw new Error(`Expected 401, got ${status}`);
+  });
+}
+
 // ==================== ERROR HANDLING ====================
 
 async function testErrorHandling() {
@@ -196,6 +220,7 @@ async function runTests() {
   await testDailyReportsEndpoints();
   await testCarriersEndpoints();
   await testUploadEndpoints();
+  await testOnboardingEndpoints();
   await testErrorHandling();
 
   console.log('\n===========================');
