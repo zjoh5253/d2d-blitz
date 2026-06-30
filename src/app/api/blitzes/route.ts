@@ -5,6 +5,7 @@ import { db } from "@/lib/db"
 import { inventoryForZip, importScannerInventory } from "@/lib/blitz-area"
 import { applyCustomerSuppression, getProviderCheckCounts } from "@/lib/leads/customer-suppression"
 import { resolveOrCreateMarket } from "@/lib/market-resolve"
+import { generateCardToken } from "@/lib/public-card"
 
 export const maxDuration = 300
 
@@ -122,6 +123,10 @@ export async function POST(request: Request) {
         minScoreRequired: minScoreRequired ?? null,
         qualificationFilters,
         ...(distributionMode ? { distributionMode } : {}),
+        // Every blitz gets a card token; visibility is gated by the flag, which
+        // is on unless the blitz is invite-only distribution.
+        publicCardToken: generateCardToken(),
+        publicCardEnabled: distributionMode !== "invites",
       },
       include: {
         market: { include: { carrier: true } },
