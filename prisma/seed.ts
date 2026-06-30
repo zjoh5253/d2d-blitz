@@ -8,7 +8,86 @@ dotenv.config();
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
+type AgreementSeed = {
+  type: "REP_AGREEMENT" | "GPS_CONSENT" | "TAX_W9" | "BACKGROUND_CHECK";
+  title: string;
+  body: string;
+  required: boolean;
+  blocking: boolean;
+  requiresUpload: boolean;
+};
+
+const AGREEMENT_SEEDS: AgreementSeed[] = [
+  {
+    type: "REP_AGREEMENT",
+    title: "Independent Rep Agreement",
+    body:
+      "## Independent Rep Agreement\n\nYou are engaged as an independent contractor, not an employee. " +
+      "Please review the terms governing commissions, conduct, and termination before signing.",
+    required: true,
+    blocking: true,
+    requiresUpload: false,
+  },
+  {
+    type: "GPS_CONSENT",
+    title: "GPS / Location Tracking Consent",
+    body:
+      "## GPS / Location Tracking Consent\n\nThe app tracks your location during active shifts to verify " +
+      "door-knock activity and route coverage. By accepting you consent to foreground and background " +
+      "location collection while on the clock.",
+    required: true,
+    blocking: true,
+    requiresUpload: false,
+  },
+  {
+    type: "BACKGROUND_CHECK",
+    title: "Background Check Consent",
+    body:
+      "## Background Check Consent\n\nYou authorize D2D Blitz to obtain a consumer/background report as " +
+      "permitted by law for the purpose of evaluating your engagement as a sales representative.",
+    required: true,
+    blocking: true,
+    requiresUpload: false,
+  },
+  {
+    type: "TAX_W9",
+    title: "W-9 Tax Form",
+    body:
+      "## W-9 Tax Form\n\nUpload a completed and signed IRS Form W-9. This is required so we can issue " +
+      "your 1099 at year end. Your document is stored securely and only visible to administrators.",
+    required: true,
+    blocking: false,
+    requiresUpload: true,
+  },
+];
+
+async function seedAgreements() {
+  for (const seed of AGREEMENT_SEEDS) {
+    // No natural unique key on (type, version); guard on the active row per type.
+    const existing = await prisma.agreement.findFirst({
+      where: { type: seed.type, isActive: true },
+    });
+    if (existing) continue;
+
+    await prisma.agreement.create({
+      data: {
+        type: seed.type,
+        title: seed.title,
+        body: seed.body,
+        version: 1,
+        required: seed.required,
+        blocking: seed.blocking,
+        requiresUpload: seed.requiresUpload,
+        isActive: true,
+      },
+    });
+  }
+}
+
 async function main() {
+  // Seed onboarding agreements (idempotent — safe to re-run)
+  await seedAgreements();
+
   // Create governance tiers
   const tierGold = await prisma.governanceTier.create({
     data: {

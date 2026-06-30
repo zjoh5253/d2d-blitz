@@ -241,6 +241,12 @@ const NAV_GROUPS: NavGroup[] = [
         icon: <Settings className="size-[18px]" />,
         roles: ["ADMIN"],
       },
+      {
+        title: "Agreements",
+        href: "/dashboard/admin/agreements",
+        icon: <Settings className="size-[18px]" />,
+        roles: ["ADMIN"],
+      },
     ],
   },
 ];

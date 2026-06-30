@@ -165,6 +165,13 @@ enum MarketStatus {
   PLANNING
 }
 
+enum AgreementType {
+  REP_AGREEMENT
+  GPS_CONSENT
+  TAX_W9
+  BACKGROUND_CHECK
+}
+
 // ─── NextAuth Models ──────────────────────────────────────────────────────────
 
 model Account {
@@ -335,6 +342,9 @@ model User {
 
   // Touchpoints logged by this rep
   touchpoints Touchpoint[]
+
+  // Onboarding agreement acceptances
+  agreementAcceptances AgreementAcceptance[]
 
   @@index([role])
   @@index([status])
@@ -961,4 +971,43 @@ model Touchpoint {
   @@index([outcome])
   @@index([timestamp])
   @@map("touchpoints")
+}
+
+// ─── Onboarding Agreements ─────────────────────────────────────────────────────
+
+model Agreement {
+  id             String        @id @default(cuid())
+  type           AgreementType
+  title          String
+  body           String // markdown content
+  version        Int           @default(1)
+  required       Boolean       @default(true)
+  blocking       Boolean       @default(true) // gates app access when unaccepted
+  requiresUpload Boolean       @default(false) @map("requires_upload") // e.g. W-9 needs a file
+  isActive       Boolean       @default(true) @map("is_active") // the current version reps must accept
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  acceptances AgreementAcceptance[]
+
+  @@index([type])
+  @@index([isActive])
+  @@map("agreements")
+}
+
+model AgreementAcceptance {
+  id            String   @id @default(cuid())
+  agreementId   String   @map("agreement_id")
+  userId        String   @map("user_id")
+  version       Int
+  signatureName String   @map("signature_name")
+  documentUrl   String?  @map("document_url")
+  acceptedAt    DateTime @default(now()) @map("accepted_at")
+
+  agreement Agreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, agreementId])
+  @@index([userId])
+  @@map("agreement_acceptances")
 }
