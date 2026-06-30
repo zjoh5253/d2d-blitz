@@ -16,7 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth-mobile";
 import { db } from "@/lib/db";
-import { uploadRepDocument } from "@/lib/blob-storage";
+import { uploadRepDocument, deleteRepDocument } from "@/lib/blob-storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,6 +75,12 @@ export async function POST(
       );
     }
 
+    // Look up any existing acceptance so we can clean up an old blob on re-accept.
+    const existing = await db.agreementAcceptance.findUnique({
+      where: { userId_agreementId: { userId, agreementId: agreement.id } },
+      select: { documentUrl: true },
+    });
+
     let documentUrl: string | null = null;
     if (document) {
       documentUrl = await uploadRepDocument(document, userId, agreement.type);
@@ -102,12 +108,22 @@ export async function POST(
       },
     });
 
+    // RETENTION: best-effort delete the previous private blob when a rep
+    // re-accepts an agreement that already had a document stored.
+    if (document && existing?.documentUrl) {
+      void deleteRepDocument(existing.documentUrl);
+    }
+
+    // Do NOT return the raw private blob URL to the client.
+    // Admins retrieve a short-lived signed URL via
+    // GET /api/agreements/acceptances/:id/document instead.
     return NextResponse.json({
       id: agreement.id,
       type: agreement.type,
       accepted: true,
       acceptedAt: acceptance.acceptedAt.toISOString(),
-      documentUrl: acceptance.documentUrl ?? null,
+      documentUrl: null,
+      hasDocument: acceptance.documentUrl !== null,
     });
   } catch (error) {
     console.error("[POST /api/onboarding/agreements/:id/accept]", error);
