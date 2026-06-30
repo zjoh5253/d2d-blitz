@@ -46,6 +46,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Prisma client
+        # No postinstall hook in package.json, so a clean `npm ci` does not
+        # generate the client; without it every route importing @prisma/client
+        # 500s with "Cannot find module '.prisma/client/default'".
+        run: npx prisma generate
+
       - name: Sync database schema
         # db push (not migrate deploy): creates the schema on the empty test DB
         # without depending on migration history.
