@@ -2,7 +2,7 @@
 //
 // No e-sign — G0/onboarding is a blitz-terms CHECKBOX (Teki #4). These are the
 // terms a prospective rep accepts. Background check is manual for v1 (the seam
-// just records consent); phone SMS verification is deferred until Sendify.
+// just records consent); phone SMS verification is deferred until Twilio.
 
 export const BLITZ_TERMS: string[] = [
   "I commit to work the days of the blitz (Sunday optional).",

@@ -1,7 +1,7 @@
 // Fiber Blitz OS v2 — targeted invite engine (spec §6.1, §4.3).
 //
 // Fires qualification-filtered invites to matching reps over push (now) + SMS
-// (via the Sendify seam, no-op until configured), tracks the sent→viewed→
+// (via the Twilio seam, no-op until configured), tracks the sent→viewed→
 // accepted/declined/expired funnel, and turns an accept into a board signup.
 //
 // Reuses the shared qualification matcher and the canonical claimSpot helper so
