@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { UserPlus, Trash2, Loader2, Bell, Send, RotateCcw } from "lucide-react"
+import { UserPlus, Trash2, Loader2, Bell, Send, RotateCcw, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
 import { StatusBadge } from "@/components/ui/status-badge"
@@ -548,6 +548,7 @@ interface Signup {
   repId: string
   status: "CLAIMED" | "ACTIVE" | "WAITLISTED"
   waitPosition: number | null
+  needsApproval: boolean
   rep: { id: string; name: string | null; email: string }
 }
 
@@ -574,6 +575,14 @@ function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
     setBusy(repId)
     try {
       const res = await fetch(`/api/blitzes/${blitzId}/signups/${repId}/decline`, { method: "POST" })
+      if (res.ok) { await load(); router.refresh() }
+    } finally { setBusy(null) }
+  }
+
+  async function approve(repId: string) {
+    setBusy(repId)
+    try {
+      const res = await fetch(`/api/blitzes/${blitzId}/signups/${repId}/approve`, { method: "POST" })
       if (res.ok) { await load(); router.refresh() }
     } finally { setBusy(null) }
   }
@@ -606,7 +615,7 @@ function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
   const active = signups.filter((s) => s.status === "ACTIVE")
   const waitlist = signups.filter((s) => s.status === "WAITLISTED").sort((a, b) => (a.waitPosition ?? 0) - (b.waitPosition ?? 0))
 
-  const Row = ({ s, badge }: { s: Signup; badge: React.ReactNode }) => (
+  const Row = ({ s, badge, extra }: { s: Signup; badge: React.ReactNode; extra?: React.ReactNode }) => (
     <div className="flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2 text-sm">
       <div className="min-w-0">
         <div className="font-medium truncate">{s.rep.name ?? s.rep.email}</div>
@@ -614,12 +623,15 @@ function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
       </div>
       <div className="flex items-center gap-2">
         {badge}
+        {extra}
         <Button variant="ghost" size="sm" disabled={busy === s.repId} onClick={() => decline(s.repId)}>
           {busy === s.repId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
         </Button>
       </div>
     </div>
   )
+
+  const pendingApproval = needsTerritory.filter((s) => s.needsApproval)
 
   return (
     <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
@@ -649,10 +661,29 @@ function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
         </div>
       )}
 
-      {needsTerritory.length > 0 && (
+      {pendingApproval.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-violet-700">Needs your approval — restricted-band rep claimed a spot</div>
+          {pendingApproval.map((s) => (
+            <Row
+              key={s.id}
+              s={s}
+              badge={<span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">Pending</span>}
+              extra={
+                <Button size="sm" variant="outline" disabled={busy === s.repId} onClick={() => approve(s.repId)}>
+                  {busy === s.repId ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Check className="mr-1.5 h-3.5 w-3.5" />}
+                  Approve
+                </Button>
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      {needsTerritory.filter((s) => !s.needsApproval).length > 0 && (
         <div className="space-y-1.5">
           <div className="text-xs font-medium text-amber-700">Needs territory — assign leads on the Leads map to activate</div>
-          {needsTerritory.map((s) => (
+          {needsTerritory.filter((s) => !s.needsApproval).map((s) => (
             <Row key={s.id} s={s} badge={<span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Reserved</span>} />
           ))}
         </div>

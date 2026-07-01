@@ -24,7 +24,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { blitzId } = await params
 
     // Band gate (flag-gated): a Locked or under-floor rep can't claim from the
-    // board. Invite-accept bypasses this (the manager chose them directly).
+    // board. A Restricted-band rep can claim but the claim needs the blitz
+    // manager's approval (Teki #7). Invite-accept bypasses all of this.
+    let needsApproval = false
     if (boardGatingEnabled()) {
       const [me, gateBlitz] = await Promise.all([
         db.user.findUnique({ where: { id: repId }, select: { blitzReadinessScore: true } }),
@@ -33,6 +35,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (gateBlitz) {
         const gate = claimGate(repScoreOrDefault(me?.blitzReadinessScore), gateBlitz)
         if (!gate.allowed) return NextResponse.json({ error: gate.reason ?? "Not eligible for this blitz." }, { status: 403 })
+        needsApproval = gate.needsApproval
       }
     }
 
@@ -63,7 +66,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             where: { id: existing.id },
             data: { status, waitPosition, claimedAt: new Date(), activatedAt: null, decidedAt: null, decidedById: null },
           })
-        : await tx.blitzSignup.create({ data: { blitzId, repId, status, waitPosition } })
+        : await tx.blitzSignup.create({ data: { blitzId, repId, status, waitPosition, needsApproval } })
       return { code: 200 as const, signup }
     })
 

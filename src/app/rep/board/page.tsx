@@ -140,6 +140,17 @@ export default function RepBoardPage() {
     } finally { setBusy(null); }
   };
 
+  const requestWaiver = async (b: BoardBlitz) => {
+    const reason = window.prompt(`Request a no-penalty exception for ${b.name}?\nGive your manager a valid reason:`);
+    if (!reason || reason.trim().length < 3) return;
+    const res = await fetch("/api/rep/penalty-waiver", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ blitzId: b.id, reason: reason.trim() }),
+    });
+    alert(res.ok ? "Request sent to your manager." : "Couldn't send the request.");
+  };
+
   const withdraw = async (b: BoardBlitz) => {
     if (!window.confirm(`Withdraw from ${b.name}?`)) return;
     setBusy(b.id);
@@ -268,6 +279,11 @@ export default function RepBoardPage() {
                   className="w-full rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-700 disabled:opacity-60"
                 >
                   {busy === b.id ? "…" : "Withdraw"}
+                </button>
+              )}
+              {sig && (
+                <button onClick={() => requestWaiver(b)} className="w-full text-center text-xs text-gray-400 underline">
+                  Can&apos;t make it? Request a no-penalty exception
                 </button>
               )}
             </div>

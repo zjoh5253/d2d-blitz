@@ -11,6 +11,7 @@ const ROLE_PROTECTED_ROUTES: Array<{ prefix: string; roles: string[] }> = [
   { prefix: "/dashboard/markets", roles: ["ADMIN", "MARKET_OWNER", "FIELD_MANAGER"] },
   { prefix: "/dashboard/blitzes", roles: ["ADMIN", "MARKET_OWNER", "FIELD_MANAGER"] },
   { prefix: "/dashboard/reps", roles: ["ADMIN", "FIELD_MANAGER", "FIELD_REP"] },
+  { prefix: "/dashboard/onboarding", roles: ["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"] },
   { prefix: "/dashboard/installs", roles: ["ADMIN"] },
   { prefix: "/dashboard/compensation", roles: ["ADMIN"] },
   { prefix: "/dashboard/governance", roles: ["ADMIN", "FIELD_MANAGER"] },

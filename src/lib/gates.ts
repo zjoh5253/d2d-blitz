@@ -183,7 +183,7 @@ export async function completeGate(
  */
 export async function recomputeReadiness(repId: string): Promise<{ score: number; band: string }> {
   const since = new Date(Date.now() - SIX_MONTHS_MS);
-  const [completions, missed] = await Promise.all([
+  const [completions, missedRaw, waivers] = await Promise.all([
     db.gateCompletion.findMany({
       where: { slot: { repId }, completedAt: { gte: since }, gateId: { not: "G0" } },
       select: { gateId: true, onFirstPush: true, nudgesRequired: true },
@@ -191,9 +191,14 @@ export async function recomputeReadiness(repId: string): Promise<{ score: number
     db.checkInGate.findMany({
       // Both auto-reopened (MISSED) and escalated gates score as a miss (0).
       where: { slot: { repId }, status: { in: ["MISSED", "ESCALATED"] }, scheduledTriggerTime: { gte: since }, gateId: { not: "G0" } },
-      select: { gateId: true, scheduledTriggerTime: true },
+      select: { gateId: true, scheduledTriggerTime: true, slot: { select: { blitzId: true } } },
     }),
+    // Approved no-penalty waivers (Teki #8) — their blitz's misses are skipped.
+    db.penaltyWaiver.findMany({ where: { repId, status: "APPROVED" }, select: { blitzId: true } }),
   ]);
+
+  const waived = new Set(waivers.map((w) => w.blitzId));
+  const missed = missedRaw.filter((m) => !waived.has(m.slot.blitzId));
 
   const outcomes: GateOutcome[] = [
     ...completions.map((c) => ({ gateId: c.gateId, onFirstPush: c.onFirstPush, nudgesRequired: c.nudgesRequired })),
