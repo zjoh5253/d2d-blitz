@@ -124,6 +124,12 @@ const NAV_GROUPS: NavGroup[] = [
         roles: ["ADMIN", "RECRUITER"],
       },
       {
+        title: "Approvals",
+        href: "/dashboard/onboarding",
+        icon: <UserPlus className="size-[18px]" />,
+        roles: ["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"],
+      },
+      {
         title: "Tiers",
         href: "/dashboard/governance",
         icon: <Shield className="size-[18px]" />,
