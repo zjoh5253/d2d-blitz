@@ -1,48 +1,57 @@
 "use client";
 
 import { useState } from "react";
-import { Check } from "lucide-react";
+import Link from "next/link";
+import { Check, ArrowRight } from "lucide-react";
 
-const roles = [
+type Role = {
+  tab: string;
+  title: string;
+  benefits: string[];
+  /** Optional link to the operator pitch for non-rep roles. */
+  learnMore?: string;
+};
+
+const roles: Role[] = [
   {
     tab: "Field Rep",
     title: "Close More Deals, Earn More Money",
     benefits: [
-      "Track your real-time earnings and see exactly where you stand",
-      "Log doors, conversations, and sales instantly from your phone",
-      "Compete on live leaderboards and climb the rankings",
-      "Never miss a go-back with automatic follow-up tracking",
+      "See your real-time earnings — eligible, pending, paid, and lifetime total",
+      "Log knocks, sales, and daily numbers from the field, even offline",
+      "Compete on live leaderboards by verified installs and climb the rankings",
+      "Never miss a go-back or install with automatic follow-up reminders",
     ],
   },
   {
     tab: "Field Manager",
     title: "Lead Your Team to Victory",
     benefits: [
-      "Monitor team performance with a real-time dashboard",
-      "Access governance tools for attendance and compliance",
-      "See override earnings and team commission breakdowns",
+      "Monitor team performance in real time and keep everyone compliant",
+      "See override earnings and full team commission breakdowns",
       "Recruit and onboard new reps through the built-in pipeline",
     ],
+    learnMore: "/for-teams",
   },
   {
     tab: "Market Owner",
     title: "Maximize Your Market's Potential",
     benefits: [
-      "View territory P&L and blitz-level profitability",
-      "Track recruiting ROI from screening to first sale",
+      "Track territory P&L and blitz-level profitability",
+      "Measure recruiting ROI from screening to first sale",
       "Plan blitzes with data-driven territory assignments",
-      "Compare performance across multiple field managers",
     ],
+    learnMore: "/for-teams",
   },
   {
     tab: "Admin / Executive",
     title: "Run the Operation with Confidence",
     benefits: [
-      "Access national KPIs across all markets at a glance",
+      "Access national KPIs across every market at a glance",
       "Configure the commission engine with custom stack rules",
-      "Ensure compliance with built-in audit trails",
-      "Process payouts and manage deductions at scale",
+      "Process payouts and manage compliance at scale",
     ],
+    learnMore: "/for-teams",
   },
 ];
 
@@ -94,6 +103,15 @@ export function RolesSection() {
                 </li>
               ))}
             </ul>
+            {activeRole.learnMore && (
+              <Link
+                href={activeRole.learnMore}
+                className="inline-flex items-center gap-1.5 mt-6 text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+              >
+                Explore D2D Blitz for teams
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            )}
           </div>
         </div>
       </div>

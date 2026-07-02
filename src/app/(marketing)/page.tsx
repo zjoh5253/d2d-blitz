@@ -9,10 +9,10 @@ export default function LandingPage() {
   return (
     <>
       <HeroSection />
-      <FeaturesSection />
       <HowItWorksSection />
-      <RolesSection />
+      <FeaturesSection />
       <StatsSection />
+      <RolesSection />
       <CtaSection />
     </>
   );

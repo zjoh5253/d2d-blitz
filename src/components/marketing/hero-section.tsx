@@ -1,10 +1,32 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { formatCount } from "@/lib/format";
 
 export function HeroSection() {
   const { status } = useSession();
+  const [proof, setProof] = useState<{ fieldReps: number; activeMarkets: number } | null>(
+    null
+  );
+
+  useEffect(() => {
+    fetch("/api/public/stats")
+      .then((r) => r.json())
+      .then((data: { fieldReps?: number; activeMarkets?: number }) => {
+        if (
+          typeof data.fieldReps === "number" &&
+          typeof data.activeMarkets === "number" &&
+          data.fieldReps > 0
+        ) {
+          setProof({ fieldReps: data.fieldReps, activeMarkets: data.activeMarkets });
+        }
+      })
+      .catch(() => {
+        // leave the proof strip hidden on error
+      });
+  }, []);
 
   return (
     <section
@@ -50,7 +72,7 @@ export function HeroSection() {
           className="inline-flex items-center bg-blue-500/10 border border-blue-400/20 text-blue-300 text-sm font-medium px-4 py-1.5 rounded-full mb-8 animate-fade-in"
           style={{ animationDelay: "0ms" }}
         >
-          Sales Operations Platform
+          Built for door-to-door reps
         </div>
 
         {/* Headline */}
@@ -64,7 +86,7 @@ export function HeroSection() {
             animationDelay: "80ms",
           }}
         >
-          Dominate the Field. Own Your Numbers.
+          Find a Blitz. Knock Doors. Get Paid.
         </h1>
 
         {/* Subheadline */}
@@ -72,8 +94,9 @@ export function HeroSection() {
           className="text-blue-200/70 text-lg max-w-2xl mx-auto leading-relaxed mt-6 animate-fade-in"
           style={{ animationDelay: "160ms" }}
         >
-          The all-in-one platform powering America&apos;s top door-to-door sales teams. Manage
-          blitzes, track performance, and pay commissions &mdash; all in real time.
+          D2D Blitz is where field reps join a campaign, track every door, and watch commissions
+          add up in real time &mdash; so you always know exactly what you&apos;ve earned before
+          payday.
         </p>
 
         {/* CTA buttons */}
@@ -100,40 +123,45 @@ export function HeroSection() {
           {status === "unauthenticated" && (
             <>
               <Link
-                href="/login"
+                href="/register"
                 className="gradient-brand glow-blue text-white font-semibold px-8 py-3 rounded-lg transition-opacity hover:opacity-90"
               >
-                Get Started Free
+                Create Your Free Account
               </Link>
-              <Link
-                href="#"
+              <a
+                href="#how-it-works"
                 className="border border-white/30 text-white font-semibold px-8 py-3 rounded-lg transition-colors hover:bg-white/10"
               >
-                Watch Demo
-              </Link>
+                See How It Works
+              </a>
             </>
           )}
         </div>
 
-        {/* Social proof strip */}
-        <div
-          className="flex items-center justify-center gap-3 mt-16 animate-fade-in"
-          style={{ animationDelay: "320ms" }}
-        >
-          {/* Avatar stack */}
-          <div className="flex -space-x-2">
-            {(["#3B82F6", "#F59E0B", "#10B981", "#8B5CF6"] as const).map((bg, i) => (
-              <div
-                key={i}
-                className="w-7 h-7 rounded-full border-2 border-[#1E293B] flex items-center justify-center text-white text-[10px] font-bold"
-                style={{ background: bg }}
-              >
-                {(["JT", "AM", "KR", "DS"] as const)[i]}
-              </div>
-            ))}
+        {/* Social proof strip — only rendered once live counts load */}
+        {proof && (
+          <div
+            className="flex items-center justify-center gap-3 mt-16 animate-fade-in"
+            style={{ animationDelay: "320ms" }}
+          >
+            {/* Avatar stack */}
+            <div className="flex -space-x-2">
+              {(["#3B82F6", "#F59E0B", "#10B981", "#8B5CF6"] as const).map((bg, i) => (
+                <div
+                  key={i}
+                  className="w-7 h-7 rounded-full border-2 border-[#1E293B] flex items-center justify-center text-white text-[10px] font-bold"
+                  style={{ background: bg }}
+                >
+                  {(["JT", "AM", "KR", "DS"] as const)[i]}
+                </div>
+              ))}
+            </div>
+            <p className="text-blue-200/70 text-sm">
+              {formatCount(proof.fieldReps)}+ reps active across {proof.activeMarkets}{" "}
+              {proof.activeMarkets === 1 ? "market" : "markets"}
+            </p>
           </div>
-          <p className="text-blue-200/70 text-sm">2,400+ reps active across 38 markets</p>
-        </div>
+        )}
       </div>
     </section>
   );
