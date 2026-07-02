@@ -20,6 +20,7 @@ import {
   Users,
   Trophy,
 } from "lucide-react";
+import { formatCount, formatRevenue } from "@/lib/format";
 
 /* ─── Zod schema ─────────────────────────────────────── */
 
@@ -41,20 +42,6 @@ const registerSchema = z
   });
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
-
-/* ─── Stat formatting helpers ────────────────────────── */
-
-function formatCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
-  return String(n);
-}
-
-function formatRevenue(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M+`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K+`;
-  return `$${n}`;
-}
 
 /* ─── Stat cards for hero panel ─────────────────────── */
 

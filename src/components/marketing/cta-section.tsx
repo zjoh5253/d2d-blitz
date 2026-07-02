@@ -13,12 +13,11 @@ export function CtaSection() {
           className="text-white text-3xl lg:text-4xl font-bold"
           style={{ fontFamily: "var(--font-heading)" }}
         >
-          Ready to electrify your sales operation?
+          Your next blitz is waiting.
         </h2>
 
         <p className="text-blue-100/80 text-lg mt-4 max-w-2xl mx-auto">
-          Join thousands of reps and managers already using D2D Blitz to crush
-          their numbers.
+          Create your free account and start turning doors into paid installs today.
         </p>
 
         <div className="mt-8">
@@ -33,7 +32,7 @@ export function CtaSection() {
             </Link>
           ) : (
             <Link
-              href="/login"
+              href="/register"
               className="bg-white text-blue-600 font-semibold rounded-lg px-8 py-3 hover:bg-blue-50 transition-colors duration-200 shadow-lg inline-block"
             >
               Get Started Free

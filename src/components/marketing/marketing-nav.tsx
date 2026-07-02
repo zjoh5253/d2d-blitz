@@ -7,8 +7,9 @@ import { Zap, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
-  { label: "Features", href: "#features" },
-  { label: "How It Works", href: "#how-it-works" },
+  { label: "For Reps", href: "/for-reps" },
+  { label: "For Teams", href: "/for-teams" },
+  { label: "Pricing", href: "/pricing" },
   { label: "FAQ", href: "/faq" },
 ];
 
@@ -90,7 +91,7 @@ export function MarketingNav() {
                     Log In
                   </Link>
                   <Link
-                    href="/login"
+                    href="/register"
                     className="gradient-brand text-white text-sm font-semibold px-4 py-2 rounded-lg transition-opacity hover:opacity-90"
                   >
                     Get Started
@@ -153,7 +154,7 @@ export function MarketingNav() {
                     Log In
                   </Link>
                   <Link
-                    href="/login"
+                    href="/register"
                     onClick={closeMobile}
                     className="gradient-brand text-white text-sm font-semibold px-4 py-2.5 rounded-lg text-center transition-opacity hover:opacity-90"
                   >
