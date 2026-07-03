@@ -17,7 +17,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 const BASE_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
 // Tailwind palette values matching the CLUSTER_COLORS in the planner UI.
-const CLUSTER_HEX = [
+export const CLUSTER_HEX = [
   "#3b82f6", // blue-500
   "#10b981", // emerald-500
   "#f59e0b", // amber-500
@@ -49,12 +49,16 @@ export function ClusterMap({
   points,
   numClusters,
   onReassign,
+  clusterLabels,
 }: {
   points: ClusterMapPoint[];
   numClusters: number;
   // Called when the user picks a destination cluster in the popup.
   // The parent owns the cluster state and re-renders with new points.
   onReassign?: (leadIds: string[], newClusterIdx: number) => void;
+  // Optional per-cluster labels (e.g. rep names) for the reassign popup;
+  // falls back to "#N".
+  clusterLabels?: string[];
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -313,7 +317,7 @@ export function ClusterMap({
                   className="inline-block size-2.5 rounded-full"
                   style={{ background: CLUSTER_HEX[idx % CLUSTER_HEX.length] }}
                 />
-                #{idx + 1}
+                {clusterLabels?.[idx] ?? `#${idx + 1}`}
               </button>
             ))}
           </div>

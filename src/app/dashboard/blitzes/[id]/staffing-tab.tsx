@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { UserPlus, Trash2, Loader2, Bell, Send, RotateCcw, Check, X, MapPinned } from "lucide-react"
+import { TerritoryDialog } from "./territory-dialog"
 import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
 import { StatusBadge } from "@/components/ui/status-badge"
@@ -644,11 +645,8 @@ function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
   const [data, setData] = React.useState<BoardData | null>(null)
   const [busy, setBusy] = React.useState<string | null>(null)
   const [notifying, setNotifying] = React.useState(false)
-  // In-Staffing territory assignment (#1)
-  const [terrRep, setTerrRep] = React.useState<Signup | null>(null)
-  const [terr, setTerr] = React.useState<{ knockable: number; unassigned: number } | null>(null)
-  const [terrCount, setTerrCount] = React.useState("")
-  const [assigningTerr, setAssigningTerr] = React.useState(false)
+  // In-Staffing territory map (#1)
+  const [territoryOpen, setTerritoryOpen] = React.useState(false)
 
   const load = React.useCallback(async () => {
     const res = await fetch(`/api/blitzes/${blitzId}/signups`)
@@ -673,34 +671,6 @@ function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
     } finally { setBusy(null) }
   }
 
-  // Assign a share of the blitz's leads to a reserved rep → activates them +
-  // starts their gates, without leaving Staffing.
-  async function openTerritory(s: Signup) {
-    setTerrRep(s)
-    setTerr(null)
-    setTerrCount("")
-    const res = await fetch(`/api/blitzes/${blitzId}/territory`)
-    if (res.ok) {
-      const t = await res.json()
-      setTerr(t)
-      // Default: an even split across everyone still needing territory.
-      const needing = (data?.signups.filter((x) => x.status === "CLAIMED" && !x.needsApproval).length) || 1
-      setTerrCount(String(Math.max(1, Math.ceil(t.unassigned / needing))))
-    }
-  }
-  async function assignTerritory() {
-    if (!terrRep || !terrCount) return
-    setAssigningTerr(true)
-    try {
-      const res = await fetch(`/api/blitzes/${blitzId}/territory`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repId: terrRep.repId, count: Number(terrCount) }),
-      })
-      const d = await res.json().catch(() => ({}))
-      if (res.ok) { setTerrRep(null); await load(); router.refresh() }
-      else window.alert(d.error ?? "Couldn't assign territory.")
-    } finally { setAssigningTerr(false) }
-  }
 
   async function notify() {
     const already = !!data?.boardNotifiedAt
@@ -797,54 +767,26 @@ function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
 
       {needsTerritory.filter((s) => !s.needsApproval).length > 0 && (
         <div className="space-y-1.5">
-          <div className="text-xs font-medium text-amber-700">Needs territory — assign a share of leads to activate the rep</div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-medium text-amber-700">Needs territory — assign on the map to activate</div>
+            <Button size="sm" variant="outline" onClick={() => setTerritoryOpen(true)}>
+              <MapPinned className="mr-1.5 h-3.5 w-3.5" />Assign on map
+            </Button>
+          </div>
           {needsTerritory.filter((s) => !s.needsApproval).map((s) => (
-            <Row
-              key={s.id}
-              s={s}
-              badge={<span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Reserved</span>}
-              extra={
-                <Button size="sm" variant="outline" onClick={() => openTerritory(s)}>
-                  <MapPinned className="mr-1.5 h-3.5 w-3.5" />Assign territory
-                </Button>
-              }
-            />
+            <Row key={s.id} s={s} badge={<span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Reserved</span>} />
           ))}
         </div>
       )}
 
-      {/* In-Staffing territory assignment dialog (#1) */}
-      <Dialog open={!!terrRep} onOpenChange={(o) => !o && setTerrRep(null)}>
-        <DialogContent onClose={() => setTerrRep(null)} className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Assign territory — {terrRep?.rep.name ?? terrRep?.rep.email}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            {terr === null ? (
-              <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading leads…</div>
-            ) : terr.unassigned === 0 ? (
-              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">All leads are already assigned. Free some up on the Door-Knocks map, or reduce another rep&apos;s share.</div>
-            ) : (
-              <>
-                <div className="text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">{terr.unassigned.toLocaleString()}</span> of {terr.knockable.toLocaleString()} knockable leads are unassigned. Give this rep a share to put them on the blitz.
-                </div>
-                <div className="space-y-1">
-                  <Label>Leads to assign</Label>
-                  <Input type="number" min={1} max={terr.unassigned} value={terrCount} onChange={(e) => setTerrCount(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">Assigning activates the rep and starts their check-in gates. For precise geographic territories, use the Door-Knocks map.</p>
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setTerrRep(null)} disabled={assigningTerr}>Cancel</Button>
-            <Button onClick={assignTerritory} disabled={assigningTerr || !terr || terr.unassigned === 0 || !terrCount || Number(terrCount) < 1}>
-              {assigningTerr ? "Assigning…" : "Assign & activate"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* In-Staffing territory map (#1): carve territory + activate reps here */}
+      <TerritoryDialog
+        blitzId={blitzId}
+        reps={signups.filter((s) => (s.status === "CLAIMED" && !s.needsApproval) || s.status === "ACTIVE").map((s) => ({ repId: s.repId, name: s.rep.name ?? s.rep.email }))}
+        open={territoryOpen}
+        onClose={() => setTerritoryOpen(false)}
+        onChanged={() => { load(); router.refresh() }}
+      />
 
       {active.length > 0 && (
         <div className="space-y-1.5">
