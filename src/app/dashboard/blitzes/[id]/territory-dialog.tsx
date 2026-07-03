@@ -1,18 +1,17 @@
 "use client"
 
 import * as React from "react"
-import { Loader2, Wand2 } from "lucide-react"
-import { ClusterMap, type ClusterMapPoint, CLUSTER_HEX } from "@/app/dashboard/door-knocks/cluster-map"
+import { Loader2, Wand2, Hand, Eraser } from "lucide-react"
+import { CLUSTER_HEX } from "@/app/dashboard/door-knocks/cluster-map"
+import { HexMap, type HexLead } from "./hex-map"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 
-// In-Staffing territory map (#1, layer 1): reuses the Door-Knocks cluster map so
-// a manager carves territory (box-select / click → assign to a rep, which
-// activates them) without leaving the Staffing tab. Reps map to cluster indices
-// 0..N-1; an extra last cluster is "Unassigned".
+// In-Staffing territory tool: an H3 hex-grid map. Auto-plan splits the town into
+// equal contiguous shares per rep; then pick a rep "brush" and drag across hexes
+// to customize — all without leaving the Staffing tab.
 
 interface Rep { repId: string; name: string }
-interface Lead { id: string; lat: number; lng: number; street: string; assignedRepId: string | null }
 
 export function TerritoryDialog({
   blitzId, reps, open, onClose, onChanged,
@@ -23,30 +22,20 @@ export function TerritoryDialog({
   onClose: () => void
   onChanged: () => void
 }) {
-  const [leads, setLeads] = React.useState<Lead[] | null>(null)
+  const [leads, setLeads] = React.useState<HexLead[] | null>(null)
   const [busy, setBusy] = React.useState(false)
-
-  const repIdx = React.useMemo(() => new Map(reps.map((r, i) => [r.repId, i])), [reps])
-  const unassignedIdx = reps.length // last cluster
-  const labels = React.useMemo(() => [...reps.map((r) => r.name), "Unassigned"], [reps])
+  // brush: undefined = pan/move · null = erase (unassign) · string = paint that rep
+  const [brush, setBrush] = React.useState<string | null | undefined>(undefined)
 
   const load = React.useCallback(async () => {
     setLeads(null)
     const res = await fetch(`/api/blitzes/${blitzId}/territory?leads=1`)
     if (res.ok) setLeads((await res.json()).leads)
   }, [blitzId])
-  React.useEffect(() => { if (open) load() }, [open, load])
+  React.useEffect(() => { if (open) { setBrush(undefined); load() } }, [open, load])
 
-  const points: ClusterMapPoint[] = React.useMemo(
-    () => (leads ?? []).map((l) => ({
-      id: l.id, lat: l.lat, lng: l.lng, street: l.street,
-      clusterIdx: l.assignedRepId != null && repIdx.has(l.assignedRepId) ? repIdx.get(l.assignedRepId)! : unassignedIdx,
-    })),
-    [leads, repIdx, unassignedIdx]
-  )
-
-  async function reassign(leadIds: string[], idx: number) {
-    const repId = idx < reps.length ? reps[idx].repId : undefined // last idx = unassign
+  // Paint: assign the given leads to a rep (or unassign when repId is null).
+  const paint = React.useCallback(async (leadIds: string[], repId: string | null) => {
     setBusy(true)
     try {
       const res = await fetch(`/api/blitzes/${blitzId}/territory`, {
@@ -54,18 +43,15 @@ export function TerritoryDialog({
         body: JSON.stringify(repId ? { repId, leadIds } : { leadIds }),
       })
       if (res.ok) {
-        setLeads((prev) => prev ? prev.map((l) => (leadIds.includes(l.id) ? { ...l, assignedRepId: repId ?? null } : l)) : prev)
+        setLeads((prev) => prev ? prev.map((l) => (leadIds.includes(l.id) ? { ...l, assignedRepId: repId } : l)) : prev)
         onChanged()
       } else window.alert((await res.json().catch(() => ({}))).error ?? "Couldn't assign.")
     } finally { setBusy(false) }
-  }
+  }, [blitzId, onChanged])
 
-  // One click: geographically split the unassigned leads into one contiguous
-  // cluster per rep and assign them (activating each). Non-destructive — only
-  // touches currently-unassigned leads.
   async function autoPlan() {
     if (reps.length === 0) return
-    if (!window.confirm(`Auto-split the unassigned leads across ${reps.length} rep${reps.length === 1 ? "" : "s"} and activate them?`)) return
+    if (!window.confirm(`Auto-split the unassigned leads into equal shares across ${reps.length} rep${reps.length === 1 ? "" : "s"} and activate them?`)) return
     setBusy(true)
     try {
       const planRes = await fetch("/api/door-knock-leads/cluster-plan", {
@@ -78,11 +64,12 @@ export function TerritoryDialog({
       if (!clusters.some((c) => c.leadIds?.length)) { window.alert(plan.warning ?? "No unassigned leads to plan."); return }
       for (let i = 0; i < clusters.length && i < reps.length; i++) {
         const ids = clusters[i].leadIds ?? []
-        if (!ids.length) continue
-        await fetch(`/api/blitzes/${blitzId}/territory`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ repId: reps[i].repId, leadIds: ids }),
-        })
+        if (ids.length) {
+          await fetch(`/api/blitzes/${blitzId}/territory`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ repId: reps[i].repId, leadIds: ids }),
+          })
+        }
       }
       await load()
       onChanged()
@@ -90,6 +77,17 @@ export function TerritoryDialog({
   }
 
   const unassigned = (leads ?? []).filter((l) => l.assignedRepId == null).length
+
+  const brushBtn = (label: string, value: string | null | undefined, color?: string, icon?: React.ReactNode) => (
+    <button
+      onClick={() => setBrush(value)}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${brush === value ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"}`}
+    >
+      {color && <span className="inline-block size-2.5 rounded-full" style={{ background: color }} />}
+      {icon}
+      {label}
+    </button>
+  )
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -102,24 +100,26 @@ export function TerritoryDialog({
         ) : (
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-sm text-muted-foreground">
-                {unassigned} unassigned · {leads.length} total{busy ? " · working…" : ""}
-              </span>
+              <span className="text-sm text-muted-foreground">{unassigned} unassigned · {leads.length} total{busy ? " · working…" : ""}</span>
               <Button size="sm" variant="outline" disabled={busy || reps.length === 0 || unassigned === 0} onClick={autoPlan}>
                 <Wand2 className="mr-1.5 h-3.5 w-3.5" />Auto-plan across {reps.length} rep{reps.length === 1 ? "" : "s"}
               </Button>
             </div>
-            <div className="h-[54vh] overflow-hidden rounded-md border">
-              <ClusterMap points={points} numClusters={reps.length + 1} clusterLabels={labels} onReassign={reassign} />
+
+            {/* Brush picker: pick a rep, then drag across hexes to paint */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {brushBtn("Move", undefined, undefined, <Hand className="size-3" />)}
+              {reps.map((r, i) => brushBtn(r.name, r.repId, CLUSTER_HEX[i % CLUSTER_HEX.length]))}
+              {brushBtn("Erase", null, undefined, <Eraser className="size-3" />)}
             </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-              {labels.map((lab, i) => (
-                <span key={i} className="inline-flex items-center gap-1">
-                  <span className="inline-block size-2.5 rounded-full" style={{ background: CLUSTER_HEX[i % CLUSTER_HEX.length] }} />{lab}
-                </span>
-              ))}
+
+            <div className="h-[52vh] overflow-hidden rounded-md border">
+              <HexMap leads={leads} reps={reps} brush={brush} onPaint={paint} />
             </div>
-            <p className="text-xs text-muted-foreground">Shift+drag to box-select houses, or click a pin — then pick a rep. Assigning activates that rep and starts their check-ins. For fine control, the Door-Knocks map has the full planner.</p>
+            <p className="text-xs text-muted-foreground">
+              {brush === undefined ? "Pick a rep above to start painting, or drag to pan the map." : brush === null ? "Drag across hexes to unassign them." : "Drag across hexes to give them to this rep — that activates them and starts their check-ins."}
+              {" "}Auto-plan splits it evenly first; then tweak by hand.
+            </p>
           </div>
         )}
       </DialogContent>
