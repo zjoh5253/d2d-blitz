@@ -526,6 +526,9 @@ model Blitz {
   boardNotifiedAt DateTime? @map("board_notified_at")
   // When this blitz first became claimable — anchors the premium 24h window.
   openedForSignupAt DateTime? @map("opened_for_signup_at")
+  // When the manager finalized staffing ("Finish & notify reps"). Null = still a
+  // draft: reps get NO check-in pings until this is set.
+  staffingPublishedAt DateTime? @map("staffing_published_at")
 
   // Fiber Blitz OS v2 staffing spec (Sprint 1). All nullable/defaulted — added
   // ahead of the build, inert until the creation form + invite engine use them.

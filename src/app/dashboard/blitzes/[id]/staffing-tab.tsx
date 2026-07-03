@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { UserPlus, Trash2, Loader2, Bell, Send, RotateCcw, Check, X, MapPinned } from "lucide-react"
+import { UserPlus, Trash2, Loader2, Bell, Send, RotateCcw, Check, X, MapPinned, Rocket } from "lucide-react"
 import { TerritoryDialog } from "./territory-dialog"
 import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
@@ -637,6 +637,7 @@ interface Signup {
 interface BoardData {
   openForSignup: boolean
   boardNotifiedAt: string | null
+  staffingPublishedAt: string | null
   signups: Signup[]
 }
 
@@ -645,6 +646,7 @@ function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
   const [data, setData] = React.useState<BoardData | null>(null)
   const [busy, setBusy] = React.useState<string | null>(null)
   const [notifying, setNotifying] = React.useState(false)
+  const [finalizing, setFinalizing] = React.useState(false)
   // In-Staffing territory map (#1)
   const [territoryOpen, setTerritoryOpen] = React.useState(false)
 
@@ -690,6 +692,31 @@ function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
         window.alert(d.error ?? "Couldn't send notifications.")
       }
     } finally { setNotifying(false) }
+  }
+
+  // Reset staffing (the "redo"): unassign all leads + send activated reps back
+  // to reserved. Reuses the territory reset.
+  async function resetStaffing() {
+    if (!window.confirm("Start staffing over? This unassigns all territory and sends activated reps back to “reserved.” Claims and the waitlist are kept.")) return
+    setFinalizing(true)
+    try {
+      const res = await fetch(`/api/blitzes/${blitzId}/territory/reset`, { method: "POST" })
+      if (res.ok) { await load(); router.refresh() } else window.alert((await res.json().catch(() => ({}))).error ?? "Couldn't reset.")
+    } finally { setFinalizing(false) }
+  }
+
+  // Finalize: publish staffing + notify the confirmed crew. Until this, reps get
+  // no check-in pings, so setup mistakes never notify anyone.
+  async function publish() {
+    const already = !!data?.staffingPublishedAt
+    if (!window.confirm(already ? "Re-send the confirmation push to the active crew?" : "Finish staffing and notify the confirmed reps? Their check-ins start now.")) return
+    setFinalizing(true)
+    try {
+      const res = await fetch(`/api/blitzes/${blitzId}/publish-staffing`, { method: "POST" })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok) { window.alert(`Confirmed ${d.confirmed} rep${d.confirmed === 1 ? "" : "s"} (${d.pushed} push${d.pushed === 1 ? "" : "es"} sent).`); await load(); router.refresh() }
+      else window.alert(d.error ?? "Couldn't finish staffing.")
+    } finally { setFinalizing(false) }
   }
 
   // Only blitzes that are actually on the rep board show this panel.
@@ -805,6 +832,26 @@ function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
           ))}
         </div>
       )}
+
+      {/* Finalize: reps get no check-in pings until this. Reset to start over. */}
+      <div className="flex items-center justify-between gap-2 border-t pt-3">
+        <div className="text-xs">
+          {data.staffingPublishedAt ? (
+            <span className="font-medium text-green-700">Staffing finalized · crew notified {new Date(data.staffingPublishedAt).toLocaleDateString()}</span>
+          ) : (
+            <span className="text-muted-foreground">Draft — no rep is notified until you finish. Reset to start over.</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={finalizing || (active.length === 0 && needsTerritory.length === 0)} onClick={resetStaffing}>
+            {finalizing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="mr-1.5 h-3.5 w-3.5" />}Reset
+          </Button>
+          <Button size="sm" variant={data.staffingPublishedAt ? "outline" : "default"} disabled={finalizing || active.length === 0} onClick={publish}>
+            {finalizing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Rocket className="mr-1.5 h-3.5 w-3.5" />}
+            {data.staffingPublishedAt ? "Re-notify crew" : "Finish & notify reps"}
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }

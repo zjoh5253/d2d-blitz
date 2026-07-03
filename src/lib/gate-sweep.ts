@@ -37,7 +37,9 @@ async function pushToUser(userId: string, payload: Record<string, unknown>): Pro
 
 export async function sweepGates(now: Date = new Date()): Promise<{ nudged: number; missed: number; escalated: number }> {
   const due = await db.checkInGate.findMany({
-    where: { status: "PENDING", scheduledTriggerTime: { lte: now } },
+    // Only blitzes whose staffing the manager has finalized — a draft blitz
+    // never nudges/notifies reps, so mid-staffing mistakes stay silent.
+    where: { status: "PENDING", scheduledTriggerTime: { lte: now }, slot: { blitz: { staffingPublishedAt: { not: null } } } },
     select: {
       id: true,
       gateId: true,

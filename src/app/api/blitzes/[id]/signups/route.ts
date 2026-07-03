@@ -14,7 +14,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const { id } = await params
 
     const [blitz, signups] = await Promise.all([
-      db.blitz.findUnique({ where: { id }, select: { openForSignup: true, boardNotifiedAt: true } }),
+      db.blitz.findUnique({ where: { id }, select: { openForSignup: true, boardNotifiedAt: true, staffingPublishedAt: true } }),
       db.blitzSignup.findMany({
         where: { blitzId: id, status: { in: ["CLAIMED", "ACTIVE", "WAITLISTED"] } },
         include: { rep: { select: { id: true, name: true, email: true } } },
@@ -24,6 +24,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({
       openForSignup: blitz?.openForSignup ?? false,
       boardNotifiedAt: blitz?.boardNotifiedAt ?? null,
+      staffingPublishedAt: blitz?.staffingPublishedAt ?? null,
       signups,
     })
   } catch (error) {
