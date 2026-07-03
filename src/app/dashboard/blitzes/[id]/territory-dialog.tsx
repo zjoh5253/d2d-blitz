@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Loader2, Wand2, Hand, Eraser } from "lucide-react"
+import { Loader2, Wand2, Hand, Eraser, RotateCcw } from "lucide-react"
 import { CLUSTER_HEX } from "@/app/dashboard/door-knocks/cluster-map"
 import { HexMap, type HexLead } from "./hex-map"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -76,7 +76,18 @@ export function TerritoryDialog({
     } finally { setBusy(false) }
   }
 
+  async function reset() {
+    if (!window.confirm("Reset all territory? This unassigns every lead and sends any activated reps back to “reserved,” clearing check-ins that already started. Claims and the waitlist are kept.")) return
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/blitzes/${blitzId}/territory/reset`, { method: "POST" })
+      if (res.ok) { setBrush(undefined); await load(); onChanged() }
+      else window.alert((await res.json().catch(() => ({}))).error ?? "Couldn't reset.")
+    } finally { setBusy(false) }
+  }
+
   const unassigned = (leads ?? []).filter((l) => l.assignedRepId == null).length
+  const anyAssigned = (leads ?? []).some((l) => l.assignedRepId != null)
 
   const brushBtn = (label: string, value: string | null | undefined, color?: string, icon?: React.ReactNode) => (
     <button
@@ -101,9 +112,14 @@ export function TerritoryDialog({
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm text-muted-foreground">{unassigned} unassigned · {leads.length} total{busy ? " · working…" : ""}</span>
-              <Button size="sm" variant="outline" disabled={busy || reps.length === 0 || unassigned === 0} onClick={autoPlan}>
-                <Wand2 className="mr-1.5 h-3.5 w-3.5" />Auto-plan across {reps.length} rep{reps.length === 1 ? "" : "s"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={busy || !anyAssigned} onClick={reset}>
+                  <RotateCcw className="mr-1.5 h-3.5 w-3.5" />Reset
+                </Button>
+                <Button size="sm" variant="outline" disabled={busy || reps.length === 0 || unassigned === 0} onClick={autoPlan}>
+                  <Wand2 className="mr-1.5 h-3.5 w-3.5" />Auto-plan across {reps.length} rep{reps.length === 1 ? "" : "s"}
+                </Button>
+              </div>
             </div>
 
             {/* Brush picker: pick a rep, then drag across hexes to paint */}
