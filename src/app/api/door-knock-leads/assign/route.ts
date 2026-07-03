@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { z } from "zod"
-import { scheduleGatesForSlot } from "@/lib/gates"
+import { activateRepOnBlitz } from "@/lib/blitz-activation"
 
 const assignSchema = z.object({
   leadIds: z.array(z.string()).min(1, "At least one lead is required"),
@@ -47,39 +47,11 @@ export async function PUT(request: NextRequest) {
     })
 
     // Job board: assigning territory to a rep who CLAIMED this blitz on the
-    // board activates their signup + mirrors it into a BlitzAssignment so the
-    // existing staffing/counts work unchanged. No signup (the old direct-assign
-    // flow) → leave behavior as-is.
+    // board activates their signup (mirror assignment + start gates). No signup
+    // (the old direct-assign flow) → helper no-ops, behavior unchanged.
     if (result.count > 0) {
-      const lead = await db.doorKnockLead.findFirst({
-        where: { id: { in: leadIds } },
-        select: { blitzId: true },
-      })
-      if (lead?.blitzId) {
-        const blitzId = lead.blitzId
-        const signup = await db.blitzSignup.findUnique({
-          where: { blitzId_repId: { blitzId, repId } },
-        })
-        if (signup && signup.status !== "ACTIVE" && signup.status !== "DECLINED" && signup.status !== "WITHDRAWN") {
-          await db.blitzSignup.update({
-            where: { id: signup.id },
-            data: {
-              status: "ACTIVE",
-              activatedAt: new Date(),
-              decidedById: session.user.id,
-              decidedAt: new Date(),
-              waitPosition: null,
-            },
-          })
-          const existingAssignment = await db.blitzAssignment.findFirst({ where: { blitzId, repId } })
-          if (!existingAssignment) {
-            await db.blitzAssignment.create({ data: { blitzId, repId, status: "ACTIVE" } })
-          }
-          // Activation kicks off the check-in gate sequence (G0 auto-done).
-          const b = await db.blitz.findUnique({ where: { id: blitzId }, select: { startDate: true, endDate: true, timezone: true } })
-          if (b) await scheduleGatesForSlot(signup.id, b)
-        }
-      }
+      const lead = await db.doorKnockLead.findFirst({ where: { id: { in: leadIds } }, select: { blitzId: true } })
+      if (lead?.blitzId) await activateRepOnBlitz(lead.blitzId, repId, session.user.id)
     }
 
     return NextResponse.json({
