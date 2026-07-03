@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2, Wand2 } from "lucide-react"
 import { ClusterMap, type ClusterMapPoint, CLUSTER_HEX } from "@/app/dashboard/door-knocks/cluster-map"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 
 // In-Staffing territory map (#1, layer 1): reuses the Door-Knocks cluster map so
 // a manager carves territory (box-select / click → assign to a rep, which
@@ -59,6 +60,35 @@ export function TerritoryDialog({
     } finally { setBusy(false) }
   }
 
+  // One click: geographically split the unassigned leads into one contiguous
+  // cluster per rep and assign them (activating each). Non-destructive — only
+  // touches currently-unassigned leads.
+  async function autoPlan() {
+    if (reps.length === 0) return
+    if (!window.confirm(`Auto-split the unassigned leads across ${reps.length} rep${reps.length === 1 ? "" : "s"} and activate them?`)) return
+    setBusy(true)
+    try {
+      const planRes = await fetch("/api/door-knock-leads/cluster-plan", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blitzId, numReps: reps.length }),
+      })
+      const plan = await planRes.json().catch(() => ({}))
+      if (!planRes.ok) { window.alert(plan.error ?? "Couldn't compute a plan."); return }
+      const clusters: { leadIds?: string[] }[] = plan.clusters ?? []
+      if (!clusters.some((c) => c.leadIds?.length)) { window.alert(plan.warning ?? "No unassigned leads to plan."); return }
+      for (let i = 0; i < clusters.length && i < reps.length; i++) {
+        const ids = clusters[i].leadIds ?? []
+        if (!ids.length) continue
+        await fetch(`/api/blitzes/${blitzId}/territory`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ repId: reps[i].repId, leadIds: ids }),
+        })
+      }
+      await load()
+      onChanged()
+    } finally { setBusy(false) }
+  }
+
   const unassigned = (leads ?? []).filter((l) => l.assignedRepId == null).length
 
   return (
@@ -71,11 +101,18 @@ export function TerritoryDialog({
           <div className="py-14 text-center text-sm text-muted-foreground">No mappable leads for this blitz yet. Pull addresses on the blitz first.</div>
         ) : (
           <div className="space-y-3">
-            <div className="h-[58vh] overflow-hidden rounded-md border">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-muted-foreground">
+                {unassigned} unassigned · {leads.length} total{busy ? " · working…" : ""}
+              </span>
+              <Button size="sm" variant="outline" disabled={busy || reps.length === 0 || unassigned === 0} onClick={autoPlan}>
+                <Wand2 className="mr-1.5 h-3.5 w-3.5" />Auto-plan across {reps.length} rep{reps.length === 1 ? "" : "s"}
+              </Button>
+            </div>
+            <div className="h-[54vh] overflow-hidden rounded-md border">
               <ClusterMap points={points} numClusters={reps.length + 1} clusterLabels={labels} onReassign={reassign} />
             </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-              <span className="text-muted-foreground">{unassigned} unassigned · {leads.length} total{busy ? " · saving…" : ""}</span>
               {labels.map((lab, i) => (
                 <span key={i} className="inline-flex items-center gap-1">
                   <span className="inline-block size-2.5 rounded-full" style={{ background: CLUSTER_HEX[i % CLUSTER_HEX.length] }} />{lab}
