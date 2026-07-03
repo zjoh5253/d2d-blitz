@@ -5,6 +5,7 @@ import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import { latLngToCell, cellToBoundary } from "h3-js"
 import { CLUSTER_HEX } from "@/app/dashboard/door-knocks/cluster-map"
+import { HEX_RES } from "@/lib/hex-territory"
 
 // Hex-grid territory map (Teki-style). Every lead sits in an H3 hexagon; a hex
 // is colored by the rep that owns its leads. With a rep "brush" selected, click
@@ -12,7 +13,7 @@ import { CLUSTER_HEX } from "@/app/dashboard/door-knocks/cluster-map"
 // to that rep (or unassigned with the eraser). Reuses the blitz's lead→rep
 // assignment as the source of truth; hexes are the spatial UI on top.
 
-const RES = 8 // ~0.7 km² hexes — town-scale, comfortable to paint
+const RES = HEX_RES // keep in sync with the auto-plan partition
 const BASE_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
 const GRAY = "#a1a1aa"
 

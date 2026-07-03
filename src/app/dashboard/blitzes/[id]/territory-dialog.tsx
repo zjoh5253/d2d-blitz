@@ -4,6 +4,7 @@ import * as React from "react"
 import { Loader2, Wand2, Hand, Eraser, RotateCcw } from "lucide-react"
 import { CLUSTER_HEX } from "@/app/dashboard/door-knocks/cluster-map"
 import { HexMap, type HexLead } from "./hex-map"
+import { planContiguousTerritories } from "@/lib/hex-territory"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 
@@ -50,24 +51,18 @@ export function TerritoryDialog({
   }, [blitzId, onChanged])
 
   async function autoPlan() {
-    if (reps.length === 0) return
-    if (!window.confirm(`Auto-split the unassigned leads into equal shares across ${reps.length} rep${reps.length === 1 ? "" : "s"} and activate them?`)) return
+    if (reps.length === 0 || !leads) return
+    if (!window.confirm(`Auto-split the town into ${reps.length} equal, contiguous territories and activate the reps?`)) return
     setBusy(true)
     try {
-      const planRes = await fetch("/api/door-knock-leads/cluster-plan", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blitzId, numReps: reps.length }),
-      })
-      const plan = await planRes.json().catch(() => ({}))
-      if (!planRes.ok) { window.alert(plan.error ?? "Couldn't compute a plan."); return }
-      const clusters: { leadIds?: string[] }[] = plan.clusters ?? []
-      if (!clusters.some((c) => c.leadIds?.length)) { window.alert(plan.warning ?? "No unassigned leads to plan."); return }
-      for (let i = 0; i < clusters.length && i < reps.length; i++) {
-        const ids = clusters[i].leadIds ?? []
-        if (ids.length) {
+      // Contiguous hex partition (every rep's hexes touch) over the whole town.
+      const regions = planContiguousTerritories(leads, reps.length)
+      if (!regions.some((r) => r.length)) { window.alert("No mappable leads to plan."); return }
+      for (let i = 0; i < regions.length && i < reps.length; i++) {
+        if (regions[i].length) {
           await fetch(`/api/blitzes/${blitzId}/territory`, {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ repId: reps[i].repId, leadIds: ids }),
+            body: JSON.stringify({ repId: reps[i].repId, leadIds: regions[i] }),
           })
         }
       }
@@ -116,7 +111,7 @@ export function TerritoryDialog({
                 <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={busy || !anyAssigned} onClick={reset}>
                   <RotateCcw className="mr-1.5 h-3.5 w-3.5" />Reset
                 </Button>
-                <Button size="sm" variant="outline" disabled={busy || reps.length === 0 || unassigned === 0} onClick={autoPlan}>
+                <Button size="sm" variant="outline" disabled={busy || reps.length === 0 || (leads?.length ?? 0) === 0} onClick={autoPlan}>
                   <Wand2 className="mr-1.5 h-3.5 w-3.5" />Auto-plan across {reps.length} rep{reps.length === 1 ? "" : "s"}
                 </Button>
               </div>
