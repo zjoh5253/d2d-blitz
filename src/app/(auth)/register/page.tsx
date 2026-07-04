@@ -90,7 +90,7 @@ function HeroPanel({ stats }: { stats: StatItem[] }) {
       />
 
       {/* Content */}
-      <div className="relative z-10 flex flex-col justify-between h-full p-12">
+      <div className="relative z-10 flex flex-1 flex-col p-12">
         {/* Top: wordmark */}
         <div className="flex items-center gap-2.5">
           <div
@@ -108,7 +108,7 @@ function HeroPanel({ stats }: { stats: StatItem[] }) {
         </div>
 
         {/* Middle: headline */}
-        <div className="space-y-8">
+        <div className="space-y-8 mt-16">
           <div className="space-y-4">
             <p className="text-amber-400 text-sm font-semibold uppercase tracking-widest">
               Free for reps
@@ -180,7 +180,7 @@ function HeroPanel({ stats }: { stats: StatItem[] }) {
         </div>
 
         {/* Bottom: tagline */}
-        <p className="text-blue-300/40 text-xs">
+        <p className="text-blue-300/40 text-xs mt-auto pt-8">
           &copy; {new Date().getFullYear()} D2D Blitz &middot; Nationwide Sales Intelligence
         </p>
       </div>
