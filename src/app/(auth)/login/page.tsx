@@ -10,7 +10,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Mail, Lock, Zap, BarChart3, DollarSign, Map } from "lucide-react";
+import { Mail, Lock, BarChart3, DollarSign, Map } from "lucide-react";
+import { BlitzBolt } from "@/components/brand/blitz-bolt";
 
 /* ─── Zod schema ─────────────────────────────────────── */
 
@@ -78,7 +79,7 @@ function HeroPanel() {
             className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
             style={{ background: "linear-gradient(135deg, #3B82F6, #1D4ED8)" }}
           >
-            <Zap className="w-5 h-5 text-white" fill="currentColor" />
+            <BlitzBolt className="w-5 h-5 text-white" />
           </div>
           <span
             className="text-white text-xl font-bold tracking-tight"
@@ -399,7 +400,7 @@ export default function LoginPage() {
               className="w-8 h-8 rounded-lg flex items-center justify-center"
               style={{ background: "linear-gradient(135deg, #3B82F6, #1D4ED8)" }}
             >
-              <Zap className="w-4 h-4 text-white" fill="currentColor" />
+              <BlitzBolt className="w-4 h-4 text-white" />
             </div>
             <span
               className="text-slate-900 text-lg font-bold tracking-tight"

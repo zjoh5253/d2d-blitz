@@ -5,7 +5,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
-import { Mail, Zap, ArrowLeft } from "lucide-react";
+import { Mail, ArrowLeft } from "lucide-react";
+import { BlitzBolt } from "@/components/brand/blitz-bolt";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -57,7 +58,7 @@ export default function ForgotPasswordPage() {
             className="w-8 h-8 rounded-lg flex items-center justify-center"
             style={{ background: "linear-gradient(135deg, #3B82F6, #1D4ED8)" }}
           >
-            <Zap className="w-4 h-4 text-white" fill="currentColor" />
+            <BlitzBolt className="w-4 h-4 text-white" />
           </div>
           <span className="text-slate-900 text-lg font-bold tracking-tight">D2D Blitz</span>
         </div>
