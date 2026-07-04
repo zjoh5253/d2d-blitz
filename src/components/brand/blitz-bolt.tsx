@@ -73,10 +73,10 @@ export function BlitzBolt({ variant = "solid", ...props }: BlitzBoltProps) {
     );
   }
 
-  // solid (default)
+  // solid (default) — the clean flat front-face bolt, best for small in-tile lockups
   return (
     <svg fill="currentColor" {...common}>
-      <path d={SILHOUETTE} />
+      <path d={FRONT_FACE} />
     </svg>
   );
 }
