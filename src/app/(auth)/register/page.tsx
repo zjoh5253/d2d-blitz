@@ -111,7 +111,7 @@ function HeroPanel({ stats }: { stats: StatItem[] }) {
         <div className="space-y-8">
           <div className="space-y-4">
             <p className="text-amber-400 text-sm font-semibold uppercase tracking-widest">
-              Join the network
+              Free for reps
             </p>
             <h1
               className="text-white leading-tight"
@@ -122,10 +122,10 @@ function HeroPanel({ stats }: { stats: StatItem[] }) {
                 letterSpacing: "-0.02em",
               }}
             >
-              Join the fastest-growing D2D network
+              Sign up, find a blitz, and start getting paid
             </h1>
             <p className="text-blue-200/70 text-base leading-relaxed max-w-xs">
-              Get set up in minutes. Start tracking your team, commissions, and field ops from day one.
+              Create your free account in minutes, then track every knock, sale, and commission from day one.
             </p>
           </div>
 
@@ -153,7 +153,7 @@ function HeroPanel({ stats }: { stats: StatItem[] }) {
             ))}
           </div>
 
-          {/* Testimonial */}
+          {/* Value callout */}
           <div
             className="flex items-start gap-3 p-4 rounded-xl animate-fade-in"
             style={{
@@ -163,17 +163,17 @@ function HeroPanel({ stats }: { stats: StatItem[] }) {
             }}
           >
             <div
-              className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-white text-xs font-bold mt-0.5"
+              className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center mt-0.5"
               style={{ background: "linear-gradient(135deg, #F59E0B, #D97706)" }}
             >
-              MR
+              <BlitzBolt className="w-4 h-4 text-white" />
             </div>
             <div>
-              <p className="text-blue-100/80 text-sm leading-relaxed italic">
-                &ldquo;D2D Blitz gave our team the real-time visibility we needed. Sales went up 40% in 60 days.&rdquo;
+              <p className="text-blue-100/90 text-sm font-semibold leading-relaxed">
+                No credit card. No cost to reps.
               </p>
-              <p className="text-amber-400/80 text-xs font-semibold mt-1.5">
-                Marcus R. &mdash; Regional Manager, Dallas
+              <p className="text-blue-200/70 text-xs leading-relaxed mt-1">
+                Everything you need to find a blitz, track every door, and watch your commissions add up.
               </p>
             </div>
           </div>
