@@ -43,6 +43,7 @@ vi.mock("@/lib/db", () => ({
     touchpoint: {
       findMany: vi.fn(),
       create: vi.fn(),
+      count: vi.fn(),
     },
     dailyReport: {
       findMany: vi.fn(),
@@ -87,7 +88,7 @@ const mockDb = db as unknown as {
   blitzAssignment: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> }
   blitz: { findMany: ReturnType<typeof vi.fn> }
   goBack: { findMany: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> }
-  touchpoint: { findMany: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> }
+  touchpoint: { findMany: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> }
   dailyReport: { findMany: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> }
   carrier: { findMany: ReturnType<typeof vi.fn>; findUnique: ReturnType<typeof vi.fn> }
   market: { findMany: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> }
@@ -244,12 +245,14 @@ describe("GET /api/public/stats", () => {
       { carrier: { revenuePerInstall: 150 } },
       { carrier: { revenuePerInstall: 200 } },
     ])
+    mockDb.touchpoint.count.mockResolvedValueOnce(1280)
     const res = await GET()
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.activeMarkets).toBe(5)
     expect(json.fieldReps).toBe(32)
     expect(json.totalRevenue).toBe(350)
+    expect(json.doorsThisMonth).toBe(1280)
   })
 
   it("returns 500 when DB throws", async () => {
