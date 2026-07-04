@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Zap } from "lucide-react";
+import { BlitzBolt } from "@/components/brand/blitz-bolt";
 
 export function MarketingFooter() {
   return (
@@ -7,7 +7,7 @@ export function MarketingFooter() {
       <div className="max-w-7xl mx-auto py-16 px-6">
         <div className="mb-12">
           <Link href="/" className="flex items-center gap-2 w-fit">
-            <Zap className="h-6 w-6 text-blue-400" />
+            <BlitzBolt variant="outline" className="h-6 w-6 text-blue-400" />
             <span className="text-xl font-bold text-white">D2D Blitz</span>
           </Link>
           <p className="mt-3 text-slate-400 text-sm">

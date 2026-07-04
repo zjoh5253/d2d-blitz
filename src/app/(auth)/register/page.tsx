@@ -15,11 +15,11 @@ import {
   Phone,
   Lock,
   ShieldCheck,
-  Zap,
   TrendingUp,
   Users,
   Trophy,
 } from "lucide-react";
+import { BlitzBolt } from "@/components/brand/blitz-bolt";
 import { formatCount, formatRevenue } from "@/lib/format";
 
 /* ─── Zod schema ─────────────────────────────────────── */
@@ -97,7 +97,7 @@ function HeroPanel({ stats }: { stats: StatItem[] }) {
             className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
             style={{ background: "linear-gradient(135deg, #F59E0B, #D97706)" }}
           >
-            <Zap className="w-5 h-5 text-white" fill="currentColor" />
+            <BlitzBolt className="w-5 h-5 text-white" />
           </div>
           <span
             className="text-white text-xl font-bold tracking-tight"
@@ -272,7 +272,7 @@ export default function RegisterPage() {
               className="w-8 h-8 rounded-lg flex items-center justify-center"
               style={{ background: "linear-gradient(135deg, #F59E0B, #D97706)" }}
             >
-              <Zap className="w-4 h-4 text-white" fill="currentColor" />
+              <BlitzBolt className="w-4 h-4 text-white" />
             </div>
             <span
               className="text-slate-900 text-lg font-bold tracking-tight"

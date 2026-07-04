@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { Zap, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import { BlitzBolt } from "@/components/brand/blitz-bolt";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
@@ -45,7 +46,7 @@ export function MarketingNav() {
                   className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
                   style={{ background: "linear-gradient(135deg, #3B82F6, #1D4ED8)" }}
                 >
-                  <Zap className="w-5 h-5 text-white" fill="currentColor" />
+                  <BlitzBolt className="w-5 h-5 text-white" />
                 </div>
                 <span
                   className="text-slate-900 text-xl font-bold tracking-tight"

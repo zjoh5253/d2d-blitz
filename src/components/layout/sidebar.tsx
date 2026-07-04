@@ -23,6 +23,7 @@ import {
   LayoutDashboard,
   ClipboardList,
 } from "lucide-react";
+import { BlitzBolt } from "@/components/brand/blitz-bolt";
 
 interface NavItem {
   title: string;
@@ -336,7 +337,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 boxShadow: "0 0 12px rgba(245,158,11,0.35)",
               }}
             >
-              <Zap className="size-4 text-white" fill="white" strokeWidth={0} />
+              <BlitzBolt className="size-4 text-white" />
             </div>
 
             {/* Wordmark */}
