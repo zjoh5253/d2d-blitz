@@ -22,6 +22,7 @@ import {
   X,
   LayoutDashboard,
   ClipboardList,
+  BanknoteArrowUp,
 } from "lucide-react";
 import { BlitzBolt } from "@/components/brand/blitz-bolt";
 
@@ -46,6 +47,12 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/dashboard/reps/dashboard",
         icon: <LayoutDashboard className="size-[18px]" />,
         roles: ["ADMIN", "FIELD_MANAGER", "FIELD_REP"],
+      },
+      {
+        title: "Get Paid",
+        href: "/dashboard/payments",
+        icon: <BanknoteArrowUp className="size-[18px]" />,
+        roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER", "FIELD_REP"],
       },
     ],
   },

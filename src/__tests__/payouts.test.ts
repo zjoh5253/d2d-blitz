@@ -23,8 +23,13 @@ vi.mock("@/lib/db", () => ({
   },
 }))
 
+vi.mock("@/lib/services/stripe-payout", () => ({
+  payBatchViaStripe: vi.fn(),
+}))
+
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { payBatchViaStripe } from "@/lib/services/stripe-payout"
 import { GET, POST } from "@/app/api/payouts/route"
 import { GET as GET_BY_ID, PUT } from "@/app/api/payouts/[id]/route"
 
@@ -692,16 +697,18 @@ describe("PUT /api/payouts/[id]", () => {
     expect(updateCall.data.approvedAt).toBeUndefined()
   })
 
-  it("transitions APPROVED → PAID and marks commission records as PAID", async () => {
+  it("transitions APPROVED → PAID, pays via Stripe, and marks paid reps' commissions as PAID", async () => {
     vi.mocked(auth).mockResolvedValue(mockAdminSession as never)
     vi.mocked(db.payoutBatch.findUnique).mockResolvedValue({
       ...mockBatch,
       status: "APPROVED",
     } as never)
-    vi.mocked(db.payoutLine.findMany).mockResolvedValue([
-      { repId: "rep-1" },
-      { repId: "rep-2" },
-    ] as never)
+    // Stripe successfully transfers to both reps in the batch.
+    vi.mocked(payBatchViaStripe).mockResolvedValue({
+      batchId: "batch-1",
+      transferred: [{ repId: "rep-1" }, { repId: "rep-2" }],
+      skipped: [],
+    } as never)
     vi.mocked(db.commissionRecord.updateMany).mockResolvedValue({ count: 3 } as never)
     vi.mocked(db.payoutBatch.update).mockResolvedValue({
       ...mockBatch,
@@ -718,11 +725,10 @@ describe("PUT /api/payouts/[id]", () => {
 
     expect(response.status).toBe(200)
 
-    expect(db.payoutLine.findMany).toHaveBeenCalledWith({
-      where: { batchId: "batch-1" },
-      select: { repId: true },
-    })
+    // Real money moved via the Stripe service.
+    expect(payBatchViaStripe).toHaveBeenCalledWith("batch-1")
 
+    // Only reps who were actually paid get their commissions flipped to PAID.
     expect(db.commissionRecord.updateMany).toHaveBeenCalledWith({
       where: { repId: { in: ["rep-1", "rep-2"] }, status: "PENDING" },
       data: { status: "PAID" },
