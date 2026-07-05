@@ -5,6 +5,7 @@ import {
   upsertHoldback,
 } from "@/lib/services/holdback";
 import { upsertOverrideEarnings } from "@/lib/services/override-earning";
+import { resolveRepOverride } from "@/lib/services/rep-commission";
 
 export async function calculateCommission(saleId: string) {
   const sale = await db.sale.findUnique({
@@ -51,9 +52,20 @@ export async function calculateCommission(saleId: string) {
   const marketOwnerSpread = remaining * stackConfig.marketOwnerSpreadPercent;
   let repPay = remaining - managerOverride - marketOwnerSpread;
 
-  // Apply governance tier multiplier
-  const tierMultiplier = sale.rep.governanceTier?.commissionMultiplier ?? 1.0;
-  repPay *= tierMultiplier;
+  // A custom per-rep override, when present, replaces the computed pay outright
+  // (the governance-tier multiplier is bypassed). Otherwise apply the tier.
+  const repOverride = await resolveRepOverride({
+    repId: sale.repId,
+    carrierId: sale.carrierId,
+    productId: sale.productId,
+    at: sale.submittedAt,
+  });
+  if (repOverride) {
+    repPay = repOverride.amount;
+  } else {
+    const tierMultiplier = sale.rep.governanceTier?.commissionMultiplier ?? 1.0;
+    repPay *= tierMultiplier;
+  }
 
   // Hold back a slice of the rep's pay for the retention period. The immediate
   // portion is what flows through the normal payout pipeline now; the held
@@ -79,6 +91,7 @@ export async function calculateCommission(saleId: string) {
       status: "ELIGIBLE",
       governanceTierId: sale.rep.governanceTierId,
       productId: sale.productId,
+      repCommissionOverrideId: repOverride?.id ?? null,
     },
     update: {
       carrierPayout,
@@ -88,6 +101,7 @@ export async function calculateCommission(saleId: string) {
       marketOwnerSpread,
       governanceTierId: sale.rep.governanceTierId,
       productId: sale.productId,
+      repCommissionOverrideId: repOverride?.id ?? null,
     },
   });
 
