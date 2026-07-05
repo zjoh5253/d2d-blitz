@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { notifyCommissionPosted } from "@/lib/services/notifications";
+import {
+  resolveHoldbackPolicy,
+  splitHoldback,
+  upsertHoldback,
+} from "@/lib/services/holdback";
 import { captureServerEvent } from "@/lib/posthog";
 import { captureApiError } from "@/lib/sentry";
 
@@ -104,7 +109,15 @@ export async function POST() {
         const multiplier = sale.rep.governanceTier?.commissionMultiplier ?? 1.0;
         const repPay = baseRepPay * multiplier;
 
-        await db.commissionRecord.create({
+        // Hold back a slice for the retention period; pay the immediate portion now.
+        const policy = await resolveHoldbackPolicy(carrierId, sale.submittedAt);
+        const { immediate, held, percent, releaseAt } = splitHoldback(
+          repPay,
+          policy,
+          sale.submittedAt
+        );
+
+        const record = await db.commissionRecord.create({
           data: {
             saleId: sale.id,
             repId: sale.repId,
@@ -113,18 +126,29 @@ export async function POST() {
             companyFloor,
             managerOverride,
             marketOwnerSpread,
-            repPay,
+            repPay: immediate,
             status: "ELIGIBLE",
             governanceTierId: sale.rep.governanceTierId ?? null,
           },
         });
 
-        // Fire-and-forget push notification
+        if (held > 0) {
+          await upsertHoldback({
+            commissionRecordId: record.id,
+            repId: sale.repId,
+            carrierId,
+            amount: held,
+            percent,
+            releaseAt,
+          });
+        }
+
+        // Fire-and-forget push notification (immediate portion)
         notifyCommissionPosted({
           repId: sale.repId,
           blitzId: sale.blitzId,
           blitzName: sale.blitz.name,
-          repPay,
+          repPay: immediate,
         }).catch((err) =>
           console.error("[commissions/calculate] push notification failed:", err)
         );

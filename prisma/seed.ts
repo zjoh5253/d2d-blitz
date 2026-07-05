@@ -269,6 +269,17 @@ async function main() {
     },
   });
 
+  // Global-default holdback policy: reserve 10% of rep commission for 120 days,
+  // released as a retention bonus if the install survives. (carrierId null = default)
+  await prisma.holdbackPolicy.create({
+    data: {
+      carrierId: null,
+      holdbackPercent: 10,
+      holdbackDays: 120,
+      effectiveDate: new Date("2024-01-01"),
+    },
+  });
+
   // Create a blitz
   const blitz1 = await prisma.blitz.create({
     data: {

@@ -23,6 +23,8 @@ import {
   LayoutDashboard,
   ClipboardList,
   BanknoteArrowUp,
+  Coins,
+  Percent,
 } from "lucide-react";
 import { BlitzBolt } from "@/components/brand/blitz-bolt";
 
@@ -110,6 +112,12 @@ const NAV_GROUPS: NavGroup[] = [
         title: "Payouts",
         href: "/dashboard/compensation",
         icon: <DollarSign className="size-[18px]" />,
+        roles: ["ADMIN"],
+      },
+      {
+        title: "Holdbacks",
+        href: "/dashboard/compensation/holdbacks",
+        icon: <Coins className="size-[18px]" />,
         roles: ["ADMIN"],
       },
       {
@@ -247,6 +255,12 @@ const NAV_GROUPS: NavGroup[] = [
         title: "Stack Config",
         href: "/dashboard/admin/stack",
         icon: <Settings className="size-[18px]" />,
+        roles: ["ADMIN"],
+      },
+      {
+        title: "Holdback Config",
+        href: "/dashboard/admin/holdback",
+        icon: <Percent className="size-[18px]" />,
         roles: ["ADMIN"],
       },
       {
