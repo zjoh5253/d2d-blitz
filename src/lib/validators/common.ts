@@ -7,11 +7,35 @@ export const carrierSchema = z.object({
   revenuePerInstall: z.coerce
     .number({ error: "Must be a number" })
     .positive("Must be greater than 0"),
+  minMarginPercent: z.coerce
+    .number({ error: "Must be a number" })
+    .min(0, "Must be 0 or greater")
+    .max(100, "Must be 100 or less")
+    .default(0),
   portalUrl: z.string().url("Must be a valid URL").optional().or(z.literal("")),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
 });
 
 export type CarrierFormValues = z.infer<typeof carrierSchema>;
+
+// ─── Product ──────────────────────────────────────────────────────────────────
+
+export const productSchema = z.object({
+  carrierId: z.string().min(1, "Carrier is required"),
+  name: z.string().min(1, "Name is required"),
+  revenue: z.coerce
+    .number({ error: "Must be a number" })
+    .positive("Must be greater than 0"),
+  // Optional per-product minimum retained margin (overrides the carrier default).
+  minMarginPercent: z.coerce
+    .number({ error: "Must be a number" })
+    .min(0, "Must be 0 or greater")
+    .max(100, "Must be 100 or less")
+    .optional(),
+  active: z.boolean().default(true),
+});
+
+export type ProductFormValues = z.infer<typeof productSchema>;
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 
@@ -77,6 +101,10 @@ export const stackConfigSchema = z
   .object({
     carrierId: z.string().min(1, "Carrier is required"),
     marketId: z.string().optional().or(z.literal("")),
+    // Optional: scope this rate sheet to a specific product.
+    productId: z.string().optional().or(z.literal("")),
+    // Admin escape hatch to save a rate sheet below the minimum retained margin.
+    overrideMinMargin: z.boolean().optional().default(false),
     companyFloorPercent: z.coerce
       .number({ error: "Must be a number" })
       .min(0, "Must be 0 or greater")
@@ -201,6 +229,7 @@ export const saleSchema = z.object({
   customerEmail: z.string().email("Must be a valid email").optional().or(z.literal("")),
   installDate: z.coerce.date(),
   carrierId: z.string().min(1, "Carrier is required"),
+  productId: z.string().optional().or(z.literal("")),
 });
 
 export type SaleFormValues = z.infer<typeof saleSchema>;

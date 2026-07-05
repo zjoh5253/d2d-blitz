@@ -31,6 +31,7 @@ export async function POST() {
       },
       include: {
         carrier: true,
+        product: true,
         rep: {
           include: {
             governanceTier: true,
@@ -59,31 +60,23 @@ export async function POST() {
         const carrierId = sale.carrierId;
         const marketId = sale.blitz.marketId;
 
-        // Get most recent active StackConfig for carrier/market
-        // Prefer market-specific, then carrier-wide
-        const stackConfig = await db.stackConfig.findFirst({
+        // Resolve the most specific active rate sheet: product+market → product →
+        // market → carrier-wide (`nulls: last` puts specific configs first).
+        const productFilter = sale.productId
+          ? { OR: [{ productId: sale.productId }, { productId: null }] }
+          : { productId: null };
+        const activeConfig = await db.stackConfig.findFirst({
           where: {
             carrierId,
             effectiveDate: { lte: new Date() },
-            OR: [{ marketId }, { marketId: null }],
+            AND: [productFilter, { OR: [{ marketId }, { marketId: null }] }],
           },
           orderBy: [
-            // market-specific configs first (marketId NOT null)
+            { productId: { sort: "desc", nulls: "last" } },
+            { marketId: { sort: "desc", nulls: "last" } },
             { effectiveDate: "desc" },
           ],
         });
-
-        // If no market-specific, fall back to carrier-wide
-        const activeConfig = stackConfig
-          ? stackConfig
-          : await db.stackConfig.findFirst({
-              where: {
-                carrierId,
-                marketId: null,
-                effectiveDate: { lte: new Date() },
-              },
-              orderBy: { effectiveDate: "desc" },
-            });
 
         if (!activeConfig) {
           errors.push(
@@ -92,7 +85,8 @@ export async function POST() {
           continue;
         }
 
-        const carrierPayout = sale.carrier.revenuePerInstall;
+        // Product revenue takes precedence; fall back to the carrier default.
+        const carrierPayout = sale.product?.revenue ?? sale.carrier.revenuePerInstall;
         const companyFloor =
           (activeConfig.companyFloorPercent / 100) * carrierPayout;
         const managerOverride =
@@ -130,6 +124,7 @@ export async function POST() {
             repPay: immediate,
             status: "ELIGIBLE",
             governanceTierId: sale.rep.governanceTierId ?? null,
+            productId: sale.productId,
           },
         });
 

@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { carrierSchema } from "@/lib/validators/common";
+import { productSchema } from "@/lib/validators/common";
 
 type RouteParams = { params: Promise<{ id: string }> };
+
+const productInclude = {
+  carrier: { select: { id: true, name: true } },
+} as const;
 
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
@@ -13,19 +17,17 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params;
-    const carrier = await db.carrier.findUnique({ where: { id } });
-
-    if (!carrier) {
-      return NextResponse.json({ error: "Carrier not found" }, { status: 404 });
+    const product = await db.product.findUnique({
+      where: { id },
+      include: productInclude,
+    });
+    if (!product) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
-
-    return NextResponse.json(carrier);
+    return NextResponse.json(product);
   } catch (error) {
-    console.error("[GET /api/carriers/[id]]", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("[GET /api/products/[id]]", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -41,8 +43,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
     const body = await request.json();
-    const parsed = carrierSchema.safeParse(body);
-
+    const parsed = productSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Validation failed", issues: parsed.error.flatten() },
@@ -50,26 +51,23 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const { name, revenuePerInstall, minMarginPercent, portalUrl, status } = parsed.data;
-
-    const carrier = await db.carrier.update({
+    const { carrierId, name, revenue, minMarginPercent, active } = parsed.data;
+    const product = await db.product.update({
       where: { id },
       data: {
+        carrierId,
         name,
-        revenuePerInstall,
-        minMarginPercent,
-        portalUrl: portalUrl || null,
-        status,
+        revenue,
+        minMarginPercent: minMarginPercent ?? null,
+        active,
       },
+      include: productInclude,
     });
 
-    return NextResponse.json(carrier);
+    return NextResponse.json(product);
   } catch (error) {
-    console.error("[PUT /api/carriers/[id]]", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("[PUT /api/products/[id]]", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -84,19 +82,12 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params;
+    // Soft-delete: deactivate so historical sales/commissions keep their product.
+    await db.product.update({ where: { id }, data: { active: false } });
 
-    // Soft delete by setting status to INACTIVE
-    const carrier = await db.carrier.update({
-      where: { id },
-      data: { status: "INACTIVE" },
-    });
-
-    return NextResponse.json(carrier);
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("[DELETE /api/carriers/[id]]", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("[DELETE /api/products/[id]]", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

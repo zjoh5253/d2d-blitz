@@ -26,6 +26,7 @@ import {
   Coins,
   Percent,
   Wallet,
+  Package,
 } from "lucide-react";
 import { BlitzBolt } from "@/components/brand/blitz-bolt";
 
@@ -250,6 +251,12 @@ const NAV_GROUPS: NavGroup[] = [
         title: "Carriers",
         href: "/dashboard/admin/carriers",
         icon: <Settings className="size-[18px]" />,
+        roles: ["ADMIN"],
+      },
+      {
+        title: "Products",
+        href: "/dashboard/admin/products",
+        icon: <Package className="size-[18px]" />,
         roles: ["ADMIN"],
       },
       {

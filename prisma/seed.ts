@@ -204,11 +204,12 @@ async function main() {
     },
   });
 
-  // Create carriers
+  // Create carriers (with a carrier-wide minimum retained margin)
   const carrier1 = await prisma.carrier.create({
     data: {
       name: "FiberMax ISP",
       revenuePerInstall: 250.0,
+      minMarginPercent: 20,
       portalUrl: "https://portal.fibermax.example.com",
       status: "ACTIVE",
     },
@@ -218,9 +219,19 @@ async function main() {
     data: {
       name: "SpeedNet Cable",
       revenuePerInstall: 200.0,
+      minMarginPercent: 15,
       portalUrl: "https://portal.speednet.example.com",
       status: "ACTIVE",
     },
+  });
+
+  // Product catalog for carrier1 (each product has its own per-install revenue)
+  await prisma.product.createMany({
+    data: [
+      { carrierId: carrier1.id, name: "500 Mbps", revenue: 200.0 },
+      { carrierId: carrier1.id, name: "1 Gig", revenue: 300.0 },
+      { carrierId: carrier1.id, name: "2 Gig", revenue: 400.0, minMarginPercent: 25 },
+    ],
   });
 
   // Create markets
