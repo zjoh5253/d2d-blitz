@@ -117,16 +117,28 @@ export async function PUT(
     if (newStatus === "PAID") {
       stripeResult = await payBatchViaStripe(id);
 
-      const paidRepIds = [
+      // "repId" on a payout line is really the payee id — reps, managers, and
+      // market owners all appear here.
+      const paidPayeeIds = [
         ...stripeResult.transferred.map((t) => t.repId),
         ...stripeResult.skipped
           .filter((s) => s.reason === "already_transferred")
           .map((s) => s.repId),
       ];
 
-      if (paidRepIds.length > 0) {
+      if (paidPayeeIds.length > 0) {
         await db.commissionRecord.updateMany({
-          where: { repId: { in: paidRepIds }, status: "PENDING" },
+          where: { repId: { in: paidPayeeIds }, status: "PENDING" },
+          data: { status: "PAID" },
+        });
+
+        // Mark this batch's override earnings PAID for payees actually transferred.
+        await db.overrideEarning.updateMany({
+          where: {
+            payoutBatchId: id,
+            payeeId: { in: paidPayeeIds },
+            status: "PENDING",
+          },
           data: { status: "PAID" },
         });
       }

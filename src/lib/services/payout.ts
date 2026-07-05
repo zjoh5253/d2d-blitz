@@ -29,40 +29,87 @@ async function calcReconciliation(blitzIds: string[]) {
   return { totalInstalls: totalSales, matchedInstalls: matchedSales, rate };
 }
 
-export async function createPayoutBatch(period: string) {
-  // Calculate reconciliation stats before entering the transaction
+export type CreatePayoutBatchOptions = {
+  /** Manager/owner who initiated this run; null/undefined = admin/company global batch. */
+  initiatedById?: string | null;
+  /** Restrict rep commissions to these rep ids (manager-initiated scope). */
+  scopeRepIds?: string[];
+};
+
+type PayeePayout = {
+  grossPay: number;
+  commissionIds: string[];
+  holdbackIds: string[];
+  overrideEarningIds: string[];
+};
+
+export async function createPayoutBatch(
+  period: string,
+  opts: CreatePayoutBatchOptions = {}
+) {
+  const { initiatedById = null, scopeRepIds } = opts;
+  const scoped = Array.isArray(scopeRepIds);
+
+  // Rep commissions — scoped to the manager's downline when manager-initiated.
   const eligibleCommissions = await db.commissionRecord.findMany({
-    where: { status: "ELIGIBLE" },
+    where: {
+      status: "ELIGIBLE",
+      ...(scoped ? { repId: { in: scopeRepIds } } : {}),
+    },
     include: { rep: true },
   });
 
   const blitzIds = [...new Set(eligibleCommissions.map((c) => c.blitzId))];
   const { totalInstalls, matchedInstalls, rate } = await calcReconciliation(blitzIds);
 
-  const repPayouts = new Map<
-    string,
-    { grossPay: number; commissionIds: string[]; holdbackIds: string[] }
-  >();
+  // Payees are keyed by userId — reps get their commissions, managers/owners get
+  // their override earnings. A manager is just another User, so payBatchViaStripe
+  // transfers to their connected account with no special casing.
+  const payouts = new Map<string, PayeePayout>();
+  const get = (id: string): PayeePayout =>
+    payouts.get(id) ?? { grossPay: 0, commissionIds: [], holdbackIds: [], overrideEarningIds: [] };
+
   for (const commission of eligibleCommissions) {
-    const existing =
-      repPayouts.get(commission.repId) ?? { grossPay: 0, commissionIds: [], holdbackIds: [] };
-    existing.grossPay += commission.repPay;
-    existing.commissionIds.push(commission.id);
-    repPayouts.set(commission.repId, existing);
+    const p = get(commission.repId);
+    p.grossPay += commission.repPay;
+    p.commissionIds.push(commission.id);
+    payouts.set(commission.repId, p);
   }
 
-  // Fold in released-but-unpaid retention bonuses (holdbacks) so they ride the
-  // same payout line. They're assigned to this batch below so a future batch
-  // won't pick them up again.
+  // Fold in released-but-unpaid retention bonuses (holdbacks). In a scoped run,
+  // only the manager's downline reps' holdbacks are included.
   const releasedHoldbacks = await db.holdback.findMany({
-    where: { status: "RELEASED", payoutBatchId: null },
+    where: {
+      status: "RELEASED",
+      payoutBatchId: null,
+      ...(scoped ? { repId: { in: scopeRepIds } } : {}),
+    },
   });
   for (const holdback of releasedHoldbacks) {
-    const existing =
-      repPayouts.get(holdback.repId) ?? { grossPay: 0, commissionIds: [], holdbackIds: [] };
-    existing.grossPay += holdback.amount;
-    existing.holdbackIds.push(holdback.id);
-    repPayouts.set(holdback.repId, existing);
+    const p = get(holdback.repId);
+    p.grossPay += holdback.amount;
+    p.holdbackIds.push(holdback.id);
+    payouts.set(holdback.repId, p);
+  }
+
+  // Fold in override earnings. Global batch pays every eligible override; a
+  // manager-initiated run pays only the initiating manager's own overrides.
+  const overrideEarnings = await db.overrideEarning.findMany({
+    where: {
+      status: "ELIGIBLE",
+      payoutBatchId: null,
+      ...(scoped && initiatedById ? { payeeId: initiatedById } : {}),
+    },
+  });
+  for (const earning of overrideEarnings) {
+    const p = get(earning.payeeId);
+    p.grossPay += earning.amount;
+    p.overrideEarningIds.push(earning.id);
+    payouts.set(earning.payeeId, p);
+  }
+
+  if (payouts.size === 0) {
+    throw new Error("No eligible payouts for this run");
   }
 
   const slaDeadline = addBusinessDays(new Date(), 2);
@@ -72,6 +119,7 @@ export async function createPayoutBatch(period: string) {
     const newBatch = await tx.payoutBatch.create({
       data: {
         period,
+        initiatedById,
         totalInstalls,
         matchedInstalls,
         reconciliationRate: rate,
@@ -80,16 +128,16 @@ export async function createPayoutBatch(period: string) {
     });
 
     let totalPayout = 0;
-    for (const [repId, payout] of repPayouts) {
-      const deductions = await tx.deduction.findMany({ where: { repId } });
+    for (const [payeeId, payout] of payouts) {
+      const deductions = await tx.deduction.findMany({ where: { repId: payeeId } });
       const totalDeductions = deductions.reduce((sum, d) => sum + d.amount, 0);
 
       const activeHolds = await tx.complianceHold.count({
-        where: { repId, restoredDate: null },
+        where: { repId: payeeId, restoredDate: null },
       });
 
       const user = await tx.user.findUnique({
-        where: { id: repId },
+        where: { id: payeeId },
         include: { governanceTier: true },
       });
 
@@ -99,7 +147,7 @@ export async function createPayoutBatch(period: string) {
       await tx.payoutLine.create({
         data: {
           batchId: newBatch.id,
-          repId,
+          repId: payeeId,
           grossPay: payout.grossPay,
           totalDeductions,
           netPay,
@@ -108,10 +156,12 @@ export async function createPayoutBatch(period: string) {
         },
       });
 
-      await tx.commissionRecord.updateMany({
-        where: { id: { in: payout.commissionIds } },
-        data: { status: "PENDING" },
-      });
+      if (payout.commissionIds.length > 0) {
+        await tx.commissionRecord.updateMany({
+          where: { id: { in: payout.commissionIds } },
+          data: { status: "PENDING" },
+        });
+      }
 
       if (payout.holdbackIds.length > 0) {
         await tx.holdback.updateMany({
@@ -119,14 +169,24 @@ export async function createPayoutBatch(period: string) {
           data: { payoutBatchId: newBatch.id },
         });
       }
+
+      if (payout.overrideEarningIds.length > 0) {
+        await tx.overrideEarning.updateMany({
+          where: { id: { in: payout.overrideEarningIds } },
+          data: { status: "PENDING", payoutBatchId: newBatch.id },
+        });
+      }
     }
 
+    const scopeNote = initiatedById
+      ? `Manager-initiated run (initiator ${initiatedById}).`
+      : "Company batch.";
     await tx.payoutBatchAuditLog.create({
       data: {
         batchId: newBatch.id,
         action: "CREATED",
         totalPayout,
-        notes: `Nightly batch for period "${period}". ${repPayouts.size} reps, ${totalInstalls} installs, ${matchedInstalls} matched (${(rate * 100).toFixed(1)}% reconciliation). SLA deadline: ${slaDeadline.toISOString()}.`,
+        notes: `${scopeNote} Period "${period}". ${payouts.size} payees, ${totalInstalls} installs, ${matchedInstalls} matched (${(rate * 100).toFixed(1)}% reconciliation). SLA deadline: ${slaDeadline.toISOString()}.`,
       },
     });
 

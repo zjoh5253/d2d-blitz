@@ -17,6 +17,9 @@ vi.mock("@/lib/db", () => ({
       findMany: vi.fn(),
       updateMany: vi.fn(),
     },
+    overrideEarning: {
+      updateMany: vi.fn(),
+    },
     payoutLine: {
       findMany: vi.fn(),
     },
@@ -27,9 +30,19 @@ vi.mock("@/lib/services/stripe-payout", () => ({
   payBatchViaStripe: vi.fn(),
 }))
 
+vi.mock("@/lib/services/payout", () => ({
+  createPayoutBatch: vi.fn(),
+}))
+
+vi.mock("@/lib/services/payroll-scope", () => ({
+  getPayrollScope: vi.fn(),
+}))
+
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { payBatchViaStripe } from "@/lib/services/stripe-payout"
+import { createPayoutBatch } from "@/lib/services/payout"
+import { getPayrollScope } from "@/lib/services/payroll-scope"
 import { GET, POST } from "@/app/api/payouts/route"
 import { GET as GET_BY_ID, PUT } from "@/app/api/payouts/[id]/route"
 
@@ -112,23 +125,29 @@ describe("GET /api/payouts", () => {
 
     await GET()
 
-    expect(db.payoutBatch.findMany).toHaveBeenCalledWith({
-      orderBy: { createdAt: "desc" },
-      include: {
-        approvedBy: { select: { id: true, name: true } },
-        payoutLines: {
-          select: {
-            id: true,
-            repId: true,
-            grossPay: true,
-            totalDeductions: true,
-            netPay: true,
-            complianceVerified: true,
-            governanceChecked: true,
-          },
-        },
-      },
-    })
+    expect(db.payoutBatch.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {}, // admin sees all batches
+        orderBy: { createdAt: "desc" },
+        include: expect.objectContaining({
+          approvedBy: { select: { id: true, name: true } },
+          initiatedBy: { select: { id: true, name: true } },
+        }),
+      })
+    )
+  })
+
+  it("scopes findMany to the manager's own runs for a FIELD_MANAGER", async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: "mgr-1", name: "Manager", role: "FIELD_MANAGER" },
+    } as never)
+    vi.mocked(db.payoutBatch.findMany).mockResolvedValue([] as never)
+
+    await GET()
+
+    expect(db.payoutBatch.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { initiatedById: "mgr-1" } })
+    )
   })
 
   it("returns 403 for REP role", async () => {
@@ -192,8 +211,34 @@ describe("POST /api/payouts", () => {
     expect(response.status).toBe(403)
   })
 
-  it("returns 400 if body is missing period field", async () => {
+  it("delegates a global (unscoped) batch to createPayoutBatch for ADMIN", async () => {
     vi.mocked(auth).mockResolvedValue(mockAdminSession as never)
+    vi.mocked(db.payoutBatch.findUnique)
+      .mockResolvedValueOnce(null) // duplicate check
+      .mockResolvedValueOnce({ ...mockBatch }) // re-fetch
+    vi.mocked(createPayoutBatch).mockResolvedValue({ id: "batch-1" } as never)
+
+    const request = new Request("http://localhost/api/payouts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ period: "2024-01" }),
+    })
+    const response = await POST(request as never)
+
+    expect(response.status).toBe(201)
+    expect(createPayoutBatch).toHaveBeenCalledWith("2024-01", {})
+    expect(getPayrollScope).not.toHaveBeenCalled()
+  })
+
+  it("delegates a scoped DRAFT batch for a FIELD_MANAGER (initiatedById + scope)", async () => {
+    vi.mocked(auth).mockResolvedValue({
+      user: { id: "mgr-1", name: "Manager", role: "FIELD_MANAGER" },
+    } as never)
+    vi.mocked(getPayrollScope).mockResolvedValue({ repIds: ["rep-1", "rep-2"] } as never)
+    vi.mocked(db.payoutBatch.findUnique)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...mockBatch })
+    vi.mocked(createPayoutBatch).mockResolvedValue({ id: "batch-1" } as never)
 
     const request = new Request("http://localhost/api/payouts", {
       method: "POST",
@@ -202,220 +247,45 @@ describe("POST /api/payouts", () => {
     })
     const response = await POST(request as never)
 
+    expect(response.status).toBe(201)
+    expect(getPayrollScope).toHaveBeenCalled()
+    const [period, opts] = vi.mocked(createPayoutBatch).mock.calls[0]
+    expect(period).toContain("mgr-1")
+    expect(opts).toEqual({ initiatedById: "mgr-1", scopeRepIds: ["rep-1", "rep-2"] })
+  })
+
+  it("returns 409 if a batch already exists for the period", async () => {
+    vi.mocked(auth).mockResolvedValue(mockAdminSession as never)
+    vi.mocked(db.payoutBatch.findUnique).mockResolvedValueOnce({ ...mockBatch })
+
+    const request = new Request("http://localhost/api/payouts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ period: "2024-01" }),
+    })
+    const response = await POST(request as never)
+
+    expect(response.status).toBe(409)
+    expect(createPayoutBatch).not.toHaveBeenCalled()
+  })
+
+  it("returns 400 when there are no eligible payouts", async () => {
+    vi.mocked(auth).mockResolvedValue(mockAdminSession as never)
+    vi.mocked(db.payoutBatch.findUnique).mockResolvedValueOnce(null)
+    vi.mocked(createPayoutBatch).mockRejectedValue(
+      new Error("No eligible payouts for this run")
+    )
+
+    const request = new Request("http://localhost/api/payouts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ period: "2024-01" }),
+    })
+    const response = await POST(request as never)
+
     expect(response.status).toBe(400)
     const body = await response.json()
-    expect(body.error).toBe("Validation failed")
-    expect(body.issues).toBeDefined()
-  })
-
-  it("returns 400 if period is empty string", async () => {
-    vi.mocked(auth).mockResolvedValue(mockAdminSession as never)
-
-    const request = new Request("http://localhost/api/payouts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ period: "" }),
-    })
-    const response = await POST(request as never)
-
-    expect(response.status).toBe(400)
-    const body = await response.json()
-    expect(body.error).toBe("Validation failed")
-  })
-
-  it("returns 400 if no eligible commissions found", async () => {
-    vi.mocked(auth).mockResolvedValue(mockAdminSession as never)
-    vi.mocked(db.commissionRecord.findMany).mockResolvedValue([] as never)
-
-    const request = new Request("http://localhost/api/payouts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ period: "2024-01" }),
-    })
-    const response = await POST(request as never)
-
-    expect(response.status).toBe(400)
-    const body = await response.json()
-    expect(body.error).toBe("No eligible commission records found")
-  })
-
-  it("creates batch with payout lines and marks commissions as PENDING on success (ADMIN)", async () => {
-    vi.mocked(auth).mockResolvedValue(mockAdminSession as never)
-
-    const eligibleCommissions = [
-      {
-        id: "comm-1",
-        repId: "rep-1",
-        repPay: 500,
-        status: "ELIGIBLE",
-        rep: {
-          id: "rep-1",
-          name: "Rep One",
-          deductions: [{ amount: 50, repId: "rep-1" }],
-        },
-      },
-      {
-        id: "comm-2",
-        repId: "rep-1",
-        repPay: 300,
-        status: "ELIGIBLE",
-        rep: {
-          id: "rep-1",
-          name: "Rep One",
-          deductions: [{ amount: 50, repId: "rep-1" }],
-        },
-      },
-    ]
-
-    vi.mocked(db.commissionRecord.findMany).mockResolvedValue(
-      eligibleCommissions as never
-    )
-    vi.mocked(db.payoutBatch.create).mockResolvedValue(mockBatch as never)
-    vi.mocked(db.commissionRecord.updateMany).mockResolvedValue({ count: 2 } as never)
-
-    const request = new Request("http://localhost/api/payouts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ period: "2024-01" }),
-    })
-    const response = await POST(request as never)
-
-    expect(response.status).toBe(201)
-
-    expect(db.payoutBatch.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          period: "2024-01",
-          status: "DRAFT",
-        }),
-      })
-    )
-
-    expect(db.commissionRecord.updateMany).toHaveBeenCalledWith({
-      where: { repId: { in: ["rep-1"] }, status: "ELIGIBLE" },
-      data: { status: "PENDING" },
-    })
-  })
-
-  it("creates batch with correct gross/net pay calculations grouped by rep", async () => {
-    vi.mocked(auth).mockResolvedValue(mockExecutiveSession as never)
-
-    const eligibleCommissions = [
-      {
-        id: "comm-1",
-        repId: "rep-1",
-        repPay: 1000,
-        status: "ELIGIBLE",
-        rep: {
-          id: "rep-1",
-          name: "Rep One",
-          deductions: [{ amount: 200, repId: "rep-1" }],
-        },
-      },
-      {
-        id: "comm-2",
-        repId: "rep-2",
-        repPay: 500,
-        status: "ELIGIBLE",
-        rep: {
-          id: "rep-2",
-          name: "Rep Two",
-          deductions: [],
-        },
-      },
-    ]
-
-    vi.mocked(db.commissionRecord.findMany).mockResolvedValue(
-      eligibleCommissions as never
-    )
-    vi.mocked(db.payoutBatch.create).mockResolvedValue(mockBatch as never)
-    vi.mocked(db.commissionRecord.updateMany).mockResolvedValue({ count: 2 } as never)
-
-    const request = new Request("http://localhost/api/payouts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ period: "2024-02" }),
-    })
-    const response = await POST(request as never)
-
-    expect(response.status).toBe(201)
-
-    const createCall = vi.mocked(db.payoutBatch.create).mock.calls[0][0]
-    const lines = createCall.data.payoutLines.create
-
-    const rep1Line = lines.find((l: { repId: string }) => l.repId === "rep-1")
-    expect(rep1Line.grossPay).toBe(1000)
-    expect(rep1Line.totalDeductions).toBe(200)
-    expect(rep1Line.netPay).toBe(800)
-
-    const rep2Line = lines.find((l: { repId: string }) => l.repId === "rep-2")
-    expect(rep2Line.grossPay).toBe(500)
-    expect(rep2Line.totalDeductions).toBe(0)
-    expect(rep2Line.netPay).toBe(500)
-  })
-
-  it("netPay is floored at 0 when deductions exceed gross pay", async () => {
-    vi.mocked(auth).mockResolvedValue(mockAdminSession as never)
-
-    const eligibleCommissions = [
-      {
-        id: "comm-1",
-        repId: "rep-1",
-        repPay: 100,
-        status: "ELIGIBLE",
-        rep: {
-          id: "rep-1",
-          name: "Rep One",
-          deductions: [{ amount: 500, repId: "rep-1" }],
-        },
-      },
-    ]
-
-    vi.mocked(db.commissionRecord.findMany).mockResolvedValue(
-      eligibleCommissions as never
-    )
-    vi.mocked(db.payoutBatch.create).mockResolvedValue(mockBatch as never)
-    vi.mocked(db.commissionRecord.updateMany).mockResolvedValue({ count: 1 } as never)
-
-    const request = new Request("http://localhost/api/payouts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ period: "2024-01" }),
-    })
-    await POST(request as never)
-
-    const createCall = vi.mocked(db.payoutBatch.create).mock.calls[0][0]
-    const lines = createCall.data.payoutLines.create
-    expect(lines[0].netPay).toBe(0)
-  })
-
-  it("allows EXECUTIVE role to create batch", async () => {
-    vi.mocked(auth).mockResolvedValue(mockExecutiveSession as never)
-
-    const eligibleCommissions = [
-      {
-        id: "comm-1",
-        repId: "rep-1",
-        repPay: 500,
-        status: "ELIGIBLE",
-        rep: { id: "rep-1", name: "Rep One", deductions: [] },
-      },
-    ]
-
-    vi.mocked(db.commissionRecord.findMany).mockResolvedValue(
-      eligibleCommissions as never
-    )
-    vi.mocked(db.payoutBatch.create).mockResolvedValue(mockBatch as never)
-    vi.mocked(db.commissionRecord.updateMany).mockResolvedValue({ count: 1 } as never)
-
-    const request = new Request("http://localhost/api/payouts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ period: "2024-01" }),
-    })
-    const response = await POST(request as never)
-
-    expect(response.status).toBe(201)
+    expect(body.error).toMatch(/No eligible payouts/i)
   })
 })
 

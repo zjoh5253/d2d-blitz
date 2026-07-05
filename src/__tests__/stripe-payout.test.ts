@@ -25,6 +25,7 @@ const stripeMock = {
   transfers: { create: vi.fn() },
   accounts: { create: vi.fn(), retrieve: vi.fn() },
   accountLinks: { create: vi.fn() },
+  payouts: { create: vi.fn() },
   webhooks: { constructEvent: vi.fn() },
 };
 
@@ -147,6 +148,55 @@ describe("payBatchViaStripe", () => {
     expect(result.skipped[0]).toMatchObject({ reason: "transfer_failed", detail: "insufficient funds" });
     const upsertArg = mockDb.payoutTransfer.upsert.mock.calls[0][0];
     expect(upsertArg.create.status).toBe("FAILED");
+  });
+
+  it("creates an instant payout net of the fee when the payee opted in", async () => {
+    mockDb.payoutLine.findMany.mockResolvedValueOnce([
+      line({
+        netPay: 100,
+        rep: {
+          id: "rep-1",
+          name: "Rep One",
+          stripeAccount: onboardedAccount({ payoutMethod: "INSTANT" }),
+        },
+      }),
+    ]);
+    stripeMock.transfers.create.mockResolvedValueOnce({ id: "tr_1" });
+    stripeMock.payouts.create.mockResolvedValueOnce({ id: "po_1" });
+    mockDb.payoutTransfer.upsert.mockResolvedValueOnce({});
+
+    await payBatchViaStripe("batch-1");
+
+    // fee = max(0.50, ceil(100 * 0.015 * 100)/100) = 1.50 → instant amount = 98.50
+    const [payoutArgs, payoutOpts] = stripeMock.payouts.create.mock.calls[0];
+    expect(payoutArgs).toMatchObject({ amount: 9850, method: "instant" });
+    expect(payoutOpts).toMatchObject({ stripeAccount: "acct_123" });
+    const upsert = mockDb.payoutTransfer.upsert.mock.calls[0][0];
+    expect(upsert.create).toMatchObject({ method: "INSTANT", instantFee: 1.5, stripePayoutId: "po_1" });
+  });
+
+  it("falls back to standard when the instant payout fails", async () => {
+    mockDb.payoutLine.findMany.mockResolvedValueOnce([
+      line({
+        netPay: 100,
+        rep: {
+          id: "rep-1",
+          name: "Rep One",
+          stripeAccount: onboardedAccount({ payoutMethod: "INSTANT" }),
+        },
+      }),
+    ]);
+    stripeMock.transfers.create.mockResolvedValueOnce({ id: "tr_1" });
+    stripeMock.payouts.create.mockRejectedValueOnce(new Error("instant unavailable"));
+    mockDb.payoutTransfer.upsert.mockResolvedValueOnce({});
+
+    const result = await payBatchViaStripe("batch-1");
+
+    // The transfer still succeeded; only the instant step failed.
+    expect(result.transferred).toHaveLength(1);
+    const upsert = mockDb.payoutTransfer.upsert.mock.calls[0][0];
+    expect(upsert.create.method).toBe("STANDARD");
+    expect(upsert.create.status).toBe("PAID");
   });
 });
 

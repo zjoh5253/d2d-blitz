@@ -7,6 +7,7 @@ import {
   splitHoldback,
   upsertHoldback,
 } from "@/lib/services/holdback";
+import { upsertOverrideEarnings } from "@/lib/services/override-earning";
 import { captureServerEvent } from "@/lib/posthog";
 import { captureApiError } from "@/lib/sentry";
 
@@ -142,6 +143,15 @@ export async function POST() {
             releaseAt,
           });
         }
+
+        // Override slices are payable to the blitz's manager and market owner.
+        await upsertOverrideEarnings({
+          commissionRecordId: record.id,
+          managerId: sale.blitz.managerId,
+          ownerId: sale.blitz.market.ownerId,
+          managerOverride,
+          marketOwnerSpread,
+        });
 
         // Fire-and-forget push notification (immediate portion)
         notifyCommissionPosted({

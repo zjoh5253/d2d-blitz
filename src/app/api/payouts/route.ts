@@ -3,9 +3,14 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import { captureApiError } from "@/lib/sentry";
+import { createPayoutBatch } from "@/lib/services/payout";
+import { getPayrollScope } from "@/lib/services/payroll-scope";
+
+const ADMIN_ROLES = ["ADMIN", "EXECUTIVE"];
+const MANAGER_ROLES = ["FIELD_MANAGER", "MARKET_OWNER"];
 
 const createBatchSchema = z.object({
-  period: z.string().min(1, "period is required"),
+  period: z.string().min(1).optional(),
 });
 
 export async function GET() {
@@ -15,14 +20,19 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!["ADMIN", "EXECUTIVE"].includes(session.user.role)) {
+    const isAdmin = ADMIN_ROLES.includes(session.user.role);
+    const isManager = MANAGER_ROLES.includes(session.user.role);
+    if (!isAdmin && !isManager) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const batches = await db.payoutBatch.findMany({
+      // Managers see only the runs they initiated; admins see everything.
+      where: isAdmin ? {} : { initiatedById: session.user.id },
       orderBy: { createdAt: "desc" },
       include: {
         approvedBy: { select: { id: true, name: true } },
+        initiatedBy: { select: { id: true, name: true } },
         payoutLines: {
           select: {
             id: true,
@@ -41,10 +51,7 @@ export async function GET() {
   } catch (error) {
     console.error("[GET /api/payouts]", error);
     captureApiError(error, "[GET /api/payouts]");
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -55,13 +62,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!["ADMIN", "EXECUTIVE"].includes(session.user.role)) {
+    const isAdmin = ADMIN_ROLES.includes(session.user.role);
+    const isManager = MANAGER_ROLES.includes(session.user.role);
+    if (!isAdmin && !isManager) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const parsed = createBatchSchema.safeParse(body);
-
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Validation failed", issues: parsed.error.flatten() },
@@ -69,86 +77,55 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { period } = parsed.data;
+    const today = new Date().toISOString().slice(0, 10);
 
-    // Get all ELIGIBLE commission records not yet in a payout
-    const eligibleCommissions = await db.commissionRecord.findMany({
-      where: {
-        status: "ELIGIBLE",
-      },
-      include: {
-        rep: {
-          include: {
-            deductions: {
-              select: { amount: true, repId: true },
-            },
-          },
-        },
-      },
-    });
+    let period: string;
+    let opts: Parameters<typeof createPayoutBatch>[1];
 
-    if (eligibleCommissions.length === 0) {
+    if (isManager) {
+      // Manager-initiated: scope to the manager's downline, namespace the period
+      // (period is globally unique), and record who initiated it. Admins approve/pay.
+      const scope = await getPayrollScope(session.user);
+      period = parsed.data.period ?? `${today}:${session.user.id}`;
+      opts = { initiatedById: session.user.id, scopeRepIds: scope.repIds };
+    } else {
+      period = parsed.data.period ?? today;
+      opts = {};
+    }
+
+    // Guard against a duplicate batch for the same period.
+    const existing = await db.payoutBatch.findUnique({ where: { period } });
+    if (existing) {
       return NextResponse.json(
-        { error: "No eligible commission records found" },
-        { status: 400 }
+        { error: `A payout batch for period "${period}" already exists.` },
+        { status: 409 }
       );
     }
 
-    // Group by rep
-    const byRep = eligibleCommissions.reduce<
-      Record<string, typeof eligibleCommissions>
-    >((acc, c) => {
-      if (!acc[c.repId]) acc[c.repId] = [];
-      acc[c.repId].push(c);
-      return acc;
-    }, {});
+    let batch;
+    try {
+      batch = await createPayoutBatch(period, opts);
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("No eligible payouts")) {
+        return NextResponse.json(
+          { error: "No eligible payouts found for this run." },
+          { status: 400 }
+        );
+      }
+      throw err;
+    }
 
-    // Create batch
-    const batch = await db.payoutBatch.create({
-      data: {
-        period,
-        status: "DRAFT",
-        payoutLines: {
-          create: Object.entries(byRep).map(([repId, commissions]) => {
-            const grossPay = commissions.reduce((s, c) => s + c.repPay, 0);
-            // Sum unpaid deductions for this rep
-            const repDeductions = commissions[0].rep.deductions;
-            const totalDeductions = repDeductions.reduce((s, d) => s + d.amount, 0);
-            const netPay = Math.max(0, grossPay - totalDeductions);
-
-            return {
-              repId,
-              grossPay,
-              totalDeductions,
-              netPay,
-              complianceVerified: false,
-              governanceChecked: false,
-            };
-          }),
-        },
-      },
+    const full = await db.payoutBatch.findUnique({
+      where: { id: batch.id },
       include: {
-        payoutLines: {
-          include: {
-            rep: { select: { id: true, name: true } },
-          },
-        },
+        payoutLines: { include: { rep: { select: { id: true, name: true } } } },
       },
     });
 
-    // Mark commission records as PENDING
-    await db.commissionRecord.updateMany({
-      where: { repId: { in: Object.keys(byRep) }, status: "ELIGIBLE" },
-      data: { status: "PENDING" },
-    });
-
-    return NextResponse.json(batch, { status: 201 });
+    return NextResponse.json(full, { status: 201 });
   } catch (error) {
     console.error("[POST /api/payouts]", error);
     captureApiError(error, "[POST /api/payouts]");
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
