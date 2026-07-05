@@ -837,6 +837,23 @@ describe("carriers/[id]", () => {
       expect(json.name).toBe("Updated Carrier")
     })
 
+    it("persists minMarginPercent to the update", async () => {
+      vi.mocked(auth).mockResolvedValue(ADMIN_SESSION as any)
+      vi.mocked(db.carrier.update).mockResolvedValue(carrierFixture as any)
+
+      await carriersPUT(
+        makeRequest("http://localhost/api/carriers/carrier-1", "PUT", {
+          name: "Carrier",
+          revenuePerInstall: 250,
+          minMarginPercent: 20,
+        }) as any,
+        makeParams("carrier-1"),
+      )
+
+      const arg = vi.mocked(db.carrier.update).mock.calls[0][0] as any
+      expect(arg.data.minMarginPercent).toBe(20)
+    })
+
     it("accepts empty portalUrl", async () => {
       vi.mocked(auth).mockResolvedValue(ADMIN_SESSION as any)
       const updated = { ...carrierFixture, portalUrl: null }

@@ -50,13 +50,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const { name, revenuePerInstall, portalUrl, status } = parsed.data;
+    const { name, revenuePerInstall, minMarginPercent, portalUrl, status } = parsed.data;
 
     const carrier = await db.carrier.update({
       where: { id },
       data: {
         name,
         revenuePerInstall,
+        minMarginPercent,
         portalUrl: portalUrl || null,
         status,
       },
