@@ -1,4 +1,9 @@
 import { db } from "@/lib/db";
+import {
+  resolveHoldbackPolicy,
+  splitHoldback,
+  upsertHoldback,
+} from "@/lib/services/holdback";
 
 export async function calculateCommission(saleId: string) {
   const sale = await db.sale.findUnique({
@@ -42,7 +47,17 @@ export async function calculateCommission(saleId: string) {
   const tierMultiplier = sale.rep.governanceTier?.commissionMultiplier ?? 1.0;
   repPay *= tierMultiplier;
 
-  return db.commissionRecord.upsert({
+  // Hold back a slice of the rep's pay for the retention period. The immediate
+  // portion is what flows through the normal payout pipeline now; the held
+  // portion is tracked in the Holdback ledger and paid later as a retention bonus.
+  const policy = await resolveHoldbackPolicy(sale.carrierId, sale.submittedAt);
+  const { immediate, held, percent, releaseAt } = splitHoldback(
+    repPay,
+    policy,
+    sale.submittedAt
+  );
+
+  const record = await db.commissionRecord.upsert({
     where: { saleId: sale.id },
     create: {
       saleId: sale.id,
@@ -51,7 +66,7 @@ export async function calculateCommission(saleId: string) {
       carrierPayout,
       companyFloor,
       managerOverride,
-      repPay,
+      repPay: immediate,
       marketOwnerSpread,
       status: "ELIGIBLE",
       governanceTierId: sale.rep.governanceTierId,
@@ -60,11 +75,24 @@ export async function calculateCommission(saleId: string) {
       carrierPayout,
       companyFloor,
       managerOverride,
-      repPay,
+      repPay: immediate,
       marketOwnerSpread,
       governanceTierId: sale.rep.governanceTierId,
     },
   });
+
+  if (held > 0) {
+    await upsertHoldback({
+      commissionRecordId: record.id,
+      repId: sale.repId,
+      carrierId: sale.carrierId,
+      amount: held,
+      percent,
+      releaseAt,
+    });
+  }
+
+  return record;
 }
 
 export async function calculateAllPendingCommissions() {

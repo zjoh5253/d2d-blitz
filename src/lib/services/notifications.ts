@@ -144,3 +144,63 @@ export async function notifyPayoutPaid(params: {
 
   await sendExpoPushMessages(messages);
 }
+
+/**
+ * Notify a rep that a retention bonus (previously-held commission) has been
+ * released and will be included in their next payout.
+ */
+export async function notifyRetentionBonusReleased(params: {
+  repId: string;
+  amount: number;
+}): Promise<void> {
+  const tokens = await getTokensForUser(params.repId);
+  if (tokens.length === 0) return;
+
+  const formatted = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(params.amount);
+
+  const messages: PushMessage[] = tokens.map((token) => ({
+    to: token,
+    title: "Retention Bonus Earned",
+    body: `Your ${formatted} retention bonus cleared — it'll be included in your next payout. Nice work keeping that install active!`,
+    data: {
+      screen: "Commissions",
+    },
+    sound: "default",
+    channelId: "commissions",
+  }));
+
+  await sendExpoPushMessages(messages);
+}
+
+/**
+ * Notify a rep that a carrier chargeback was recorded against one of their sales.
+ */
+export async function notifyChargeback(params: {
+  repId: string;
+  customerName: string;
+  amount: number;
+}): Promise<void> {
+  const tokens = await getTokensForUser(params.repId);
+  if (tokens.length === 0) return;
+
+  const formatted = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(params.amount);
+
+  const messages: PushMessage[] = tokens.map((token) => ({
+    to: token,
+    title: "Chargeback Recorded",
+    body: `A ${formatted} chargeback was recorded for ${params.customerName}. Held funds were applied first.`,
+    data: {
+      screen: "Commissions",
+    },
+    sound: "default",
+    channelId: "commissions",
+  }));
+
+  await sendExpoPushMessages(messages);
+}

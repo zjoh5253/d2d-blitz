@@ -105,6 +105,37 @@ export const stackConfigSchema = z
 
 export type StackConfigFormValues = z.infer<typeof stackConfigSchema>;
 
+// ─── Holdback Policy ──────────────────────────────────────────────────────────
+
+export const holdbackPolicySchema = z.object({
+  // Empty string = the global default policy (applies to all carriers).
+  carrierId: z.string().optional().or(z.literal("")),
+  holdbackPercent: z.coerce
+    .number({ error: "Must be a number" })
+    .min(0, "Must be 0 or greater")
+    .max(100, "Must be 100 or less"),
+  holdbackDays: z.coerce
+    .number({ error: "Must be a number" })
+    .int("Must be a whole number")
+    .min(0, "Must be 0 or greater")
+    .max(365, "Must be 365 or less"),
+  effectiveDate: z.string().min(1, "Effective date is required"),
+});
+
+export type HoldbackPolicyFormValues = z.infer<typeof holdbackPolicySchema>;
+
+// ─── Chargeback ───────────────────────────────────────────────────────────────
+
+export const chargebackSchema = z.object({
+  saleId: z.string().min(1, "Sale is required"),
+  amount: z.coerce
+    .number({ error: "Must be a number" })
+    .positive("Must be greater than 0"),
+  reason: z.string().min(1, "Reason is required"),
+});
+
+export type ChargebackFormValues = z.infer<typeof chargebackSchema>;
+
 // ─── Market ───────────────────────────────────────────────────────────────────
 
 export const marketSchema = z.object({

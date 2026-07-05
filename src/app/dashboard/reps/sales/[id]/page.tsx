@@ -26,6 +26,7 @@ type SaleStatus =
   | "VERIFIED"
   | "CANCELLED"
   | "DISPUTED"
+  | "CHARGEBACK"
 
 function getSaleStatusVariant(
   status: SaleStatus
@@ -38,6 +39,8 @@ function getSaleStatusVariant(
     case "CANCELLED":
       return "destructive"
     case "DISPUTED":
+      return "destructive"
+    case "CHARGEBACK":
       return "destructive"
     default:
       return "outline"

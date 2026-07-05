@@ -39,12 +39,30 @@ export async function createPayoutBatch(period: string) {
   const blitzIds = [...new Set(eligibleCommissions.map((c) => c.blitzId))];
   const { totalInstalls, matchedInstalls, rate } = await calcReconciliation(blitzIds);
 
-  const repPayouts = new Map<string, { grossPay: number; commissionIds: string[] }>();
+  const repPayouts = new Map<
+    string,
+    { grossPay: number; commissionIds: string[]; holdbackIds: string[] }
+  >();
   for (const commission of eligibleCommissions) {
-    const existing = repPayouts.get(commission.repId) ?? { grossPay: 0, commissionIds: [] };
+    const existing =
+      repPayouts.get(commission.repId) ?? { grossPay: 0, commissionIds: [], holdbackIds: [] };
     existing.grossPay += commission.repPay;
     existing.commissionIds.push(commission.id);
     repPayouts.set(commission.repId, existing);
+  }
+
+  // Fold in released-but-unpaid retention bonuses (holdbacks) so they ride the
+  // same payout line. They're assigned to this batch below so a future batch
+  // won't pick them up again.
+  const releasedHoldbacks = await db.holdback.findMany({
+    where: { status: "RELEASED", payoutBatchId: null },
+  });
+  for (const holdback of releasedHoldbacks) {
+    const existing =
+      repPayouts.get(holdback.repId) ?? { grossPay: 0, commissionIds: [], holdbackIds: [] };
+    existing.grossPay += holdback.amount;
+    existing.holdbackIds.push(holdback.id);
+    repPayouts.set(holdback.repId, existing);
   }
 
   const slaDeadline = addBusinessDays(new Date(), 2);
@@ -94,6 +112,13 @@ export async function createPayoutBatch(period: string) {
         where: { id: { in: payout.commissionIds } },
         data: { status: "PENDING" },
       });
+
+      if (payout.holdbackIds.length > 0) {
+        await tx.holdback.updateMany({
+          where: { id: { in: payout.holdbackIds } },
+          data: { payoutBatchId: newBatch.id },
+        });
+      }
     }
 
     await tx.payoutBatchAuditLog.create({

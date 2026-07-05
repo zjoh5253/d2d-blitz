@@ -84,6 +84,7 @@ enum SaleStatus {
   VERIFIED
   CANCELLED
   DISPUTED
+  CHARGEBACK
 }
 
 enum InstallRecordStatus {
@@ -118,6 +119,18 @@ enum TransferStatus {
   PAID
   FAILED
   REVERSED
+}
+
+enum HoldbackStatus {
+  HELD
+  RELEASED
+  CLAWED_BACK
+}
+
+enum ChargebackStatus {
+  OPEN
+  RECOVERED
+  WRITTEN_OFF
 }
 
 enum DeductionCategory {
@@ -369,6 +382,15 @@ model User {
   // Stripe payout transfers received
   payoutTransfers PayoutTransfer[]
 
+  // Commission holdbacks reserved for this rep
+  holdbacks Holdback[]
+
+  // Chargebacks against this rep's sales
+  chargebacks Chargeback[] @relation("RepChargebacks")
+
+  // Chargebacks this user recorded
+  recordedChargebacks Chargeback[] @relation("ChargebackCreator")
+
   @@index([role])
   @@index([status])
   @@index([governanceTierId])
@@ -444,6 +466,9 @@ model Carrier {
   installUploads InstallUpload[]
   installRecords InstallRecord[]
   inboundSales   InboundSale[]
+  holdbackPolicies HoldbackPolicy[]
+  holdbacks      Holdback[]
+  chargebacks    Chargeback[]
 
   @@index([status])
   @@map("carriers")
@@ -613,6 +638,7 @@ model Sale {
   commissionRecord  CommissionRecord?
   matchedInstallRecord InstallRecord? @relation("MatchedSale")
   installExceptions InstallException[]
+  chargeback        Chargeback?
 
   @@index([repId])
   @@index([blitzId])
@@ -726,6 +752,8 @@ model CommissionRecord {
   rep            User            @relation(fields: [repId], references: [id])
   blitz          Blitz           @relation(fields: [blitzId], references: [id])
   governanceTier GovernanceTier? @relation(fields: [governanceTierId], references: [id])
+  holdback       Holdback?
+  chargeback     Chargeback?
 
   @@index([repId])
   @@index([blitzId])
@@ -770,6 +798,7 @@ model PayoutBatch {
   approvedBy  User?                @relation(fields: [approvedById], references: [id])
   payoutLines PayoutLine[]
   auditLogs   PayoutBatchAuditLog[]
+  paidHoldbacks Holdback[]
 
   @@index([status])
   @@index([approvedById])
@@ -1100,4 +1129,85 @@ model PayoutTransfer {
   @@index([repId])
   @@index([status])
   @@map("payout_transfers")
+}
+
+// ─── Holdback / retention-bonus + chargeback ────────────────────────────────
+
+// Configurable holdback rule. A row with a null carrierId is the global default;
+// a carrier-specific row overrides it. Historical commissions keep whatever rule
+// resolved when they were created. (A product dimension slots in here later.)
+model HoldbackPolicy {
+  id              String   @id @default(cuid())
+  carrierId       String?  @map("carrier_id")
+  holdbackPercent Float    @map("holdback_percent")
+  holdbackDays    Int      @map("holdback_days")
+  effectiveDate   DateTime @map("effective_date")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  carrier Carrier? @relation(fields: [carrierId], references: [id])
+
+  @@index([carrierId])
+  @@index([effectiveDate])
+  @@map("holdback_policies")
+}
+
+// The reserved slice of a rep commission, held for the retention period. Source
+// of truth for held funds. Released to a payout batch as a "retention bonus" if
+// the install survives; clawed back if a chargeback lands first.
+model Holdback {
+  id                 String         @id @default(cuid())
+  commissionRecordId String         @unique @map("commission_record_id")
+  repId              String         @map("rep_id")
+  carrierId          String         @map("carrier_id")
+  amount             Float
+  percent            Float
+  releaseAt          DateTime       @map("release_at")
+  status             HoldbackStatus @default(HELD)
+  releasedAt         DateTime?      @map("released_at")
+  payoutBatchId      String?        @map("payout_batch_id")
+  chargebackId       String?        @map("chargeback_id")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  commissionRecord CommissionRecord @relation(fields: [commissionRecordId], references: [id])
+  rep              User             @relation(fields: [repId], references: [id])
+  carrier          Carrier          @relation(fields: [carrierId], references: [id])
+  payoutBatch      PayoutBatch?     @relation(fields: [payoutBatchId], references: [id])
+  chargeback       Chargeback?      @relation(fields: [chargebackId], references: [id])
+
+  @@index([repId])
+  @@index([carrierId])
+  @@index([status])
+  @@index([releaseAt])
+  @@index([payoutBatchId])
+  @@map("holdbacks")
+}
+
+// Permanent audit record of a carrier chargeback. Held funds are applied first;
+// any shortfall is recorded as outstandingBalance (no automatic deduction).
+model Chargeback {
+  id                 String           @id @default(cuid())
+  saleId             String           @unique @map("sale_id")
+  commissionRecordId String?          @unique @map("commission_record_id")
+  repId              String           @map("rep_id")
+  carrierId          String           @map("carrier_id")
+  amount             Float
+  heldApplied        Float            @default(0) @map("held_applied")
+  outstandingBalance Float            @default(0) @map("outstanding_balance")
+  status             ChargebackStatus @default(OPEN)
+  reason             String
+  createdById        String?          @map("created_by_id")
+  createdAt          DateTime         @default(now()) @map("created_at")
+
+  sale             Sale              @relation(fields: [saleId], references: [id])
+  commissionRecord CommissionRecord? @relation(fields: [commissionRecordId], references: [id])
+  rep              User              @relation("RepChargebacks", fields: [repId], references: [id])
+  carrier          Carrier           @relation(fields: [carrierId], references: [id])
+  createdBy        User?             @relation("ChargebackCreator", fields: [createdById], references: [id])
+  holdbacks        Holdback[]
+
+  @@index([repId])
+  @@index([carrierId])
+  @@index([status])
+  @@map("chargebacks")
 }

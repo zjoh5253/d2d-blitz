@@ -17,6 +17,14 @@ const mockDb = vi.hoisted(() => ({
     upsert: vi.fn(),
     create: vi.fn(),
   },
+  holdbackPolicy: {
+    findFirst: vi.fn(),
+  },
+  holdback: {
+    findUnique: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
 }))
 
 vi.mock("@/lib/db", () => ({ db: mockDb }))
