@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { stackConfigSchema } from "@/lib/validators/common";
+import { checkMinMargin } from "@/lib/services/min-margin";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
 const configInclude = {
   carrier: { select: { id: true, name: true } },
   market: { select: { id: true, name: true } },
+  product: { select: { id: true, name: true } },
 } as const;
 
 export async function GET(_request: NextRequest, { params }: RouteParams) {
@@ -64,17 +66,30 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const {
       carrierId,
       marketId,
+      productId,
+      overrideMinMargin,
       companyFloorPercent,
       managerOverridePercent,
       marketOwnerSpreadPercent,
       effectiveDate,
     } = parsed.data;
 
+    const margin = await checkMinMargin({
+      carrierId,
+      productId: productId || null,
+      companyFloorPercent,
+      override: overrideMinMargin,
+    });
+    if (!margin.ok) {
+      return NextResponse.json({ error: margin.message }, { status: 422 });
+    }
+
     const config = await db.stackConfig.update({
       where: { id },
       data: {
         carrierId,
         marketId: marketId || null,
+        productId: productId || null,
         companyFloorPercent,
         managerOverridePercent,
         marketOwnerSpreadPercent,

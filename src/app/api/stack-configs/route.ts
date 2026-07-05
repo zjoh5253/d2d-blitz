@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { stackConfigSchema } from "@/lib/validators/common";
+import { checkMinMargin } from "@/lib/services/min-margin";
+
+const configInclude = {
+  carrier: { select: { id: true, name: true } },
+  market: { select: { id: true, name: true } },
+  product: { select: { id: true, name: true } },
+} as const;
 
 export async function GET() {
   try {
@@ -12,10 +19,7 @@ export async function GET() {
 
     const configs = await db.stackConfig.findMany({
       orderBy: { effectiveDate: "desc" },
-      include: {
-        carrier: { select: { id: true, name: true } },
-        market: { select: { id: true, name: true } },
-      },
+      include: configInclude,
     });
 
     return NextResponse.json(configs);
@@ -51,25 +55,35 @@ export async function POST(request: NextRequest) {
     const {
       carrierId,
       marketId,
+      productId,
+      overrideMinMargin,
       companyFloorPercent,
       managerOverridePercent,
       marketOwnerSpreadPercent,
       effectiveDate,
     } = parsed.data;
 
+    const margin = await checkMinMargin({
+      carrierId,
+      productId: productId || null,
+      companyFloorPercent,
+      override: overrideMinMargin,
+    });
+    if (!margin.ok) {
+      return NextResponse.json({ error: margin.message }, { status: 422 });
+    }
+
     const config = await db.stackConfig.create({
       data: {
         carrierId,
         marketId: marketId || null,
+        productId: productId || null,
         companyFloorPercent,
         managerOverridePercent,
         marketOwnerSpreadPercent,
         effectiveDate: new Date(effectiveDate),
       },
-      include: {
-        carrier: { select: { id: true, name: true } },
-        market: { select: { id: true, name: true } },
-      },
+      include: configInclude,
     });
 
     return NextResponse.json(config, { status: 201 });

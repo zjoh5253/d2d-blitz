@@ -11,6 +11,7 @@ export async function calculateCommission(saleId: string) {
     where: { id: saleId },
     include: {
       carrier: true,
+      product: true,
       blitz: { include: { market: true } },
       rep: { include: { governanceTier: true } },
     },
@@ -19,25 +20,31 @@ export async function calculateCommission(saleId: string) {
   if (!sale) throw new Error("Sale not found");
   if (sale.status !== "VERIFIED") throw new Error("Sale must be verified");
 
-  // Get active stack config for this carrier/market
+  // Resolve the most specific active rate sheet: product+market → product →
+  // market → carrier-wide. `nulls: last` puts specific (non-null) configs first.
+  const productFilter = sale.productId
+    ? { OR: [{ productId: sale.productId }, { productId: null }] }
+    : { productId: null };
   const stackConfig = await db.stackConfig.findFirst({
     where: {
       carrierId: sale.carrierId,
-      OR: [
-        { marketId: sale.blitz.marketId },
-        { marketId: null },
-      ],
       effectiveDate: { lte: sale.submittedAt },
+      AND: [
+        productFilter,
+        { OR: [{ marketId: sale.blitz.marketId }, { marketId: null }] },
+      ],
     },
     orderBy: [
-      { marketId: "desc" }, // Prefer market-specific config
+      { productId: { sort: "desc", nulls: "last" } },
+      { marketId: { sort: "desc", nulls: "last" } },
       { effectiveDate: "desc" },
     ],
   });
 
   if (!stackConfig) throw new Error("No stack configuration found");
 
-  const carrierPayout = sale.carrier.revenuePerInstall;
+  // Product revenue takes precedence; fall back to the carrier default.
+  const carrierPayout = sale.product?.revenue ?? sale.carrier.revenuePerInstall;
   const companyFloor = carrierPayout * stackConfig.companyFloorPercent;
   const remaining = carrierPayout - companyFloor;
   const managerOverride = remaining * stackConfig.managerOverridePercent;
@@ -71,6 +78,7 @@ export async function calculateCommission(saleId: string) {
       marketOwnerSpread,
       status: "ELIGIBLE",
       governanceTierId: sale.rep.governanceTierId,
+      productId: sale.productId,
     },
     update: {
       carrierPayout,
@@ -79,6 +87,7 @@ export async function calculateCommission(saleId: string) {
       repPay: immediate,
       marketOwnerSpread,
       governanceTierId: sale.rep.governanceTierId,
+      productId: sale.productId,
     },
   });
 

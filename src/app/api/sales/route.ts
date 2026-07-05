@@ -15,6 +15,7 @@ type SaleStatus =
 const saleSchema = z.object({
   blitzId: z.string().min(1, "Blitz is required"),
   carrierId: z.string().min(1, "Carrier is required"),
+  productId: z.string().optional().or(z.literal("")),
   customerName: z.string().min(1, "Customer name is required"),
   customerPhone: z.string().min(1, "Customer phone is required"),
   customerAddress: z.string().min(1, "Customer address is required"),
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
     const {
       blitzId,
       carrierId,
+      productId,
       customerName,
       customerPhone,
       customerAddress,
@@ -133,6 +135,17 @@ export async function POST(request: NextRequest) {
         { error: "You are not assigned to this blitz." },
         { status: 403 }
       )
+    }
+
+    // If a product was chosen, it must belong to the sale's carrier.
+    if (productId) {
+      const product = await db.product.findUnique({ where: { id: productId } })
+      if (!product || product.carrierId !== carrierId) {
+        return NextResponse.json(
+          { error: "Selected product does not belong to this carrier." },
+          { status: 400 }
+        )
+      }
     }
 
     // Duplicate detection: check for existing sale at same address within 30 days
@@ -163,6 +176,7 @@ export async function POST(request: NextRequest) {
         repId,
         blitzId,
         carrierId,
+        productId: productId || null,
         customerName,
         customerPhone,
         customerAddress,

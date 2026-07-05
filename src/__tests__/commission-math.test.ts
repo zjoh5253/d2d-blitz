@@ -222,6 +222,31 @@ describe("calculateCommission", () => {
     })
   })
 
+  // Product pricing
+  describe("product pricing", () => {
+    it("uses the product's revenue as the carrier payout when the sale has a product", async () => {
+      // Product revenue 500 (vs carrier default 1000); companyFloor = 500*0.30 = 150
+      setupHappyPath({ productId: "prod-1", product: { id: "prod-1", revenue: 500 } })
+
+      await calculateCommission("sale-001")
+
+      const { create } = mockDb.commissionRecord.upsert.mock.calls[0][0]
+      expect(create.carrierPayout).toBe(500)
+      expect(create.companyFloor).toBe(150)
+      expect(create.productId).toBe("prod-1")
+    })
+
+    it("falls back to the carrier's revenue when the sale has no product", async () => {
+      setupHappyPath()
+
+      await calculateCommission("sale-001")
+
+      const { create } = mockDb.commissionRecord.upsert.mock.calls[0][0]
+      expect(create.carrierPayout).toBe(1000)
+      expect(create.productId).toBeUndefined()
+    })
+  })
+
   // 4. Sale not found
   describe("sale not found", () => {
     it("throws 'Sale not found' when findUnique returns null", async () => {
@@ -286,7 +311,7 @@ describe("calculateCommission", () => {
 
   // 7. Market-specific config preferred via orderBy
   describe("market-specific config preferred", () => {
-    it("queries stackConfig with marketId desc ordering to prefer market-specific config", async () => {
+    it("orders stackConfig product-specific then market-specific first (nulls last)", async () => {
       setupHappyPath()
 
       await calculateCommission("sale-001")
@@ -294,23 +319,23 @@ describe("calculateCommission", () => {
       expect(mockDb.stackConfig.findFirst).toHaveBeenCalledOnce()
       const query = mockDb.stackConfig.findFirst.mock.calls[0][0]
 
-      // Verify orderBy places marketId desc first
-      expect(query.orderBy).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ marketId: "desc" }),
-        ]),
-      )
-      expect(query.orderBy[0]).toEqual({ marketId: "desc" })
+      // Specific configs win: productId desc, then marketId desc, both nulls-last.
+      expect(query.orderBy[0]).toEqual({ productId: { sort: "desc", nulls: "last" } })
+      expect(query.orderBy[1]).toEqual({ marketId: { sort: "desc", nulls: "last" } })
+      expect(query.orderBy[2]).toEqual({ effectiveDate: "desc" })
     })
 
-    it("queries stackConfig with OR condition covering market-specific and carrier-wide", async () => {
+    it("queries stackConfig covering market-specific and carrier-wide (no product)", async () => {
       setupHappyPath()
 
       await calculateCommission("sale-001")
 
       const query = mockDb.stackConfig.findFirst.mock.calls[0][0]
 
-      expect(query.where.OR).toEqual(
+      // BASE_SALE has no product → productFilter is { productId: null }; the market
+      // OR is the second AND clause.
+      expect(query.where.AND[0]).toEqual({ productId: null })
+      expect(query.where.AND[1].OR).toEqual(
         expect.arrayContaining([
           { marketId: BASE_SALE.blitz.marketId },
           { marketId: null },

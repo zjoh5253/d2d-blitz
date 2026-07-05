@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -32,14 +32,21 @@ interface MarketOption {
   name: string;
 }
 
+interface ProductOption {
+  id: string;
+  name: string;
+}
+
 interface StackConfigRow {
   id: string;
   carrierId: string;
   marketId: string | null;
+  productId: string | null;
   companyFloorPercent: number;
   managerOverridePercent: number;
   marketOwnerSpreadPercent: number;
   effectiveDate: Date | string;
+  overrideMinMargin?: boolean;
 }
 
 interface StackFormProps {
@@ -59,6 +66,7 @@ export function StackForm({
 }: StackFormProps) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [products, setProducts] = useState<ProductOption[]>([]);
   const isEdit = !!config;
 
   const {
@@ -74,6 +82,8 @@ export function StackForm({
     defaultValues: {
       carrierId: config?.carrierId ?? "",
       marketId: config?.marketId ?? "",
+      productId: config?.productId ?? "",
+      overrideMinMargin: config?.overrideMinMargin ?? false,
       companyFloorPercent: config?.companyFloorPercent ?? 0,
       managerOverridePercent: config?.managerOverridePercent ?? 0,
       marketOwnerSpreadPercent: config?.marketOwnerSpreadPercent ?? 0,
@@ -82,6 +92,19 @@ export function StackForm({
         : format(new Date(), "yyyy-MM-dd"),
     },
   });
+
+  const selectedCarrierId = watch("carrierId");
+
+  useEffect(() => {
+    if (!selectedCarrierId) {
+      setProducts([]);
+      return;
+    }
+    fetch(`/api/products?carrierId=${selectedCarrierId}&active=true`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: ProductOption[]) => setProducts(data))
+      .catch(() => setProducts([]));
+  }, [selectedCarrierId]);
 
   const company = watch("companyFloorPercent") ?? 0;
   const manager = watch("managerOverridePercent") ?? 0;
@@ -104,6 +127,7 @@ export function StackForm({
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
+        // 422 = min-margin block — surface the API error message directly
         setServerError(body.error ?? "Something went wrong. Please try again.");
         return;
       }
@@ -167,6 +191,33 @@ export function StackForm({
               options={marketOptions}
               {...register("marketId")}
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="productId">Product (optional)</Label>
+            <Select
+              id="productId"
+              options={[
+                { value: "", label: "All products (carrier-wide)" },
+                ...products.map((p) => ({ value: p.id, label: p.name })),
+              ]}
+              {...register("productId")}
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              id="overrideMinMargin"
+              type="checkbox"
+              className="h-4 w-4 rounded border-input"
+              {...register("overrideMinMargin")}
+            />
+            <Label htmlFor="overrideMinMargin" className="cursor-pointer font-normal">
+              Override minimum margin{" "}
+              <span className="text-muted-foreground">
+                — Save even if retained margin is below the configured minimum
+              </span>
+            </Label>
           </div>
 
           <div className="grid grid-cols-1 gap-4">

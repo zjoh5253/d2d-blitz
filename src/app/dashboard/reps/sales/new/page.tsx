@@ -26,6 +26,7 @@ const saleSchema = z.object({
   orderConfirmation: z.string().optional().or(z.literal("")),
   carrierId: z.string().min(1, "Carrier is required"),
   blitzId: z.string().min(1, "Blitz is required"),
+  productId: z.string().optional().or(z.literal("")),
 })
 
 type SaleFormValues = z.infer<typeof saleSchema>
@@ -37,6 +38,11 @@ interface BlitzOption {
 }
 
 interface CarrierOption {
+  id: string
+  name: string
+}
+
+interface ProductOption {
   id: string
   name: string
 }
@@ -102,6 +108,7 @@ export default function NewSalePage() {
   const router = useRouter()
   const [blitzes, setBlitzes] = React.useState<BlitzOption[]>([])
   const [carriers, setCarriers] = React.useState<CarrierOption[]>([])
+  const [products, setProducts] = React.useState<ProductOption[]>([])
   const [loadingData, setLoadingData] = React.useState(true)
   const [submitState, setSubmitState] = React.useState<SubmitState>({
     status: "idle",
@@ -124,12 +131,14 @@ export default function NewSalePage() {
       orderConfirmation: "",
       carrierId: "",
       blitzId: "",
+      productId: "",
     },
   })
 
   const selectedAddress = watch("customerAddress")
   const selectedInstallDate = watch("installDate")
   const selectedBlitzId = watch("blitzId")
+  const selectedCarrierId = watch("carrierId")
 
   // Load blitz assignments and carriers
   React.useEffect(() => {
@@ -167,6 +176,18 @@ export default function NewSalePage() {
       setValue("carrierId", blitz.market.carrier.id)
     }
   }, [selectedBlitzId, blitzes, setValue])
+
+  // Load products when carrier changes
+  React.useEffect(() => {
+    if (!selectedCarrierId) {
+      setProducts([])
+      return
+    }
+    fetch(`/api/products?carrierId=${selectedCarrierId}&active=true`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: ProductOption[]) => setProducts(data))
+      .catch(() => setProducts([]))
+  }, [selectedCarrierId])
 
   async function onSubmit(data: SaleFormValues) {
     setSubmitState({ status: "loading" })
@@ -327,6 +348,29 @@ export default function NewSalePage() {
                 </p>
               )}
             </div>
+
+            {/* Product — only shown when carrier has products */}
+            {products.length > 0 && (
+              <div className="space-y-1.5">
+                <Label htmlFor="productId">Product (optional)</Label>
+                {loadingData ? (
+                  <div className="h-9 w-full animate-pulse rounded-md bg-muted" />
+                ) : (
+                  <select
+                    id="productId"
+                    {...register("productId")}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="">— (carrier default pricing) —</option>
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
 
             {/* Customer Name */}
             <div className="space-y-1.5">

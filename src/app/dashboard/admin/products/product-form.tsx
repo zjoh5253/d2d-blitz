@@ -15,27 +15,38 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { carrierSchema, type CarrierFormValues } from "@/lib/validators/common";
+import { productSchema, type ProductFormValues } from "@/lib/validators/common";
 
-interface CarrierRow {
+interface CarrierOption {
   id: string;
   name: string;
-  revenuePerInstall: number;
-  minMarginPercent: number;
-  portalUrl: string | null;
-  status: "ACTIVE" | "INACTIVE";
 }
 
-interface CarrierFormProps {
+interface ProductRow {
+  id: string;
+  carrierId: string;
+  name: string;
+  revenue: number;
+  minMarginPercent: number | null;
+  active: boolean;
+}
+
+interface ProductFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  carrier?: CarrierRow | null;
+  product?: ProductRow | null;
+  carriers: CarrierOption[];
 }
 
-export function CarrierForm({ open, onOpenChange, carrier }: CarrierFormProps) {
+export function ProductForm({
+  open,
+  onOpenChange,
+  product,
+  carriers,
+}: ProductFormProps) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
-  const isEdit = !!carrier;
+  const isEdit = !!product;
 
   const {
     register,
@@ -43,21 +54,22 @@ export function CarrierForm({ open, onOpenChange, carrier }: CarrierFormProps) {
     reset,
     formState: { errors, isSubmitting },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } = useForm<CarrierFormValues, any, CarrierFormValues>({
-    resolver: zodResolver(carrierSchema) as any,
+  } = useForm<ProductFormValues, any, ProductFormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(productSchema) as any,
     defaultValues: {
-      name: carrier?.name ?? "",
-      revenuePerInstall: carrier?.revenuePerInstall ?? 0,
-      minMarginPercent: carrier?.minMarginPercent ?? 0,
-      portalUrl: carrier?.portalUrl ?? "",
-      status: carrier?.status ?? "ACTIVE",
+      carrierId: product?.carrierId ?? "",
+      name: product?.name ?? "",
+      revenue: product?.revenue ?? 0,
+      minMarginPercent: product?.minMarginPercent ?? undefined,
+      active: product?.active ?? true,
     },
   });
 
-  async function onSubmit(data: CarrierFormValues) {
+  async function onSubmit(data: ProductFormValues) {
     setServerError(null);
     try {
-      const url = isEdit ? `/api/carriers/${carrier!.id}` : "/api/carriers";
+      const url = isEdit ? `/api/products/${product!.id}` : "/api/products";
       const method = isEdit ? "PUT" : "POST";
 
       const res = await fetch(url, {
@@ -86,19 +98,40 @@ export function CarrierForm({ open, onOpenChange, carrier }: CarrierFormProps) {
     onOpenChange(false);
   }
 
+  const carrierOptions = [
+    { value: "", label: "Select carrier...", disabled: true },
+    ...carriers.map((c) => ({ value: c.id, label: c.name })),
+  ];
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent onClose={handleClose} className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit Carrier" : "Add Carrier"}</DialogTitle>
+          <DialogTitle>
+            {isEdit ? "Edit Product" : "Add Product"}
+          </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
           <div className="space-y-1.5">
-            <Label htmlFor="name">Carrier Name</Label>
+            <Label htmlFor="carrierId">Carrier</Label>
+            <Select
+              id="carrierId"
+              options={carrierOptions}
+              {...register("carrierId")}
+            />
+            {errors.carrierId && (
+              <p className="text-xs text-destructive">
+                {errors.carrierId.message}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="name">Product Name</Label>
             <Input
               id="name"
-              placeholder="e.g. Spectrum, DirecTV"
+              placeholder="e.g. Internet 500, TV Select"
               {...register("name")}
             />
             {errors.name && (
@@ -107,31 +140,31 @@ export function CarrierForm({ open, onOpenChange, carrier }: CarrierFormProps) {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="revenuePerInstall">Revenue per Install ($)</Label>
+            <Label htmlFor="revenue">Revenue per Install ($)</Label>
             <Input
-              id="revenuePerInstall"
+              id="revenue"
               type="number"
               step="0.01"
               min="0"
               placeholder="e.g. 150.00"
-              {...register("revenuePerInstall")}
+              {...register("revenue")}
             />
-            {errors.revenuePerInstall && (
+            {errors.revenue && (
               <p className="text-xs text-destructive">
-                {errors.revenuePerInstall.message}
+                {errors.revenue.message}
               </p>
             )}
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="minMarginPercent">Minimum retained margin (%)</Label>
+            <Label htmlFor="minMarginPercent">Min Margin % (optional)</Label>
             <Input
               id="minMarginPercent"
               type="number"
               step="0.01"
               min="0"
               max="100"
-              placeholder="e.g. 20"
+              placeholder="carrier default"
               {...register("minMarginPercent")}
             />
             {errors.minMarginPercent && (
@@ -139,38 +172,22 @@ export function CarrierForm({ open, onOpenChange, carrier }: CarrierFormProps) {
                 {errors.minMarginPercent.message}
               </p>
             )}
+            <p className="text-xs text-muted-foreground">
+              Leave blank to use the carrier-level minimum.
+            </p>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="portalUrl">Portal URL (optional)</Label>
-            <Input
-              id="portalUrl"
-              type="url"
-              placeholder="https://portal.example.com"
-              {...register("portalUrl")}
+          <div className="flex items-center gap-2">
+            <input
+              id="active"
+              type="checkbox"
+              className="h-4 w-4 rounded border-input"
+              {...register("active")}
+              defaultChecked={product?.active ?? true}
             />
-            {errors.portalUrl && (
-              <p className="text-xs text-destructive">
-                {errors.portalUrl.message}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="status">Status</Label>
-            <Select
-              id="status"
-              options={[
-                { value: "ACTIVE", label: "Active" },
-                { value: "INACTIVE", label: "Inactive" },
-              ]}
-              {...register("status")}
-            />
-            {errors.status && (
-              <p className="text-xs text-destructive">
-                {errors.status.message}
-              </p>
-            )}
+            <Label htmlFor="active" className="cursor-pointer">
+              Active
+            </Label>
           </div>
 
           {serverError && (
@@ -195,7 +212,7 @@ export function CarrierForm({ open, onOpenChange, carrier }: CarrierFormProps) {
                   : "Creating..."
                 : isEdit
                   ? "Save Changes"
-                  : "Create Carrier"}
+                  : "Create Product"}
             </Button>
           </DialogFooter>
         </form>

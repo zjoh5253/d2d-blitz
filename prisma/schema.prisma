@@ -472,6 +472,7 @@ model Carrier {
   id               String        @id @default(cuid())
   name             String
   revenuePerInstall Float        @map("revenue_per_install")
+  minMarginPercent Float         @default(0) @map("min_margin_percent")
   portalUrl        String?       @map("portal_url")
   status           CarrierStatus @default(ACTIVE)
   createdAt        DateTime      @default(now()) @map("created_at")
@@ -485,9 +486,33 @@ model Carrier {
   holdbackPolicies HoldbackPolicy[]
   holdbacks      Holdback[]
   chargebacks    Chargeback[]
+  products       Product[]
 
   @@index([status])
   @@map("carriers")
+}
+
+// A carrier's product/plan catalog (e.g. 500 Mbps, 1 Gig). Each product has its
+// own per-install revenue; a sale may reference one (else the carrier default is
+// used). minMarginPercent overrides the carrier's for this product.
+model Product {
+  id               String   @id @default(cuid())
+  carrierId        String   @map("carrier_id")
+  name             String
+  revenue          Float
+  minMarginPercent Float?   @map("min_margin_percent")
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  carrier           Carrier            @relation(fields: [carrierId], references: [id])
+  sales             Sale[]
+  stackConfigs      StackConfig[]
+  commissionRecords CommissionRecord[]
+
+  @@index([carrierId])
+  @@index([active])
+  @@map("products")
 }
 
 model Market {
@@ -637,6 +662,7 @@ model Sale {
   repId               String     @map("rep_id")
   blitzId             String     @map("blitz_id")
   carrierId           String     @map("carrier_id")
+  productId           String?    @map("product_id")
   customerName        String     @map("customer_name")
   customerPhone       String     @map("customer_phone")
   customerAddress     String     @map("customer_address")
@@ -647,9 +673,10 @@ model Sale {
   submittedAt         DateTime   @default(now()) @map("submitted_at")
   updatedAt           DateTime   @updatedAt @map("updated_at")
 
-  rep     User    @relation(fields: [repId], references: [id])
-  blitz   Blitz   @relation(fields: [blitzId], references: [id])
-  carrier Carrier @relation(fields: [carrierId], references: [id])
+  rep     User     @relation(fields: [repId], references: [id])
+  blitz   Blitz    @relation(fields: [blitzId], references: [id])
+  carrier Carrier  @relation(fields: [carrierId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
 
   commissionRecord  CommissionRecord?
   matchedInstallRecord InstallRecord? @relation("MatchedSale")
@@ -735,17 +762,20 @@ model StackConfig {
   id                       String   @id @default(cuid())
   carrierId                String   @map("carrier_id")
   marketId                 String?  @map("market_id")
+  productId                String?  @map("product_id")
   companyFloorPercent      Float    @map("company_floor_percent")
   managerOverridePercent   Float    @map("manager_override_percent")
   marketOwnerSpreadPercent Float    @map("market_owner_spread_percent")
   effectiveDate            DateTime @map("effective_date")
   createdAt                DateTime @default(now()) @map("created_at")
 
-  carrier Carrier @relation(fields: [carrierId], references: [id])
-  market  Market? @relation(fields: [marketId], references: [id])
+  carrier Carrier  @relation(fields: [carrierId], references: [id])
+  market  Market?  @relation(fields: [marketId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
 
   @@index([carrierId])
   @@index([marketId])
+  @@index([productId])
   @@index([effectiveDate])
   @@map("stack_configs")
 }
@@ -762,12 +792,14 @@ model CommissionRecord {
   marketOwnerSpread Float            @map("market_owner_spread")
   status            CommissionStatus @default(ELIGIBLE)
   governanceTierId  String?          @map("governance_tier_id")
+  productId         String?          @map("product_id")
   createdAt         DateTime         @default(now()) @map("created_at")
 
   sale           Sale            @relation(fields: [saleId], references: [id])
   rep            User            @relation(fields: [repId], references: [id])
   blitz          Blitz           @relation(fields: [blitzId], references: [id])
   governanceTier GovernanceTier? @relation(fields: [governanceTierId], references: [id])
+  product        Product?        @relation(fields: [productId], references: [id])
   holdback       Holdback?
   chargeback     Chargeback?
   overrideEarnings OverrideEarning[]

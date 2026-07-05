@@ -22,10 +22,12 @@ interface StackConfigRow {
   id: string;
   carrierId: string;
   marketId: string | null;
+  productId: string | null;
   companyFloorPercent: number;
   managerOverridePercent: number;
   marketOwnerSpreadPercent: number;
   effectiveDate: Date | string;
+  overrideMinMargin?: boolean;
   carrier: { id: string; name: string };
   market: { id: string; name: string } | null;
 }
