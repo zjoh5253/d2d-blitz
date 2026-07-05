@@ -30,6 +30,13 @@ const STATUS_BADGE: Record<string, string> = {
   PAID: "text-purple-700 bg-purple-100",
 };
 
+const TRANSFER_BADGE: Record<string, string> = {
+  PAID: "text-green-700 bg-green-100",
+  PENDING: "text-blue-700 bg-blue-100",
+  FAILED: "text-red-700 bg-red-100",
+  REVERSED: "text-amber-700 bg-amber-100",
+};
+
 interface PayoutDetailPageProps {
   params: Promise<{ id: string }>;
 }
@@ -47,6 +54,7 @@ export default async function PayoutDetailPage({ params }: PayoutDetailPageProps
       payoutLines: {
         include: {
           rep: { select: { id: true, name: true } },
+          payoutTransfer: true,
         },
         orderBy: { netPay: "desc" },
       },
@@ -140,6 +148,7 @@ export default async function PayoutDetailPage({ params }: PayoutDetailPageProps
                   <TableHead>Net Pay</TableHead>
                   <TableHead>Compliance</TableHead>
                   <TableHead>Governance</TableHead>
+                  <TableHead>Payout</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -169,6 +178,22 @@ export default async function PayoutDetailPage({ params }: PayoutDetailPageProps
                         <CheckCircle className="h-4 w-4 text-green-500" />
                       ) : (
                         <XCircle className="h-4 w-4 text-red-400" />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {line.payoutTransfer ? (
+                        <Badge
+                          variant="secondary"
+                          className={TRANSFER_BADGE[line.payoutTransfer.status]}
+                        >
+                          {line.payoutTransfer.status}
+                        </Badge>
+                      ) : batch.status === "PAID" && line.netPay > 0 ? (
+                        <Badge variant="secondary" className="text-amber-700 bg-amber-100">
+                          Not connected
+                        </Badge>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
                       )}
                     </TableCell>
                   </TableRow>

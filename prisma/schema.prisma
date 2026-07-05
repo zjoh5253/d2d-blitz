@@ -106,6 +106,20 @@ enum PayoutBatchStatus {
   PAID
 }
 
+enum StripeOnboardingStatus {
+  NOT_STARTED
+  PENDING
+  ACTIVE
+  RESTRICTED
+}
+
+enum TransferStatus {
+  PENDING
+  PAID
+  FAILED
+  REVERSED
+}
+
 enum DeductionCategory {
   HOUSING
   TRAVEL
@@ -348,6 +362,12 @@ model User {
 
   // GPS tracking sessions uploaded from the mobile app
   gpsSessions GpsSession[]
+
+  // Stripe Connect payout account (1:1)
+  stripeAccount StripeConnectedAccount?
+
+  // Stripe payout transfers received
+  payoutTransfers PayoutTransfer[]
 
   @@index([role])
   @@index([status])
@@ -786,6 +806,8 @@ model PayoutLine {
   batch PayoutBatch @relation(fields: [batchId], references: [id])
   rep   User        @relation(fields: [repId], references: [id])
 
+  payoutTransfer PayoutTransfer?
+
   @@index([batchId])
   @@index([repId])
   @@map("payout_lines")
@@ -1032,4 +1054,50 @@ model GpsSession {
   @@index([repId])
   @@index([startedAt])
   @@map("gps_sessions")
+}
+
+// ─── Stripe Connect payouts ─────────────────────────────────────────────────
+
+// A rep's Stripe Connect Express account. Stripe collects bank/debit + KYC via
+// hosted onboarding; we store only the account id and Stripe's capability flags.
+model StripeConnectedAccount {
+  id               String                 @id @default(cuid())
+  userId           String                 @unique @map("user_id")
+  stripeAccountId  String                 @unique @map("stripe_account_id")
+  onboardingStatus StripeOnboardingStatus @default(NOT_STARTED) @map("onboarding_status")
+  detailsSubmitted Boolean                @default(false) @map("details_submitted")
+  chargesEnabled   Boolean                @default(false) @map("charges_enabled")
+  payoutsEnabled   Boolean                @default(false) @map("payouts_enabled")
+  defaultCurrency  String                 @default("usd") @map("default_currency")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([stripeAccountId])
+  @@map("stripe_connected_accounts")
+}
+
+// One row per Stripe Transfer created when a PayoutBatch is marked PAID. Links a
+// domain PayoutLine to the money that actually moved. Idempotency key on create
+// is the payoutLineId, so retries never double-pay a rep.
+model PayoutTransfer {
+  id               String         @id @default(cuid())
+  payoutLineId     String         @unique @map("payout_line_id")
+  repId            String         @map("rep_id")
+  stripeAccountId  String         @map("stripe_account_id")
+  stripeTransferId String?        @unique @map("stripe_transfer_id")
+  amount           Float
+  currency         String         @default("usd")
+  status           TransferStatus @default(PENDING)
+  failureReason    String?        @map("failure_reason")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  payoutLine PayoutLine @relation(fields: [payoutLineId], references: [id])
+  rep        User       @relation(fields: [repId], references: [id])
+
+  @@index([repId])
+  @@index([status])
+  @@map("payout_transfers")
 }

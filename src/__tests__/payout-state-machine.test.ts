@@ -39,9 +39,14 @@ vi.mock("@/lib/posthog", () => ({
   captureServerEvent: vi.fn(),
 }));
 
+vi.mock("@/lib/services/stripe-payout", () => ({
+  payBatchViaStripe: vi.fn(),
+}));
+
 // --- Imports after mocks ---
 
 import { PUT } from "@/app/api/payouts/[id]/route";
+import { payBatchViaStripe } from "@/lib/services/stripe-payout";
 import {
   createPayoutBatch,
   markPayoutBatchPaid,
@@ -165,10 +170,11 @@ describe("PUT /api/payouts/[id] – state machine", () => {
       id: "batch-1",
       status: "APPROVED",
     } as never);
-    vi.mocked(db.payoutLine.findMany).mockResolvedValue([
-      { repId: "rep-1" },
-      { repId: "rep-2" },
-    ] as never);
+    vi.mocked(payBatchViaStripe).mockResolvedValue({
+      batchId: "batch-1",
+      transferred: [{ repId: "rep-1" }, { repId: "rep-2" }],
+      skipped: [],
+    } as never);
     vi.mocked(db.commissionRecord.updateMany).mockResolvedValue({
       count: 5,
     } as never);
@@ -213,16 +219,17 @@ describe("PUT /api/payouts/[id] – state machine", () => {
 
   // PAID transition cascades commission status
 
-  it("APPROVED → PAID calls commissionRecord.updateMany for all rep ids in batch", async () => {
+  it("APPROVED → PAID calls commissionRecord.updateMany for reps paid via Stripe", async () => {
     vi.mocked(auth).mockResolvedValue(adminSession as never);
     vi.mocked(db.payoutBatch.findUnique).mockResolvedValue({
       id: "batch-1",
       status: "APPROVED",
     } as never);
-    vi.mocked(db.payoutLine.findMany).mockResolvedValue([
-      { repId: "rep-1" },
-      { repId: "rep-2" },
-    ] as never);
+    vi.mocked(payBatchViaStripe).mockResolvedValue({
+      batchId: "batch-1",
+      transferred: [{ repId: "rep-1" }, { repId: "rep-2" }],
+      skipped: [],
+    } as never);
     vi.mocked(db.commissionRecord.updateMany).mockResolvedValue({
       count: 3,
     } as never);
