@@ -25,6 +25,7 @@ import {
   BanknoteArrowUp,
   Coins,
   Percent,
+  Wallet,
 } from "lucide-react";
 import { BlitzBolt } from "@/components/brand/blitz-bolt";
 
@@ -226,6 +227,12 @@ const NAV_GROUPS: NavGroup[] = [
         title: "Manager Governance",
         href: "/dashboard/manager/governance",
         icon: <Shield className="size-[18px]" />,
+        roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"],
+      },
+      {
+        title: "Payroll & Wallet",
+        href: "/dashboard/manager/payroll",
+        icon: <Wallet className="size-[18px]" />,
         roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"],
       },
     ],

@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { BanknoteArrowUp, CheckCircle2, Clock, AlertTriangle, Loader2 } from "lucide-react";
+import { BanknoteArrowUp, CheckCircle2, Clock, AlertTriangle, Loader2, Zap, Landmark } from "lucide-react";
 
 type OnboardingStatus = "NOT_STARTED" | "PENDING" | "ACTIVE" | "RESTRICTED";
+type PayoutMethod = "STANDARD" | "INSTANT";
 
 interface ConnectStatus {
   connected: boolean;
@@ -14,6 +15,7 @@ interface ConnectStatus {
   detailsSubmitted: boolean;
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
+  payoutMethod?: PayoutMethod;
 }
 
 const STATUS_META: Record<
@@ -30,6 +32,7 @@ export default function PaymentsPage() {
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
+  const [savingMethod, setSavingMethod] = useState<PayoutMethod | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadStatus = useCallback(async () => {
@@ -62,8 +65,28 @@ export default function PaymentsPage() {
     }
   }
 
+  async function setMethod(method: PayoutMethod) {
+    if (savingMethod || status?.payoutMethod === method) return;
+    setSavingMethod(method);
+    setError(null);
+    try {
+      const res = await fetch("/api/stripe/connect/method", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method }),
+      });
+      if (!res.ok) throw new Error("Failed to update payout speed");
+      setStatus((s) => (s ? { ...s, payoutMethod: method } : s));
+    } catch {
+      setError("Couldn't update your payout speed. Please try again.");
+    } finally {
+      setSavingMethod(null);
+    }
+  }
+
   const meta = status ? STATUS_META[status.onboardingStatus] : null;
   const isActive = status?.payoutsEnabled === true;
+  const method: PayoutMethod = status?.payoutMethod ?? "STANDARD";
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -134,6 +157,59 @@ export default function PaymentsPage() {
           </p>
         </CardContent>
       </Card>
+
+      {isActive && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Payout speed</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setMethod("STANDARD")}
+                disabled={savingMethod !== null}
+                className={`flex flex-col items-start gap-1 rounded-lg border p-4 text-left transition-colors ${
+                  method === "STANDARD"
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+                    : "border-slate-200 hover:border-slate-300 dark:border-slate-700"
+                }`}
+              >
+                <span className="flex items-center gap-2 font-medium text-slate-900 dark:text-white">
+                  <Landmark className="h-4 w-4" /> Standard
+                  {method === "STANDARD" && <CheckCircle2 className="h-4 w-4 text-blue-600" />}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Free · arrives in ~1–2 business days to your bank.
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMethod("INSTANT")}
+                disabled={savingMethod !== null}
+                className={`flex flex-col items-start gap-1 rounded-lg border p-4 text-left transition-colors ${
+                  method === "INSTANT"
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+                    : "border-slate-200 hover:border-slate-300 dark:border-slate-700"
+                }`}
+              >
+                <span className="flex items-center gap-2 font-medium text-slate-900 dark:text-white">
+                  <Zap className="h-4 w-4" /> Instant
+                  {method === "INSTANT" && <CheckCircle2 className="h-4 w-4 text-blue-600" />}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Arrives in minutes to your debit card. A ~1.5% fee is deducted from each payout.
+                </span>
+              </button>
+            </div>
+            {savingMethod && (
+              <p className="flex items-center gap-2 text-xs text-slate-500">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import {
   splitHoldback,
   upsertHoldback,
 } from "@/lib/services/holdback";
+import { upsertOverrideEarnings } from "@/lib/services/override-earning";
 
 export async function calculateCommission(saleId: string) {
   const sale = await db.sale.findUnique({
@@ -91,6 +92,15 @@ export async function calculateCommission(saleId: string) {
       releaseAt,
     });
   }
+
+  // The override slices are payable to the blitz's manager and the market owner.
+  await upsertOverrideEarnings({
+    commissionRecordId: record.id,
+    managerId: sale.blitz.managerId,
+    ownerId: sale.blitz.market.ownerId,
+    managerOverride,
+    marketOwnerSpread,
+  });
 
   return record;
 }

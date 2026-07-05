@@ -133,6 +133,16 @@ enum ChargebackStatus {
   WRITTEN_OFF
 }
 
+enum OverrideRole {
+  MANAGER_OVERRIDE
+  MARKET_OWNER_SPREAD
+}
+
+enum PayoutMethod {
+  STANDARD
+  INSTANT
+}
+
 enum DeductionCategory {
   HOUSING
   TRAVEL
@@ -335,7 +345,13 @@ model User {
   payoutLines PayoutLine[]
 
   // Approved payout batches
-  approvedBatches PayoutBatch[]
+  approvedBatches PayoutBatch[] @relation("ApprovedBatches")
+
+  // Payroll runs this user initiated (manager-initiated payroll)
+  initiatedBatches PayoutBatch[] @relation("InitiatedBatches")
+
+  // Override earnings (manager override / market-owner spread) payable to this user
+  overrideEarnings OverrideEarning[]
 
   // Payout batch audit logs
   payoutBatchAuditLogs PayoutBatchAuditLog[]
@@ -754,6 +770,7 @@ model CommissionRecord {
   governanceTier GovernanceTier? @relation(fields: [governanceTierId], references: [id])
   holdback       Holdback?
   chargeback     Chargeback?
+  overrideEarnings OverrideEarning[]
 
   @@index([repId])
   @@index([blitzId])
@@ -793,15 +810,19 @@ model PayoutBatch {
   reconciliationRate Float            @default(0) @map("reconciliation_rate")
   slaDeadline       DateTime?         @map("sla_deadline")
   slaAlertedAt      DateTime?         @map("sla_alerted_at")
+  initiatedById     String?           @map("initiated_by_id")
   createdAt         DateTime          @default(now()) @map("created_at")
 
-  approvedBy  User?                @relation(fields: [approvedById], references: [id])
+  approvedBy  User?                @relation("ApprovedBatches", fields: [approvedById], references: [id])
+  initiatedBy User?                @relation("InitiatedBatches", fields: [initiatedById], references: [id])
   payoutLines PayoutLine[]
   auditLogs   PayoutBatchAuditLog[]
   paidHoldbacks Holdback[]
+  overrideEarnings OverrideEarning[]
 
   @@index([status])
   @@index([approvedById])
+  @@index([initiatedById])
   @@map("payout_batches")
 }
 
@@ -1097,6 +1118,7 @@ model StripeConnectedAccount {
   detailsSubmitted Boolean                @default(false) @map("details_submitted")
   chargesEnabled   Boolean                @default(false) @map("charges_enabled")
   payoutsEnabled   Boolean                @default(false) @map("payouts_enabled")
+  payoutMethod     PayoutMethod           @default(STANDARD) @map("payout_method")
   defaultCurrency  String                 @default("usd") @map("default_currency")
   createdAt        DateTime               @default(now()) @map("created_at")
   updatedAt        DateTime               @updatedAt @map("updated_at")
@@ -1119,6 +1141,9 @@ model PayoutTransfer {
   amount           Float
   currency         String         @default("usd")
   status           TransferStatus @default(PENDING)
+  method           PayoutMethod   @default(STANDARD)
+  instantFee       Float?         @map("instant_fee")
+  stripePayoutId   String?        @unique @map("stripe_payout_id")
   failureReason    String?        @map("failure_reason")
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
@@ -1210,4 +1235,33 @@ model Chargeback {
   @@index([carrierId])
   @@index([status])
   @@map("chargebacks")
+}
+
+// ─── Manager / market-owner override earnings ───────────────────────────────
+
+// The override slice of a commission, payable to the blitz's manager
+// (MANAGER_OVERRIDE) or the market's owner (MARKET_OWNER_SPREAD). Mirrors the
+// rep-commission lifecycle (ELIGIBLE→PENDING→PAID) so overrides flow through the
+// same payout batches — but tracked separately so a manager can be paid
+// independently of the rep. One row per (commission, role).
+model OverrideEarning {
+  id                 String           @id @default(cuid())
+  commissionRecordId String           @map("commission_record_id")
+  payeeId            String           @map("payee_id")
+  role               OverrideRole
+  amount             Float
+  status             CommissionStatus @default(ELIGIBLE)
+  payoutBatchId      String?          @map("payout_batch_id")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  commissionRecord CommissionRecord @relation(fields: [commissionRecordId], references: [id])
+  payee            User             @relation(fields: [payeeId], references: [id])
+  payoutBatch      PayoutBatch?     @relation(fields: [payoutBatchId], references: [id])
+
+  @@unique([commissionRecordId, role])
+  @@index([payeeId])
+  @@index([status])
+  @@index([payoutBatchId])
+  @@map("override_earnings")
 }

@@ -23,6 +23,9 @@ vi.mock("@/lib/db", () => ({
       findMany: vi.fn(),
       updateMany: vi.fn(),
     },
+    overrideEarning: {
+      updateMany: vi.fn(),
+    },
     deduction: {
       findMany: vi.fn(),
     },

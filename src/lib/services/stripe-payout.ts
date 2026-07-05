@@ -107,6 +107,43 @@ export async function payBatchViaStripe(batchId: string): Promise<PayBatchResult
         { idempotencyKey: `payout-line-${line.id}` }
       );
 
+      // Instant Payout (opt-in): move the funds now from the payee's connected
+      // balance to their debit card. The ~1.5% fee is deducted from the payee's
+      // amount so the company never absorbs it. If instant isn't available, the
+      // funds still reach them via Stripe's standard payout schedule.
+      let method: "STANDARD" | "INSTANT" = "STANDARD";
+      let instantFee: number | null = null;
+      let stripePayoutId: string | null = null;
+
+      if (account.payoutMethod === "INSTANT") {
+        const fee = Math.max(0.5, Math.ceil(line.netPay * 0.015 * 100) / 100);
+        const instantCents = Math.round((line.netPay - fee) * 100);
+        if (instantCents > 0) {
+          try {
+            const payout = await stripe.payouts.create(
+              {
+                amount: instantCents,
+                currency,
+                method: "instant",
+                metadata: { payoutLineId: line.id, batchId },
+              },
+              {
+                stripeAccount: account.stripeAccountId,
+                idempotencyKey: `instant-payout-${line.id}`,
+              }
+            );
+            method = "INSTANT";
+            instantFee = fee;
+            stripePayoutId = payout.id;
+          } catch (instantError) {
+            console.error(
+              `[stripe-payout] instant payout unavailable for line ${line.id}; falling back to standard:`,
+              instantError
+            );
+          }
+        }
+      }
+
       await db.payoutTransfer.upsert({
         where: { payoutLineId: line.id },
         create: {
@@ -117,6 +154,9 @@ export async function payBatchViaStripe(batchId: string): Promise<PayBatchResult
           amount: line.netPay,
           currency,
           status: "PAID",
+          method,
+          instantFee,
+          stripePayoutId,
         },
         update: {
           stripeTransferId: transfer.id,
@@ -124,6 +164,9 @@ export async function payBatchViaStripe(batchId: string): Promise<PayBatchResult
           currency,
           status: "PAID",
           failureReason: null,
+          method,
+          instantFee,
+          stripePayoutId,
         },
       });
 

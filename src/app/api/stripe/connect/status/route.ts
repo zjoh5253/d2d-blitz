@@ -26,6 +26,7 @@ export async function GET() {
         detailsSubmitted: false,
         chargesEnabled: false,
         payoutsEnabled: false,
+        payoutMethod: "STANDARD",
       });
     }
 
@@ -45,6 +46,7 @@ export async function GET() {
       detailsSubmitted: account.detailsSubmitted,
       chargesEnabled: account.chargesEnabled,
       payoutsEnabled: account.payoutsEnabled,
+      payoutMethod: account.payoutMethod,
     });
   } catch (error) {
     console.error("[GET /api/stripe/connect/status]", error);
