@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import type { BlitzExpense, BlitzAssignment, Sale, CommissionRecord, User } from "@prisma/client"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { BlitzTabs } from "./blitz-tabs"
+import { ShareCardButton } from "./share-card-button"
 
 export const dynamic = "force-dynamic"
 
@@ -89,7 +90,10 @@ export default async function BlitzPage({ params }: BlitzPageProps) {
             {b.market.name} &middot; {b.market.carrier.name}
           </p>
         </div>
-        <StatusBadge status={b.status} />
+        <div className="flex shrink-0 items-center gap-3">
+          <ShareCardButton blitzId={b.id} initialToken={b.publicCardToken} initialEnabled={b.publicCardEnabled} />
+          <StatusBadge status={b.status} />
+        </div>
       </div>
 
       {/* Tabs with all interactive content */}
