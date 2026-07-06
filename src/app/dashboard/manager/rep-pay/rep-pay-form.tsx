@@ -85,6 +85,7 @@ export function RepPayForm({
     watch,
     control,
     setValue,
+    getValues,
     formState: { errors, isSubmitting },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } = useForm<RepCommissionOverrideFormValues, any, RepCommissionOverrideFormValues>({
@@ -103,7 +104,9 @@ export function RepPayForm({
 
   const watchedCarrierId = watch("carrierId");
 
-  // When carrier changes, fetch products for that carrier and reset product
+  // When carrier changes, fetch its products. Preserve the selected product if
+  // it belongs to the new carrier (so an edit keeps its saved product-scope);
+  // clear it only when it's stale for the newly chosen carrier.
   useEffect(() => {
     if (!watchedCarrierId) {
       setProducts([]);
@@ -112,16 +115,20 @@ export function RepPayForm({
     }
 
     setLoadingProducts(true);
-    setValue("productId", "");
 
     fetch(`/api/products?carrierId=${watchedCarrierId}&active=true`)
       .then((res) => res.json())
       .then((data: ProductOption[]) => {
-        setProducts(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data) ? data : [];
+        setProducts(list);
+        const current = getValues("productId");
+        if (current && !list.some((p) => p.id === current)) {
+          setValue("productId", "");
+        }
       })
       .catch(() => setProducts([]))
       .finally(() => setLoadingProducts(false));
-  }, [watchedCarrierId, setValue]);
+  }, [watchedCarrierId, setValue, getValues]);
 
   // When the dialog opens for edit, pre-load products for the saved carrier
   useEffect(() => {

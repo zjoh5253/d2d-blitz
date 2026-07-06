@@ -86,6 +86,7 @@ export function ManagerRateForm({
     watch,
     control,
     setValue,
+    getValues,
     formState: { errors, isSubmitting },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } = useForm<RateSheetFormValues, any, RateSheetFormValues>({
@@ -105,7 +106,9 @@ export function ManagerRateForm({
 
   const watchedCarrierId = watch("carrierId");
 
-  // When carrier changes, fetch products and reset product
+  // When carrier changes, fetch its products. Preserve the selected product if
+  // it belongs to the new carrier (so an edit keeps its saved product-scope);
+  // clear it only when it's stale for the newly chosen carrier.
   useEffect(() => {
     if (!watchedCarrierId) {
       setProducts([]);
@@ -114,16 +117,20 @@ export function ManagerRateForm({
     }
 
     setLoadingProducts(true);
-    setValue("productId", "");
 
     fetch(`/api/products?carrierId=${watchedCarrierId}&active=true`)
       .then((res) => res.json())
       .then((data: ProductOption[]) => {
-        setProducts(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data) ? data : [];
+        setProducts(list);
+        const current = getValues("productId");
+        if (current && !list.some((p) => p.id === current)) {
+          setValue("productId", "");
+        }
       })
       .catch(() => setProducts([]))
       .finally(() => setLoadingProducts(false));
-  }, [watchedCarrierId, setValue]);
+  }, [watchedCarrierId, setValue, getValues]);
 
   // When dialog opens for edit, pre-load products for the saved carrier
   useEffect(() => {
