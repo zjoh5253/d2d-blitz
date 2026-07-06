@@ -37,3 +37,21 @@ export async function getPayrollScope(user: {
 
   return { repIds: [...new Set(assignments.map((a) => a.repId))] };
 }
+
+/**
+ * Resolve the managers a MARKET_OWNER may edit rate sheets for: the managers of
+ * the blitzes in the markets they own. Other roles have no manager downline.
+ */
+export async function getManagerScope(user: {
+  id: string;
+  role: string;
+}): Promise<{ managerIds: string[] }> {
+  if (user.role !== "MARKET_OWNER") return { managerIds: [] };
+
+  const blitzes = await db.blitz.findMany({
+    where: { market: { ownerId: user.id } },
+    select: { managerId: true },
+  });
+
+  return { managerIds: [...new Set(blitzes.map((b) => b.managerId))] };
+}

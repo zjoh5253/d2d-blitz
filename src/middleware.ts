@@ -18,6 +18,10 @@ const ROLE_PROTECTED_ROUTES: Array<{ prefix: string; roles: string[] }> = [
   { prefix: "/dashboard/compliance", roles: ["ADMIN", "FIELD_MANAGER"] },
   { prefix: "/dashboard/inbound", roles: ["ADMIN", "CALL_CENTER"] },
   { prefix: "/dashboard/reports", roles: ["ADMIN", "EXECUTIVE"] },
+  // More specific manager sub-routes first (first match wins): owners edit manager
+  // rates, managers edit rep pay.
+  { prefix: "/dashboard/manager/manager-rates", roles: ["ADMIN", "MARKET_OWNER"] },
+  { prefix: "/dashboard/manager/rep-pay", roles: ["ADMIN", "FIELD_MANAGER"] },
   { prefix: "/dashboard/manager", roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"] },
 ];
 

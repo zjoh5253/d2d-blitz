@@ -6,11 +6,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockDb = vi.hoisted(() => ({
   product: { findUnique: vi.fn() },
   carrier: { findUnique: vi.fn() },
+  rateSheet: { findFirst: vi.fn() },
 }));
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
 
-import { checkMinMargin, checkGrantMargin } from "@/lib/services/min-margin";
+import {
+  checkMinMargin,
+  checkGrantMargin,
+  checkRepPayMargin,
+  checkManagerGrantMargin,
+} from "@/lib/services/min-margin";
+
+const AT = new Date("2026-01-01");
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -96,5 +104,93 @@ describe("checkGrantMargin (OWNER rate sheet)", () => {
     const r = await checkGrantMargin({ carrierId: "c-1", availableRevenue: 999, override: true });
     expect(r.ok).toBe(true);
     expect(mockDb.carrier.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe("checkRepPayMargin (manager sets rep pay)", () => {
+  it("rejects rep pay above the manager's available revenue", async () => {
+    mockDb.rateSheet.findFirst.mockResolvedValueOnce({ availableRevenue: 180 });
+    const r = await checkRepPayMargin({
+      managerId: "mgr-1",
+      carrierId: "c-1",
+      productId: "p-1",
+      amount: 200,
+      at: AT,
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toMatch(/exceeds your available revenue of \$180\.00/i);
+  });
+
+  it("accepts rep pay at or under the manager's available revenue", async () => {
+    mockDb.rateSheet.findFirst.mockResolvedValueOnce({ availableRevenue: 180 });
+    const r = await checkRepPayMargin({ managerId: "mgr-1", carrierId: "c-1", amount: 180, at: AT });
+    expect(r.ok).toBe(true);
+  });
+
+  it("does not block when the manager has no grant (cap unknown)", async () => {
+    mockDb.rateSheet.findFirst.mockResolvedValueOnce(null);
+    const r = await checkRepPayMargin({ managerId: "mgr-x", carrierId: "c-1", amount: 999, at: AT });
+    expect(r.ok).toBe(true);
+  });
+
+  it("passes immediately when override is set (no lookup)", async () => {
+    const r = await checkRepPayMargin({
+      managerId: "mgr-1",
+      carrierId: "c-1",
+      amount: 999,
+      at: AT,
+      override: true,
+    });
+    expect(r.ok).toBe(true);
+    expect(mockDb.rateSheet.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("checkManagerGrantMargin (owner grants manager revenue)", () => {
+  it("rejects a manager grant above the owner's available revenue", async () => {
+    mockDb.rateSheet.findFirst.mockResolvedValueOnce({ availableRevenue: 250 });
+    const r = await checkManagerGrantMargin({
+      ownerId: "owner-1",
+      carrierId: "c-1",
+      productId: "p-1",
+      availableRevenue: 260,
+      at: AT,
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toMatch(/exceeds your available revenue of \$250\.00/i);
+  });
+
+  it("accepts a manager grant at or under the owner's available revenue", async () => {
+    mockDb.rateSheet.findFirst.mockResolvedValueOnce({ availableRevenue: 250 });
+    const r = await checkManagerGrantMargin({
+      ownerId: "owner-1",
+      carrierId: "c-1",
+      availableRevenue: 190,
+      at: AT,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("does not block when the owner has no grant (cap unknown)", async () => {
+    mockDb.rateSheet.findFirst.mockResolvedValueOnce(null);
+    const r = await checkManagerGrantMargin({
+      ownerId: "owner-x",
+      carrierId: "c-1",
+      availableRevenue: 999,
+      at: AT,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("passes immediately when override is set (no lookup)", async () => {
+    const r = await checkManagerGrantMargin({
+      ownerId: "owner-1",
+      carrierId: "c-1",
+      availableRevenue: 999,
+      at: AT,
+      override: true,
+    });
+    expect(r.ok).toBe(true);
+    expect(mockDb.rateSheet.findFirst).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { repCommissionOverrideSchema } from "@/lib/validators/common";
+import { checkRepPayMargin } from "@/lib/services/min-margin";
+import { getPayrollScope } from "@/lib/services/payroll-scope";
 
 const overrideInclude = {
   rep: { select: { id: true, name: true } },
@@ -15,11 +17,19 @@ export async function GET() {
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (session.user.role !== "ADMIN") {
+    const { role } = session.user;
+    if (role !== "ADMIN" && role !== "FIELD_MANAGER") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    // A FIELD_MANAGER sees only the overrides of their downline reps.
+    const where =
+      role === "FIELD_MANAGER"
+        ? { repId: { in: (await getPayrollScope(session.user)).repIds } }
+        : undefined;
+
     const overrides = await db.repCommissionOverride.findMany({
+      where,
       orderBy: [{ repId: "asc" }, { effectiveDate: "desc" }],
       include: overrideInclude,
     });
@@ -37,7 +47,8 @@ export async function POST(request: Request) {
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (session.user.role !== "ADMIN") {
+    const { role } = session.user;
+    if (role !== "ADMIN" && role !== "FIELD_MANAGER") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -50,7 +61,28 @@ export async function POST(request: Request) {
       );
     }
 
-    const { repId, carrierId, productId, amount, effectiveDate, active } = parsed.data;
+    const { repId, carrierId, productId, amount, effectiveDate, active, overrideMinMargin } =
+      parsed.data;
+
+    if (role === "FIELD_MANAGER") {
+      // A manager may only set pay for their downline reps, capped at their own
+      // available revenue (blind to upstream).
+      const { repIds } = await getPayrollScope(session.user);
+      if (!repIds.includes(repId)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      const margin = await checkRepPayMargin({
+        managerId: session.user.id,
+        carrierId: carrierId || null,
+        productId: productId || null,
+        amount,
+        at: new Date(effectiveDate),
+        override: overrideMinMargin,
+      });
+      if (!margin.ok) {
+        return NextResponse.json({ error: margin.message }, { status: 422 });
+      }
+    }
 
     const override = await db.repCommissionOverride.create({
       data: {

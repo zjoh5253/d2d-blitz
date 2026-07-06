@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { rateSheetSchema } from "@/lib/validators/common";
-import { checkGrantMargin } from "@/lib/services/min-margin";
+import { checkGrantMargin, checkManagerGrantMargin } from "@/lib/services/min-margin";
+import { getManagerScope } from "@/lib/services/payroll-scope";
 
 const sheetInclude = {
   principal: { select: { id: true, name: true, role: true } },
@@ -16,11 +17,23 @@ export async function GET() {
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (session.user.role !== "ADMIN") {
+    const { role } = session.user;
+    if (role !== "ADMIN" && role !== "MARKET_OWNER") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    // A MARKET_OWNER sees only the MANAGER sheets of their downline managers
+    // (blind to OWNER-level / upstream economics).
+    const where =
+      role === "MARKET_OWNER"
+        ? {
+            level: "MANAGER" as const,
+            principalId: { in: (await getManagerScope(session.user)).managerIds },
+          }
+        : undefined;
+
     const sheets = await db.rateSheet.findMany({
+      where,
       orderBy: [{ level: "asc" }, { principalId: "asc" }, { effectiveDate: "desc" }],
       include: sheetInclude,
     });
@@ -37,7 +50,8 @@ export async function POST(request: Request) {
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (session.user.role !== "ADMIN") {
+    const { role } = session.user;
+    if (role !== "ADMIN" && role !== "MARKET_OWNER") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -53,8 +67,26 @@ export async function POST(request: Request) {
     const { level, principalId, carrierId, productId, availableRevenue, effectiveDate, active, overrideMinMargin } =
       parsed.data;
 
-    // An OWNER grant is the master's top-level cut — protect the company margin.
-    if (level === "OWNER") {
+    if (role === "MARKET_OWNER") {
+      // A MARKET_OWNER may only grant MANAGER-level sheets to their downline
+      // managers, capped at their own available revenue (blind to upstream).
+      const { managerIds } = await getManagerScope(session.user);
+      if (level !== "MANAGER" || !managerIds.includes(principalId)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      const margin = await checkManagerGrantMargin({
+        ownerId: session.user.id,
+        carrierId: carrierId || null,
+        productId: productId || null,
+        availableRevenue,
+        at: new Date(effectiveDate),
+        override: overrideMinMargin,
+      });
+      if (!margin.ok) {
+        return NextResponse.json({ error: margin.message }, { status: 422 });
+      }
+    } else if (level === "OWNER") {
+      // An OWNER grant is the master's top-level cut — protect the company margin.
       const margin = await checkGrantMargin({
         carrierId: carrierId || "",
         productId: productId || null,
