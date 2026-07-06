@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { z } from "zod";
 import { parseQuery, optionalId, CommissionStatusSchema } from "@/lib/validate";
 import { captureApiError } from "@/lib/sentry";
+import { redactCommission } from "@/lib/services/commission-visibility";
 
 const commissionsQuerySchema = z.object({
   repId: optionalId,
@@ -52,7 +53,10 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(commissions);
+    // Strip upstream economics the caller's role may not see (PRD §16).
+    const visible = commissions.map((c) => redactCommission(c, session.user.role));
+
+    return NextResponse.json(visible);
   } catch (error) {
     console.error("[GET /api/commissions]", error);
     captureApiError(error, "[GET /api/commissions]");
