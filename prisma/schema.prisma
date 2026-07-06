@@ -353,6 +353,9 @@ model User {
   // Override earnings (manager override / market-owner spread) payable to this user
   overrideEarnings OverrideEarning[]
 
+  // Custom per-rep commission overrides
+  repCommissionOverrides RepCommissionOverride[]
+
   // Payout batch audit logs
   payoutBatchAuditLogs PayoutBatchAuditLog[]
 
@@ -487,6 +490,7 @@ model Carrier {
   holdbacks      Holdback[]
   chargebacks    Chargeback[]
   products       Product[]
+  repCommissionOverrides RepCommissionOverride[]
 
   @@index([status])
   @@map("carriers")
@@ -509,6 +513,7 @@ model Product {
   sales             Sale[]
   stackConfigs      StackConfig[]
   commissionRecords CommissionRecord[]
+  repCommissionOverrides RepCommissionOverride[]
 
   @@index([carrierId])
   @@index([active])
@@ -793,6 +798,7 @@ model CommissionRecord {
   status            CommissionStatus @default(ELIGIBLE)
   governanceTierId  String?          @map("governance_tier_id")
   productId         String?          @map("product_id")
+  repCommissionOverrideId String?     @map("rep_commission_override_id")
   createdAt         DateTime         @default(now()) @map("created_at")
 
   sale           Sale            @relation(fields: [saleId], references: [id])
@@ -800,6 +806,7 @@ model CommissionRecord {
   blitz          Blitz           @relation(fields: [blitzId], references: [id])
   governanceTier GovernanceTier? @relation(fields: [governanceTierId], references: [id])
   product        Product?        @relation(fields: [productId], references: [id])
+  repCommissionOverride RepCommissionOverride? @relation(fields: [repCommissionOverrideId], references: [id])
   holdback       Holdback?
   chargeback     Chargeback?
   overrideEarnings OverrideEarning[]
@@ -1296,4 +1303,32 @@ model OverrideEarning {
   @@index([status])
   @@index([payoutBatchId])
   @@map("override_earnings")
+}
+
+// ─── Custom per-rep commission overrides ────────────────────────────────────
+
+// A flat per-install commission for a specific rep, optionally scoped to a
+// product and/or carrier. When a matching override exists at calc time it
+// replaces the rep's computed pay (the governance-tier multiplier is bypassed).
+// Most-specific match wins: rep+product > rep+carrier > rep-global.
+model RepCommissionOverride {
+  id            String   @id @default(cuid())
+  repId         String   @map("rep_id")
+  carrierId     String?  @map("carrier_id")
+  productId     String?  @map("product_id")
+  amount        Float
+  effectiveDate DateTime @map("effective_date")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  rep               User               @relation(fields: [repId], references: [id])
+  carrier           Carrier?           @relation(fields: [carrierId], references: [id])
+  product           Product?           @relation(fields: [productId], references: [id])
+  commissionRecords CommissionRecord[]
+
+  @@index([repId])
+  @@index([active])
+  @@index([effectiveDate])
+  @@map("rep_commission_overrides")
 }

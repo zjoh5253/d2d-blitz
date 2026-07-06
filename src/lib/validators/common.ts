@@ -37,6 +37,21 @@ export const productSchema = z.object({
 
 export type ProductFormValues = z.infer<typeof productSchema>;
 
+// ─── Rep commission override ────────────────────────────────────────────────
+
+export const repCommissionOverrideSchema = z.object({
+  repId: z.string().min(1, "Rep is required"),
+  carrierId: z.string().optional().or(z.literal("")),
+  productId: z.string().optional().or(z.literal("")),
+  amount: z.coerce
+    .number({ error: "Must be a number" })
+    .positive("Must be greater than 0"),
+  effectiveDate: z.string().min(1, "Effective date is required"),
+  active: z.boolean().default(true),
+});
+
+export type RepCommissionOverrideFormValues = z.infer<typeof repCommissionOverrideSchema>;
+
 // ─── User ─────────────────────────────────────────────────────────────────────
 
 export const userCreateSchema = z.object({

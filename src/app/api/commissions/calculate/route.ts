@@ -8,6 +8,7 @@ import {
   upsertHoldback,
 } from "@/lib/services/holdback";
 import { upsertOverrideEarnings } from "@/lib/services/override-earning";
+import { resolveRepOverride } from "@/lib/services/rep-commission";
 import { captureServerEvent } from "@/lib/posthog";
 import { captureApiError } from "@/lib/sentry";
 
@@ -101,8 +102,18 @@ export async function POST() {
           activeConfig.managerOverridePercent -
           activeConfig.marketOwnerSpreadPercent;
         const baseRepPay = (basePct / 100) * carrierPayout;
-        const multiplier = sale.rep.governanceTier?.commissionMultiplier ?? 1.0;
-        const repPay = baseRepPay * multiplier;
+
+        // A custom per-rep override replaces the computed pay outright (tier
+        // multiplier bypassed); otherwise apply the governance-tier multiplier.
+        const repOverride = await resolveRepOverride({
+          repId: sale.repId,
+          carrierId,
+          productId: sale.productId,
+          at: sale.submittedAt,
+        });
+        const repPay = repOverride
+          ? repOverride.amount
+          : baseRepPay * (sale.rep.governanceTier?.commissionMultiplier ?? 1.0);
 
         // Hold back a slice for the retention period; pay the immediate portion now.
         const policy = await resolveHoldbackPolicy(carrierId, sale.submittedAt);
@@ -125,6 +136,7 @@ export async function POST() {
             status: "ELIGIBLE",
             governanceTierId: sale.rep.governanceTierId ?? null,
             productId: sale.productId,
+            repCommissionOverrideId: repOverride?.id ?? null,
           },
         });
 

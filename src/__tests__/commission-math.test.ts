@@ -25,6 +25,9 @@ const mockDb = vi.hoisted(() => ({
     create: vi.fn(),
     update: vi.fn(),
   },
+  repCommissionOverride: {
+    findFirst: vi.fn(),
+  },
 }))
 
 vi.mock("@/lib/db", () => ({ db: mockDb }))
@@ -219,6 +222,37 @@ describe("calculateCommission", () => {
 
       const { create } = mockDb.commissionRecord.upsert.mock.calls[0][0]
       expect(create.governanceTierId).toBeNull()
+    })
+  })
+
+  // Custom per-rep override
+  describe("rep commission override", () => {
+    it("uses the flat override amount and bypasses the tier multiplier", async () => {
+      // Rep on a 0.8 tier that would normally reduce pay; override forces $150 flat.
+      setupHappyPath({
+        rep: {
+          governanceTierId: "tier-001",
+          governanceTier: { id: "tier-001", commissionMultiplier: 0.8 },
+        },
+      })
+      mockDb.repCommissionOverride.findFirst.mockResolvedValue({ id: "ovr-1", amount: 150 })
+
+      await calculateCommission("sale-001")
+
+      const { create } = mockDb.commissionRecord.upsert.mock.calls[0][0]
+      expect(create.repPay).toBe(150) // flat, NOT 595*0.8
+      expect(create.repCommissionOverrideId).toBe("ovr-1")
+    })
+
+    it("falls back to the default plan (tier multiplier) with no override", async () => {
+      setupHappyPath()
+      mockDb.repCommissionOverride.findFirst.mockResolvedValue(null)
+
+      await calculateCommission("sale-001")
+
+      const { create } = mockDb.commissionRecord.upsert.mock.calls[0][0]
+      expect(create.repPay).toBe(595)
+      expect(create.repCommissionOverrideId).toBeNull()
     })
   })
 

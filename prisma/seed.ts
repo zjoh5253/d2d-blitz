@@ -234,6 +234,22 @@ async function main() {
     ],
   });
 
+  // Example custom per-rep commission override: rep1 earns a flat $150 on 1 Gig.
+  const oneGig = await prisma.product.findFirst({
+    where: { carrierId: carrier1.id, name: "1 Gig" },
+  });
+  if (oneGig) {
+    await prisma.repCommissionOverride.create({
+      data: {
+        repId: rep1.id,
+        carrierId: carrier1.id,
+        productId: oneGig.id,
+        amount: 150.0,
+        effectiveDate: new Date("2024-01-01"),
+      },
+    });
+  }
+
   // Create markets
   const market1 = await prisma.market.create({
     data: {
