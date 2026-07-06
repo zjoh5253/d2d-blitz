@@ -149,10 +149,18 @@ export function StaffingTab({ blitzId, assignments: initialAssignments, availabl
 
       <BlitzBackfillPanel blitzId={blitzId} />
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {assignments.length} rep{assignments.length !== 1 ? "s" : ""} assigned
-        </p>
+      <div className="flex items-start justify-between gap-3 pt-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">
+            Crew roster &amp; logistics
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              {assignments.length} rep{assignments.length !== 1 ? "s" : ""} assigned
+            </span>
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            The full assigned crew with day-of status, housing, and arrival. Update each rep&apos;s status as they confirm and travel in. Use “Assign Rep” to add someone directly, outside the job board.
+          </p>
+        </div>
         <Button size="sm" onClick={() => setAssignOpen(true)} disabled={filtering}>
           <UserPlus className="mr-1.5 h-4 w-4" />
           Assign Rep
@@ -369,11 +377,16 @@ function BlitzInvitePanel({ blitzId, disabled }: { blitzId: string; disabled: bo
   return (
     <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="text-sm font-medium">
-          Targeted invites
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            {funnel ? `${funnel.total} sent` : "—"}
-          </span>
+        <div className="min-w-0">
+          <div className="text-sm font-medium">
+            Targeted invites
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              {funnel ? `${funnel.total} sent` : "—"}
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Directly invite reps who match this blitz&apos;s qualifications, by push and text. Invites only go out when you click — nobody is contacted automatically.
+          </p>
         </div>
         <Button size="sm" disabled={disabled || sending} onClick={send}>
           {sending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
@@ -425,12 +438,17 @@ function BlitzGatesPanel({ blitzId }: { blitzId: string }) {
 
   return (
     <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-sm font-medium">
-          Check-in gates
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            {data.reps.length} active{atRisk > 0 ? ` · ${atRisk} at-risk` : ""}
-          </span>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">
+            Check-in gates
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              {data.reps.length} active{atRisk > 0 ? ` · ${atRisk} at-risk` : ""}
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Each active rep&apos;s progress through the pre-blitz check-ins — accept, roster lock, gear check, final confirm, day-of check-in, and daily close. A missed gate flags the rep at-risk and floats them to the top.
+          </p>
         </div>
         <div className="hidden sm:flex items-center gap-2 text-[10px] text-muted-foreground">
           {data.order.map((g) => <span key={g.id} title={g.label} className="w-5 text-center font-medium">{g.id}</span>)}
@@ -504,9 +522,14 @@ function BlitzApprovalsPanel({ blitzId }: { blitzId: string }) {
 
   return (
     <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 space-y-3">
-      <div className="text-sm font-medium">
-        Pending approvals
-        <span className="ml-2 text-xs font-normal text-muted-foreground">{data.onboarding.length + data.waivers.length} awaiting you</span>
+      <div>
+        <div className="text-sm font-medium">
+          Pending approvals
+          <span className="ml-2 text-xs font-normal text-muted-foreground">{data.onboarding.length + data.waivers.length} awaiting you</span>
+        </div>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          New-rep applications and no-penalty waiver requests tied to this blitz. Approve or decline them here, without leaving Staffing.
+        </p>
       </div>
 
       {data.onboarding.map((o) => (
@@ -606,11 +629,16 @@ function BlitzBackfillPanel({ blitzId }: { blitzId: string }) {
 
   return (
     <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-      <div className="text-sm font-medium">
-        Backfill queue
-        <span className="ml-2 text-xs font-normal text-muted-foreground">
-          {data.waitlist.length} standby · {data.declined.length + data.expired.length} warm
-        </span>
+      <div>
+        <div className="text-sm font-medium">
+          Backfill queue
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            {data.waitlist.length} standby · {data.declined.length + data.expired.length} warm
+          </span>
+        </div>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Warm prospects to pull in if a spot opens — the standby waitlist plus reps who were invited but didn&apos;t lock in. Re-invite resends the offer with a fresh 48-hour window.
+        </p>
       </div>
       <Group label="Standby (waitlist)" people={data.waitlist} />
       <Group label="Awaiting response" people={data.pending} />
@@ -748,11 +776,16 @@ function BlitzSignupRoster({ blitzId }: { blitzId: string }) {
   return (
     <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="text-sm font-medium">
-          Job-board signups
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            {needsTerritory.length} awaiting territory · {active.length} active · {waitlist.length} waitlisted
-          </span>
+        <div className="min-w-0">
+          <div className="text-sm font-medium">
+            Job-board signups
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              {needsTerritory.length} awaiting territory · {active.length} active · {waitlist.length} waitlisted
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Reps who claimed this blitz from the app. Give each one a territory on the map to make them active; claims past the cap waitlist automatically. Finalize at the bottom to lock the crew and start their check-ins.
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {data.boardNotifiedAt && (
