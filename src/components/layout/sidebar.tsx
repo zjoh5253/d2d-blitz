@@ -284,6 +284,12 @@ const NAV_GROUPS: NavGroup[] = [
         roles: ["ADMIN"],
       },
       {
+        title: "Rate Sheets",
+        href: "/dashboard/admin/rate-sheets",
+        icon: <Percent className="size-[18px]" />,
+        roles: ["ADMIN"],
+      },
+      {
         title: "Agreements",
         href: "/dashboard/admin/agreements",
         icon: <Settings className="size-[18px]" />,

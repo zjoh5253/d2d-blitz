@@ -9,6 +9,7 @@ import {
 } from "@/lib/services/holdback";
 import { upsertOverrideEarnings } from "@/lib/services/override-earning";
 import { resolveRepOverride } from "@/lib/services/rep-commission";
+import { applyRateSheets } from "@/lib/services/rate-sheet";
 import { captureServerEvent } from "@/lib/posthog";
 import { captureApiError } from "@/lib/sentry";
 
@@ -88,11 +89,11 @@ export async function POST() {
 
         // Product revenue takes precedence; fall back to the carrier default.
         const carrierPayout = sale.product?.revenue ?? sale.carrier.revenuePerInstall;
-        const companyFloor =
+        const baselineCompanyFloor =
           (activeConfig.companyFloorPercent / 100) * carrierPayout;
-        const managerOverride =
+        const baselineManagerOverride =
           (activeConfig.managerOverridePercent / 100) * carrierPayout;
-        const marketOwnerSpread =
+        const baselineMarketOwnerSpread =
           (activeConfig.marketOwnerSpreadPercent / 100) * carrierPayout;
 
         // Remaining is base rep pay; apply governance tier multiplier
@@ -114,6 +115,20 @@ export async function POST() {
         const repPay = repOverride
           ? repOverride.amount
           : baseRepPay * (sale.rep.governanceTier?.commissionMultiplier ?? 1.0);
+
+        // Overlay the hierarchical rate-sheet chain (baseline preserved when none).
+        const { companyFloor, managerOverride, marketOwnerSpread } = await applyRateSheets({
+          carrierPayout,
+          baselineCompanyFloor,
+          baselineManagerOverride,
+          baselineMarketOwnerSpread,
+          repPay,
+          managerId: sale.blitz.managerId,
+          ownerId: sale.blitz.market.ownerId,
+          carrierId,
+          productId: sale.productId,
+          at: sale.submittedAt,
+        });
 
         // Hold back a slice for the retention period; pay the immediate portion now.
         const policy = await resolveHoldbackPolicy(carrierId, sale.submittedAt);

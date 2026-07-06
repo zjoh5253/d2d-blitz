@@ -52,6 +52,24 @@ export const repCommissionOverrideSchema = z.object({
 
 export type RepCommissionOverrideFormValues = z.infer<typeof repCommissionOverrideSchema>;
 
+// ─── Hierarchical rate sheet ────────────────────────────────────────────────
+
+export const rateSheetSchema = z.object({
+  level: z.enum(["OWNER", "MANAGER"]),
+  principalId: z.string().min(1, "Principal is required"),
+  carrierId: z.string().optional().or(z.literal("")),
+  productId: z.string().optional().or(z.literal("")),
+  availableRevenue: z.coerce
+    .number({ error: "Must be a number" })
+    .positive("Must be greater than 0"),
+  effectiveDate: z.string().min(1, "Effective date is required"),
+  active: z.boolean().default(true),
+  // Admin escape hatch to save an OWNER grant below the minimum company margin.
+  overrideMinMargin: z.boolean().optional().default(false),
+});
+
+export type RateSheetFormValues = z.infer<typeof rateSheetSchema>;
+
 // ─── User ─────────────────────────────────────────────────────────────────────
 
 export const userCreateSchema = z.object({

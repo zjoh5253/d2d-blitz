@@ -28,6 +28,9 @@ const mockDb = vi.hoisted(() => ({
   repCommissionOverride: {
     findFirst: vi.fn(),
   },
+  rateSheet: {
+    findFirst: vi.fn(),
+  },
 }))
 
 vi.mock("@/lib/db", () => ({ db: mockDb }))

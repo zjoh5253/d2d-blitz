@@ -143,6 +143,11 @@ enum PayoutMethod {
   INSTANT
 }
 
+enum RateSheetLevel {
+  OWNER
+  MANAGER
+}
+
 enum DeductionCategory {
   HOUSING
   TRAVEL
@@ -356,6 +361,9 @@ model User {
   // Custom per-rep commission overrides
   repCommissionOverrides RepCommissionOverride[]
 
+  // Hierarchical rate sheets granting this user (owner/manager) available revenue
+  rateSheets RateSheet[]
+
   // Payout batch audit logs
   payoutBatchAuditLogs PayoutBatchAuditLog[]
 
@@ -491,6 +499,7 @@ model Carrier {
   chargebacks    Chargeback[]
   products       Product[]
   repCommissionOverrides RepCommissionOverride[]
+  rateSheets     RateSheet[]
 
   @@index([status])
   @@map("carriers")
@@ -514,6 +523,7 @@ model Product {
   stackConfigs      StackConfig[]
   commissionRecords CommissionRecord[]
   repCommissionOverrides RepCommissionOverride[]
+  rateSheets        RateSheet[]
 
   @@index([carrierId])
   @@index([active])
@@ -1331,4 +1341,34 @@ model RepCommissionOverride {
   @@index([active])
   @@index([effectiveDate])
   @@map("rep_commission_overrides")
+}
+
+// ─── Hierarchical rate sheets ───────────────────────────────────────────────
+
+// A master-granted "available revenue" for a level in the pricing chain. An
+// OWNER sheet grants a market owner the revenue they receive from the master;
+// a MANAGER sheet grants a manager the revenue they receive from the owner.
+// The commission slices (company floor / owner spread / manager override) are
+// derived by subtraction down the chain when a sheet resolves for a sale.
+model RateSheet {
+  id               String         @id @default(cuid())
+  level            RateSheetLevel
+  principalId      String         @map("principal_id")
+  carrierId        String?        @map("carrier_id")
+  productId        String?        @map("product_id")
+  availableRevenue Float          @map("available_revenue")
+  effectiveDate    DateTime       @map("effective_date")
+  active           Boolean        @default(true)
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  principal User     @relation(fields: [principalId], references: [id])
+  carrier   Carrier? @relation(fields: [carrierId], references: [id])
+  product   Product? @relation(fields: [productId], references: [id])
+
+  @@index([level])
+  @@index([principalId])
+  @@index([active])
+  @@index([effectiveDate])
+  @@map("rate_sheets")
 }
