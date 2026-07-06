@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -11,6 +12,12 @@ export interface DialogProps {
 }
 
 function Dialog({ open, onOpenChange, children }: DialogProps) {
+  // Portal to <body> so the fixed overlay always escapes ancestor stacking
+  // contexts (a transform/filter/overflow-hidden parent would otherwise clip
+  // or hide it — the state flips but nothing appears on screen).
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => setMounted(true), [])
+
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && open) {
@@ -21,9 +28,9 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [open, onOpenChange])
 
-  if (!open) return null
+  if (!open || !mounted) return null
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-sm"
@@ -31,7 +38,8 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
         aria-hidden="true"
       />
       {children}
-    </div>
+    </div>,
+    document.body
   )
 }
 
