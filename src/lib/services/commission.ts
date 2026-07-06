@@ -6,6 +6,7 @@ import {
 } from "@/lib/services/holdback";
 import { upsertOverrideEarnings } from "@/lib/services/override-earning";
 import { resolveRepOverride } from "@/lib/services/rep-commission";
+import { applyRateSheets } from "@/lib/services/rate-sheet";
 
 export async function calculateCommission(saleId: string) {
   const sale = await db.sale.findUnique({
@@ -46,11 +47,11 @@ export async function calculateCommission(saleId: string) {
 
   // Product revenue takes precedence; fall back to the carrier default.
   const carrierPayout = sale.product?.revenue ?? sale.carrier.revenuePerInstall;
-  const companyFloor = carrierPayout * stackConfig.companyFloorPercent;
-  const remaining = carrierPayout - companyFloor;
-  const managerOverride = remaining * stackConfig.managerOverridePercent;
-  const marketOwnerSpread = remaining * stackConfig.marketOwnerSpreadPercent;
-  let repPay = remaining - managerOverride - marketOwnerSpread;
+  const baselineCompanyFloor = carrierPayout * stackConfig.companyFloorPercent;
+  const remaining = carrierPayout - baselineCompanyFloor;
+  const baselineManagerOverride = remaining * stackConfig.managerOverridePercent;
+  const baselineMarketOwnerSpread = remaining * stackConfig.marketOwnerSpreadPercent;
+  let repPay = remaining - baselineManagerOverride - baselineMarketOwnerSpread;
 
   // A custom per-rep override, when present, replaces the computed pay outright
   // (the governance-tier multiplier is bypassed). Otherwise apply the tier.
@@ -66,6 +67,21 @@ export async function calculateCommission(saleId: string) {
     const tierMultiplier = sale.rep.governanceTier?.commissionMultiplier ?? 1.0;
     repPay *= tierMultiplier;
   }
+
+  // Overlay the hierarchical rate-sheet chain: when an owner/manager grant
+  // resolves, derive the slices down the chain; otherwise keep the baseline.
+  const { companyFloor, managerOverride, marketOwnerSpread } = await applyRateSheets({
+    carrierPayout,
+    baselineCompanyFloor,
+    baselineManagerOverride,
+    baselineMarketOwnerSpread,
+    repPay,
+    managerId: sale.blitz.managerId,
+    ownerId: sale.blitz.market.ownerId,
+    carrierId: sale.carrierId,
+    productId: sale.productId,
+    at: sale.submittedAt,
+  });
 
   // Hold back a slice of the rep's pay for the retention period. The immediate
   // portion is what flows through the normal payout pipeline now; the held

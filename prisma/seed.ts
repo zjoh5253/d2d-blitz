@@ -248,6 +248,29 @@ async function main() {
         effectiveDate: new Date("2024-01-01"),
       },
     });
+
+    // Hierarchical rate sheets for FiberMax 1 Gig ($300 revenue): master grants
+    // the owner $250 (company keeps $50), owner grants the manager $180.
+    await prisma.rateSheet.createMany({
+      data: [
+        {
+          level: "OWNER",
+          principalId: marketOwner.id,
+          carrierId: carrier1.id,
+          productId: oneGig.id,
+          availableRevenue: 250.0,
+          effectiveDate: new Date("2024-01-01"),
+        },
+        {
+          level: "MANAGER",
+          principalId: fieldManager.id,
+          carrierId: carrier1.id,
+          productId: oneGig.id,
+          availableRevenue: 180.0,
+          effectiveDate: new Date("2024-01-01"),
+        },
+      ],
+    });
   }
 
   // Create markets

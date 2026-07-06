@@ -10,7 +10,7 @@ const mockDb = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
 
-import { checkMinMargin } from "@/lib/services/min-margin";
+import { checkMinMargin, checkGrantMargin } from "@/lib/services/min-margin";
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -64,5 +64,37 @@ describe("checkMinMargin", () => {
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.message).toMatch(/20% minimum/i);
+  });
+});
+
+describe("checkGrantMargin (OWNER rate sheet)", () => {
+  it("rejects a grant that leaves the company below its minimum margin", async () => {
+    // product revenue 300, min 20% → company must keep >= $60; granting $260 leaves $40 (13.3%).
+    mockDb.product.findUnique.mockResolvedValueOnce({
+      name: "1 Gig",
+      revenue: 300,
+      minMarginPercent: null,
+      carrier: { name: "FiberMax", revenuePerInstall: 250, minMarginPercent: 20 },
+    });
+    const r = await checkGrantMargin({ carrierId: "c-1", productId: "p-1", availableRevenue: 260 });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toMatch(/below the 20% minimum/i);
+  });
+
+  it("accepts a grant that preserves the minimum margin", async () => {
+    mockDb.product.findUnique.mockResolvedValueOnce({
+      name: "1 Gig",
+      revenue: 300,
+      minMarginPercent: null,
+      carrier: { name: "FiberMax", revenuePerInstall: 250, minMarginPercent: 20 },
+    });
+    const r = await checkGrantMargin({ carrierId: "c-1", productId: "p-1", availableRevenue: 240 }); // keeps $60 = 20%
+    expect(r.ok).toBe(true);
+  });
+
+  it("passes immediately when override is set", async () => {
+    const r = await checkGrantMargin({ carrierId: "c-1", availableRevenue: 999, override: true });
+    expect(r.ok).toBe(true);
+    expect(mockDb.carrier.findUnique).not.toHaveBeenCalled();
   });
 });
