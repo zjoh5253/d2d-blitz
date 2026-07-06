@@ -9,7 +9,8 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!["ADMIN", "EXECUTIVE", "MARKET_OWNER", "FIELD_MANAGER"].includes(session.user.role)) {
+    // Revenue/margins expose company-wide economics — ADMIN/EXECUTIVE only (PRD §16).
+    if (!["ADMIN", "EXECUTIVE"].includes(session.user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
