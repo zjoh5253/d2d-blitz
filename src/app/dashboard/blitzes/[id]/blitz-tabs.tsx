@@ -2,16 +2,20 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { Pencil, Trash2 } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Select } from "@/components/ui/select"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { DataTable } from "@/components/tables/data-table"
 import { StaffingTab } from "./staffing-tab"
 import { ExpenseForm } from "./expense-form"
 import { TouchpointsTab } from "./touchpoints-tab"
 
-// Status transition map
+const STATUS_ORDER = ["PLANNING", "STAFFING", "READY", "ACTIVE", "REVIEW", "CLOSED"] as const
+
+// Status transition map (forward "happy path")
 const STATUS_TRANSITIONS: Record<string, { next: string; label: string } | null> = {
   PLANNING: { next: "STAFFING", label: "Move to Staffing" },
   STAFFING: { next: "READY", label: "Mark Ready" },
@@ -76,6 +80,7 @@ interface BlitzTabsProps {
     endDate: string
     repCap: number
     housingPlan: string | null
+    leadPrepStatus: string
     market: { name: string; carrier: { name: string; revenuePerInstall: number } }
     manager: { name: string | null; email: string }
     assignments: Assignment[]
@@ -101,20 +106,60 @@ function formatDate(val: string) {
 export function BlitzTabs({ blitz, availableReps, touchpoints }: BlitzTabsProps) {
   const router = useRouter()
   const [expenseOpen, setExpenseOpen] = React.useState(false)
+  const [editingExpense, setEditingExpense] = React.useState<Expense | null>(null)
   const [transitioning, setTransitioning] = React.useState(false)
+  const [deleting, setDeleting] = React.useState(false)
+
+  async function deleteBlitz() {
+    if (!window.confirm("Delete this blitz? This permanently removes the blitz and all of its imported leads. This can't be undone.")) return
+    setDeleting(true)
+    const res = await fetch(`/api/blitzes/${blitz.id}`, { method: "DELETE" })
+    if (res.ok) {
+      router.push("/dashboard/blitzes")
+      return
+    }
+    const d = await res.json().catch(() => ({}))
+    window.alert(d.error ?? "Could not delete the blitz")
+    setDeleting(false)
+  }
+
+  async function deleteExpense(expenseId: string) {
+    if (!window.confirm("Delete this expense? This can't be undone.")) return
+    const res = await fetch(`/api/blitzes/${blitz.id}/expenses/${expenseId}`, {
+      method: "DELETE",
+    })
+    if (res.ok) router.refresh()
+  }
 
   const transition = STATUS_TRANSITIONS[blitz.status]
 
-  async function handleStatusTransition() {
-    if (!transition) return
+  async function changeStatus(nextStatus: string) {
     setTransitioning(true)
     await fetch(`/api/blitzes/${blitz.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: transition.next }),
+      body: JSON.stringify({ status: nextStatus }),
     })
     setTransitioning(false)
     router.refresh()
+  }
+
+  function handleStatusTransition() {
+    if (!transition) return
+    return changeStatus(transition.next)
+  }
+
+  function handleStatusSelect(e: React.ChangeEvent<HTMLSelectElement>) {
+    const nextStatus = e.target.value
+    if (!nextStatus || nextStatus === blitz.status) return
+    const currentIdx = STATUS_ORDER.indexOf(blitz.status as typeof STATUS_ORDER[number])
+    const nextIdx = STATUS_ORDER.indexOf(nextStatus as typeof STATUS_ORDER[number])
+    const goingBackward = nextIdx < currentIdx
+    if (goingBackward && !confirm(`Revert blitz from ${blitz.status} back to ${nextStatus}?`)) {
+      e.target.value = blitz.status
+      return
+    }
+    void changeStatus(nextStatus)
   }
 
   // Derived stats
@@ -176,6 +221,35 @@ export function BlitzTabs({ blitz, availableReps, touchpoints }: BlitzTabsProps)
       sortable: true,
       render: (val: unknown) => formatCurrency(val as number),
     },
+    {
+      key: "_actions",
+      label: "",
+      render: (_val: unknown, row: Record<string, unknown>) => {
+        const exp = row as unknown as Expense
+        return (
+          <div className="flex items-center justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={() => setEditingExpense(exp)}
+              aria-label="Edit expense"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+              onClick={() => deleteExpense(exp.id)}
+              aria-label="Delete expense"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )
+      },
+    },
   ]
 
   const repPerfColumns = [
@@ -198,14 +272,39 @@ export function BlitzTabs({ blitz, availableReps, touchpoints }: BlitzTabsProps)
 
   return (
     <>
-      {/* Status transition */}
-      {transition && (
-        <div className="flex justify-end">
-          <Button onClick={handleStatusTransition} disabled={transitioning}>
-            {transitioning ? "Updating..." : transition.label}
-          </Button>
+      {/* Status transition + delete */}
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          {blitz.status === "PLANNING" && (
+            <Button
+              variant="outline"
+              onClick={deleteBlitz}
+              disabled={deleting}
+              className="border-destructive/30 text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleting ? "Deleting..." : "Delete blitz"}
+            </Button>
+          )}
         </div>
-      )}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Change status:</span>
+            <Select
+              value={blitz.status}
+              onChange={handleStatusSelect}
+              disabled={transitioning}
+              className="h-9 w-40"
+              options={STATUS_ORDER.map((s) => ({ value: s, label: s }))}
+            />
+          </div>
+          {transition && (
+            <Button onClick={handleStatusTransition} disabled={transitioning}>
+              {transitioning ? "Updating..." : transition.label}
+            </Button>
+          )}
+        </div>
+      </div>
 
       <Tabs defaultValue="overview">
         <TabsList>
@@ -275,6 +374,7 @@ export function BlitzTabs({ blitz, availableReps, touchpoints }: BlitzTabsProps)
             blitzId={blitz.id}
             assignments={blitz.assignments}
             availableReps={availableReps}
+            leadPrepStatus={blitz.leadPrepStatus}
           />
         </TabsContent>
 
@@ -447,6 +547,33 @@ export function BlitzTabs({ blitz, availableReps, touchpoints }: BlitzTabsProps)
         onOpenChange={setExpenseOpen}
         blitzId={blitz.id}
         onSuccess={() => router.refresh()}
+      />
+
+      <ExpenseForm
+        open={!!editingExpense}
+        onOpenChange={(open) => {
+          if (!open) setEditingExpense(null)
+        }}
+        blitzId={blitz.id}
+        expense={
+          editingExpense
+            ? {
+                id: editingExpense.id,
+                category: editingExpense.category as
+                  | "HOUSING"
+                  | "TRAVEL"
+                  | "OPERATIONAL"
+                  | "OTHER",
+                amount: editingExpense.amount,
+                description: editingExpense.description,
+                date: editingExpense.date,
+              }
+            : null
+        }
+        onSuccess={() => {
+          setEditingExpense(null)
+          router.refresh()
+        }}
       />
     </>
   )

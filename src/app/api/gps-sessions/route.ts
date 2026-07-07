@@ -1,56 +1,60 @@
-/**
- * GET  /api/gps-sessions          — list the authenticated rep's own GPS sessions
- *                                    (optional ?date=YYYY-MM-DD filter on startedAt)
- * POST /api/gps-sessions          — create a GPS session for the authenticated rep
- *
- * Auth: mobile Bearer token (falls back to web session via getSessionFromRequest).
- */
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/auth-mobile";
 import { db } from "@/lib/db";
 import { z } from "zod";
-import { captureApiError } from "@/lib/sentry";
-
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+import { parseISO, startOfDay, endOfDay } from "date-fns";
 
 const createSchema = z.object({
-  startedAt: z.string().datetime(),
-  endedAt: z.string().datetime(),
-  durationSeconds: z.number().int().nonnegative(),
-  pausedSeconds: z.number().int().nonnegative().optional(),
-  knockCount: z.number().int().nonnegative().optional(),
-  routeMiles: z.number().nonnegative().optional(),
+  startedAt: z.string().min(1),
+  endedAt: z.string().min(1),
+  durationSeconds: z.number().int().min(0),
+  pausedSeconds: z.number().int().min(0).default(0),
+  knockCount: z.number().int().min(0).default(0),
+  routeMiles: z.number().min(0).default(0),
+  // Optional. When the rep is staffed on exactly one ACTIVE blitz at
+  // submission time and the client doesn't pass one, the POST handler
+  // auto-attributes via that single assignment.
+  blitzId: z.string().min(1).optional(),
 });
 
 export async function GET(request: NextRequest) {
   try {
     const session = await getSessionFromRequest(request);
-    if (!session?.user?.id) {
+    if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const date = new URL(request.url).searchParams.get("date");
-    let startedAtFilter: { gte: Date; lt: Date } | undefined;
-    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      const start = new Date(`${date}T00:00:00.000Z`);
-      const end = new Date(start);
-      end.setUTCDate(end.getUTCDate() + 1);
-      startedAtFilter = { gte: start, lt: end };
+    const { searchParams } = new URL(request.url);
+    const repIdParam = searchParams.get("repId");
+    const dateParam = searchParams.get("date");
+
+    const isManager =
+      session.user.role === "ADMIN" || session.user.role === "FIELD_MANAGER";
+    const repId = isManager && repIdParam ? repIdParam : session.user.id;
+
+    const where: Record<string, unknown> = { repId };
+    if (dateParam) {
+      const day = parseISO(dateParam);
+      where.startedAt = { gte: startOfDay(day), lte: endOfDay(day) };
     }
 
     const sessions = await db.gpsSession.findMany({
-      where: {
-        repId: session.user.id,
-        ...(startedAtFilter ? { startedAt: startedAtFilter } : {}),
-      },
+      where,
       orderBy: { startedAt: "desc" },
+      take: 100,
+      include: {
+        // Latest edit request so the history view can show its review state.
+        edits: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { id: true, status: true, reviewNote: true, createdAt: true },
+        },
+      },
     });
 
     return NextResponse.json(sessions);
   } catch (error) {
     console.error("[GET /api/gps-sessions]", error);
-    captureApiError(error, "[GET /api/gps-sessions]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -61,7 +65,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getSessionFromRequest(request);
-    if (!session?.user?.id) {
+    if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -74,25 +78,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { startedAt, endedAt, durationSeconds, pausedSeconds, knockCount, routeMiles } =
-      parsed.data;
+    const data = parsed.data;
+
+    // Auto-attribute the session to a blitz when the rep is unambiguously
+    // on one. An explicit blitzId from the client wins; with 0 or >1
+    // active assignments we leave it null and the scorecard falls back
+    // to date-overlap for those rows.
+    let blitzId: string | null = data.blitzId ?? null;
+    if (!blitzId) {
+      const active = await db.blitzAssignment.findMany({
+        where: {
+          repId: session.user.id!,
+          blitz: { status: { in: ["READY", "ACTIVE", "REVIEW"] } },
+        },
+        select: { blitzId: true },
+      });
+      if (active.length === 1) blitzId = active[0].blitzId;
+    }
 
     const created = await db.gpsSession.create({
       data: {
         repId: session.user.id,
-        startedAt: new Date(startedAt),
-        endedAt: new Date(endedAt),
-        durationSeconds,
-        pausedSeconds: pausedSeconds ?? 0,
-        knockCount: knockCount ?? 0,
-        routeMiles: routeMiles ?? 0,
+        blitzId,
+        startedAt: parseISO(data.startedAt),
+        endedAt: parseISO(data.endedAt),
+        durationSeconds: data.durationSeconds,
+        pausedSeconds: data.pausedSeconds,
+        knockCount: data.knockCount,
+        routeMiles: data.routeMiles,
       },
     });
 
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     console.error("[POST /api/gps-sessions]", error);
-    captureApiError(error, "[POST /api/gps-sessions]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

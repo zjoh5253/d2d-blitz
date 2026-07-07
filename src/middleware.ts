@@ -11,14 +11,24 @@ const ROLE_PROTECTED_ROUTES: Array<{ prefix: string; roles: string[] }> = [
   { prefix: "/dashboard/markets", roles: ["ADMIN", "MARKET_OWNER", "FIELD_MANAGER"] },
   { prefix: "/dashboard/blitzes", roles: ["ADMIN", "MARKET_OWNER", "FIELD_MANAGER"] },
   { prefix: "/dashboard/reps", roles: ["ADMIN", "FIELD_MANAGER", "FIELD_REP"] },
+  { prefix: "/dashboard/onboarding", roles: ["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"] },
   { prefix: "/dashboard/installs", roles: ["ADMIN"] },
   { prefix: "/dashboard/compensation", roles: ["ADMIN"] },
   { prefix: "/dashboard/governance", roles: ["ADMIN", "FIELD_MANAGER"] },
   { prefix: "/dashboard/compliance/holds", roles: ["ADMIN", "EXECUTIVE"] },
   { prefix: "/dashboard/compliance", roles: ["ADMIN", "FIELD_MANAGER"] },
   { prefix: "/dashboard/inbound", roles: ["ADMIN", "CALL_CENTER"] },
+  // Sales & Activity CSV report — managers need it too, so it's opened up
+  // wider than the exec-only financial reports. Must precede the generic
+  // /dashboard/reports rule below (first prefix match wins).
+  {
+    prefix: "/dashboard/reports/sales-activity",
+    roles: ["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"],
+  },
   { prefix: "/dashboard/reports", roles: ["ADMIN", "EXECUTIVE"] },
   { prefix: "/dashboard/manager", roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"] },
+  // Mobile-web rep experience. Admins/managers can access for QA.
+  { prefix: "/rep", roles: ["FIELD_REP", "ADMIN", "FIELD_MANAGER"] },
 ];
 
 export async function middleware(req: NextRequest) {
@@ -32,7 +42,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!pathname.startsWith("/dashboard")) {
+  if (!pathname.startsWith("/dashboard") && !pathname.startsWith("/rep")) {
     return NextResponse.next();
   }
 
@@ -63,9 +73,16 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", req.nextUrl.origin));
   }
 
+  // FIELD_REPs landing on /dashboard root get bounced straight to the Leads
+  // Map — their primary working screen. Admin/manager dashboard sub-routes
+  // still work for them if they navigate there directly (per the role table).
+  if (userRole === "FIELD_REP" && pathname === "/dashboard") {
+    return NextResponse.redirect(new URL("/rep/leads?view=map", req.nextUrl.origin));
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login", "/register"],
+  matcher: ["/dashboard/:path*", "/rep/:path*", "/login", "/register"],
 };

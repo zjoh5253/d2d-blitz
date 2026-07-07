@@ -32,6 +32,9 @@ yarn-error.log*
 .env
 .env*.local
 
+# kinetic cron runner log
+kinetic-cron.log
+
 # vercel
 .vercel
 

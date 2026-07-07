@@ -25,6 +25,9 @@ export default async function ManagerRepsPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
   const reps = await db.user.findMany({
     where: { role: "FIELD_REP" },
     select: {
@@ -54,6 +57,12 @@ export default async function ManagerRepsPage() {
         select: {
           goBacksRecorded: {
             where: { status: "SCHEDULED" },
+          },
+          sales: {
+            where: {
+              submittedAt: { gte: thirtyDaysAgo },
+              status: { not: "CANCELLED" },
+            },
           },
         },
       },
@@ -122,6 +131,7 @@ export default async function ManagerRepsPage() {
                 <TableRow>
                   <TableHead>Rep Name</TableHead>
                   <TableHead>Active Blitz</TableHead>
+                  <TableHead>Sales (30d)</TableHead>
                   <TableHead>Install Rate</TableHead>
                   <TableHead>Strikes</TableHead>
                   <TableHead>Go-Backs Pending</TableHead>
@@ -154,6 +164,15 @@ export default async function ManagerRepsPage() {
                       <TableCell className="text-sm">
                         {activeBlitz ? (
                           <span className="text-primary">{activeBlitz.name}</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-center">
+                        {rep._count.sales > 0 ? (
+                          <span className="font-medium text-emerald-600">
+                            {rep._count.sales}
+                          </span>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}

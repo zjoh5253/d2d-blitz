@@ -14,6 +14,7 @@ enum Role {
   RECRUITER
   MARKET_OWNER
   FIELD_MANAGER
+  TEAM_LEAD
   FIELD_REP
   CALL_CENTER
 }
@@ -58,9 +59,20 @@ enum BlitzAssignmentStatus {
   REMOVED
 }
 
+enum BlitzSignupStatus {
+  CLAIMED // reserved a spot (under repCap), awaiting territory
+  WAITLISTED // over repCap, in the queue
+  ACTIVE // manager assigned territory → live on the blitz
+  DECLINED // manager removed the claim
+  WITHDRAWN // rep backed out
+}
+
 enum UserStatus {
   ACTIVE
   INACTIVE
+  ONBOARDING
+  SUSPENDED
+  REJECTED
 }
 
 enum ExpenseCategory {
@@ -288,6 +300,18 @@ model User {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
+  // Fiber Blitz OS v2 staffing/qualification fields (Sprint 1). All nullable.
+  // CONTESTED (spec conflict #3): blitzReadinessScore + scoreBand compete with
+  // the existing install-rate GovernanceTier — inert until Teki rules.
+  carrierCredentials   Json?   @map("carrier_credentials")
+  availabilityCalendar Json?   @map("availability_calendar")
+  preferredMarkets     Json?   @map("preferred_markets")
+  blitzReadinessScore  Float?  @map("blitz_readiness_score")
+  scoreBand            String? @map("score_band")
+  reliabilityHistory   Json?   @map("reliability_history")
+  referralSource       String? @map("referral_source")
+  onboardingData       Json?   @map("onboarding_data") // prospective-rep intake (status ONBOARDING)
+
   // Email verification
   emailVerified             Boolean   @default(false) @map("email_verified")
   emailVerificationToken    String?   @unique @map("email_verification_token")
@@ -324,6 +348,15 @@ model User {
 
   // Blitz assignments (as rep)
   blitzAssignments BlitzAssignment[]
+
+  // Job-board signups (as rep)
+  blitzSignups BlitzSignup[]
+
+  // FBOS v2: targeted invites received (as rep) + gates this user escalates to
+  // (as team lead / field manager).
+  blitzInvites    BlitzInvite[]
+  escalationGates CheckInGate[] @relation("GateEscalationTarget")
+  penaltyWaivers  PenaltyWaiver[]
 
   // Daily reports
   dailyReports DailyReport[]
@@ -391,6 +424,12 @@ model User {
   // Inbound sales (as affiliate)
   inboundSalesAsAffiliate InboundSale[] @relation("InboundSaleAffiliate")
 
+  // GPS tracking sessions (rep clock-in/out for door-knock shifts)
+  gpsSessions GpsSession[]
+  timeLogEdits   GpsSessionEdit[] @relation("TimeLogEditRep")
+  timeLogReviews GpsSessionEdit[] @relation("TimeLogEditReviewer")
+  pushSubscriptions PushSubscription[]
+
   // Push notification tokens
   devicePushTokens DevicePushToken[]
 
@@ -399,9 +438,6 @@ model User {
 
   // Onboarding agreement acceptances
   agreementAcceptances AgreementAcceptance[]
-
-  // GPS tracking sessions uploaded from the mobile app
-  gpsSessions GpsSession[]
 
   // Stripe Connect payout account (1:1)
   stripeAccount StripeConnectedAccount?
@@ -421,7 +457,67 @@ model User {
   @@index([role])
   @@index([status])
   @@index([governanceTierId])
+  @@index([scoreBand])
   @@map("users")
+}
+
+model GpsSession {
+  id              String   @id @default(cuid())
+  repId           String   @map("rep_id")
+  // Exact blitz attribution for this session — supersedes the
+  // date-overlap approximation in /api/rep/scorecard. Set by the
+  // POST handler when the rep has exactly one ACTIVE blitz at
+  // submission time; left null when ambiguous (0 or >1 ACTIVE).
+  blitzId         String?  @map("blitz_id")
+  startedAt       DateTime @map("started_at")
+  endedAt         DateTime @map("ended_at")
+  durationSeconds Int      @map("duration_seconds")
+  pausedSeconds   Int      @default(0) @map("paused_seconds")
+  knockCount      Int      @default(0) @map("knock_count")
+  routeMiles      Float    @default(0) @map("route_miles")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  rep   User   @relation(fields: [repId], references: [id], onDelete: Cascade)
+  blitz Blitz? @relation(fields: [blitzId], references: [id])
+  edits GpsSessionEdit[]
+
+  @@index([repId, startedAt])
+  @@index([blitzId])
+  @@map("gps_sessions")
+}
+
+enum TimeLogEditStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Rep-requested edit to a GpsSession time log. Requires manager approval before
+// it's applied (Teki: "manager approval before editing"). The row persists
+// after review as the audit trail — who requested what, who reviewed, when.
+model GpsSessionEdit {
+  id                    String    @id @default(cuid())
+  sessionId             String    @map("session_id")
+  repId                 String    @map("rep_id")
+  // Proposed values; null means "leave that field unchanged" on apply.
+  proposedStartedAt     DateTime? @map("proposed_started_at")
+  proposedEndedAt       DateTime? @map("proposed_ended_at")
+  proposedPausedSeconds Int?      @map("proposed_paused_seconds")
+  proposedKnockCount    Int?      @map("proposed_knock_count")
+  reason                String?
+  status                TimeLogEditStatus @default(PENDING)
+  reviewedById          String?   @map("reviewed_by_id")
+  reviewedAt            DateTime? @map("reviewed_at")
+  reviewNote            String?   @map("review_note")
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  session  GpsSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  rep      User       @relation("TimeLogEditRep", fields: [repId], references: [id])
+  reviewer User?      @relation("TimeLogEditReviewer", fields: [reviewedById], references: [id])
+
+  @@index([status])
+  @@index([sessionId])
+  @@map("gps_session_edits")
 }
 
 model Lead {
@@ -566,10 +662,59 @@ model Blitz {
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
-  market  Market @relation(fields: [marketId], references: [id])
-  manager User   @relation(fields: [managerId], references: [id])
+  // Lead-filtering pipeline state (area-created blitzes). PENDING -> FILTERING
+  // -> READY. Defaults to READY so existing / non-area blitzes are never gated.
+  // Staffing is hard-blocked until READY. Total/checked drive the list-view
+  // progress bar; updatedAt powers staleness + ETA.
+  leadPrepStatus    String    @default("READY") @map("lead_prep_status")
+  leadPrepTotal     Int       @default(0) @map("lead_prep_total")
+  leadPrepChecked   Int       @default(0) @map("lead_prep_checked")
+  leadPrepUpdatedAt DateTime? @map("lead_prep_updated_at")
+  // For deferred (background) address discovery: the ZIP to pull when a blitz
+  // is created for an un-loaded ZIP, and where its addresses came from
+  // ("openaddresses" = full, "osm" = partial fallback).
+  leadPrepZip       String?   @map("lead_prep_zip")
+  leadPrepSource    String?   @map("lead_prep_source")
+
+  // Job board: when true, this blitz appears on the rep self-signup board.
+  // Auto-set true once lead_prep reaches READY (so reps never claim an
+  // unfiltered blitz). repCap caps claimed spots; overflow waitlists.
+  openForSignup Boolean @default(false) @map("open_for_signup")
+  // When a manager last broadcast this blitz to reps via push ("Notify reps").
+  // Notifications are EXPLICIT/manual — opening for signup never auto-notifies,
+  // so test blitzes don't spam reps. Null = never announced.
+  boardNotifiedAt DateTime? @map("board_notified_at")
+  // When this blitz first became claimable — anchors the premium 24h window.
+  openedForSignupAt DateTime? @map("opened_for_signup_at")
+  // When the manager finalized staffing ("Finish & notify reps"). Null = still a
+  // draft: reps get NO check-in pings until this is set.
+  staffingPublishedAt DateTime? @map("staffing_published_at")
+
+  // Fiber Blitz OS v2 staffing spec (Sprint 1). All nullable/defaulted — added
+  // ahead of the build, inert until the creation form + invite engine use them.
+  slug                 String?  @unique
+  compTierId           String?  @map("comp_tier_id")
+  travelModel          String?  @map("travel_model")       // company_fronted | rep_fronted_reimburse
+  travelCostCap        Int?     @map("travel_cost_cap")    // cents
+  minScoreRequired     Int?     @map("min_score_required")
+  qualificationFilters Json?    @map("qualification_filters")
+  territoryPolygons    Json?    @map("territory_polygons") // GeoJSON
+  dailyStartTime       String?  @map("daily_start_time")   // "HH:MM" local
+  dailyEndTime         String?  @map("daily_end_time")
+  timezone             String?
+  repSeatsBackup       Int      @default(0) @map("rep_seats_backup")
+  publicCardEnabled    Boolean  @default(false) @map("public_card_enabled")
+  publicCardToken      String?  @unique @map("public_card_token")
+  distributionMode     String   @default("both") @map("distribution_mode") // invites | board | both
+
+  market   Market    @relation(fields: [marketId], references: [id])
+  manager  User      @relation(fields: [managerId], references: [id])
+  compTier CompTier? @relation(fields: [compTierId], references: [id])
 
   assignments   BlitzAssignment[]
+  signups       BlitzSignup[]
+  invites       BlitzInvite[]
+  penaltyWaivers PenaltyWaiver[]
   expenses      BlitzExpense[]
   dailyReports  DailyReport[]
   goBacksRecorded GoBack[]
@@ -577,6 +722,7 @@ model Blitz {
   deductions    Deduction[]
   commissionRecords CommissionRecord[]
   doorKnockLeads DoorKnockLead[]
+  gpsSessions   GpsSession[]
   touchpoints    Touchpoint[]
 
   @@index([marketId])
@@ -584,6 +730,7 @@ model Blitz {
   @@index([status])
   @@index([startDate])
   @@index([endDate])
+  @@index([compTierId])
   @@map("blitzes")
 }
 
@@ -606,6 +753,158 @@ model BlitzAssignment {
   // Partial unique index: blitz_assignments_one_active_per_rep ON (rep_id) WHERE status NOT IN ('DEPARTED','REMOVED')
   // Added via raw SQL migration (Prisma does not support partial unique indexes in schema.prisma).
   @@map("blitz_assignments")
+}
+
+// Rep self-service job-board claim. Sits in front of BlitzAssignment: a rep
+// claims a spot (CLAIMED if under repCap, else WAITLISTED); a manager then
+// assigns territory, which flips the claim to ACTIVE and mirrors it into a
+// BlitzAssignment so the rest of the app (counts, rep's blitz list) is
+// unchanged. Withdraw/decline frees a spot and promotes the next waitlister.
+model BlitzSignup {
+  id           String            @id @default(cuid())
+  blitzId      String            @map("blitz_id")
+  repId        String            @map("rep_id")
+  status       BlitzSignupStatus @default(CLAIMED)
+  needsApproval Boolean          @default(false) @map("needs_approval") // restricted-band claim awaiting manager OK
+  waitPosition Int?              @map("wait_position") // 1-based; set only when WAITLISTED
+  claimedAt    DateTime          @default(now()) @map("claimed_at")
+  activatedAt  DateTime?         @map("activated_at")
+  decidedById  String?           @map("decided_by_id")
+  decidedAt    DateTime?         @map("decided_at")
+
+  blitz Blitz @relation(fields: [blitzId], references: [id], onDelete: Cascade)
+  rep   User  @relation(fields: [repId], references: [id])
+
+  // FBOS v2: a signup IS the spec's "BlitzSlot", so gates hang off it.
+  gates           CheckInGate[]
+  gateCompletions GateCompletion[]
+
+  @@unique([blitzId, repId]) // one claim per rep per blitz
+  @@index([blitzId, status])
+  @@index([repId])
+  @@map("blitz_signups")
+}
+
+// ── Fiber Blitz OS v2 staffing spec — Sprint 1 foundation models ──
+// Stub tables; no app logic yet. Invites drive Sprint 2, gates Sprints 5-6.
+
+enum BlitzInviteStatus {
+  SENT
+  VIEWED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+enum GateStatus {
+  PENDING
+  SENT
+  COMPLETED
+  MISSED
+  ESCALATED
+}
+
+// Preset comp library the create form selects from (spec §5.1).
+model CompTier {
+  id             String   @id @default(cuid())
+  name           String
+  baseCommission Int?     @map("base_commission") // cents
+  bonusStructure Json?    @map("bonus_structure")
+  travelNotes    String?  @map("travel_notes")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  blitzes Blitz[]
+
+  @@map("comp_tiers")
+}
+
+// §4.3 — targeted push/SMS invitations + accept funnel.
+model BlitzInvite {
+  id            String            @id @default(cuid())
+  blitzId       String            @map("blitz_id")
+  repId         String            @map("rep_id")
+  channel       String            @default("push") // push | sms | both
+  status        BlitzInviteStatus @default(SENT)
+  sentAt        DateTime          @default(now()) @map("sent_at")
+  viewedAt      DateTime?         @map("viewed_at")
+  acceptedAt    DateTime?         @map("accepted_at")
+  declinedAt    DateTime?         @map("declined_at")
+  expiresAt     DateTime?         @map("expires_at")
+  timeToAccept  Int?              @map("time_to_accept") // seconds; feeds rep scoring
+
+  blitz Blitz @relation(fields: [blitzId], references: [id], onDelete: Cascade)
+  rep   User  @relation(fields: [repId], references: [id])
+
+  @@unique([blitzId, repId])
+  @@index([blitzId, status])
+  @@index([repId])
+  @@map("blitz_invites")
+}
+
+// §4.5 — scheduled check-in gate per slot (G0-G5). Slot = BlitzSignup.
+model CheckInGate {
+  id                   String     @id @default(cuid())
+  blitzSlotId          String     @map("blitz_slot_id")
+  gateId               String     @map("gate_id") // 'G0'..'G5'
+  scheduledTriggerTime DateTime?  @map("scheduled_trigger_time")
+  requiredActionType   String?    @map("required_action_type") // acknowledge|checklist|eta_submission|geofence|production_numbers
+  payload              Json?
+  status               GateStatus @default(PENDING)
+  escalationTargetId   String?    @map("escalation_target_id")
+  scoreImpact          Float      @default(0) @map("score_impact")
+  nudges               Int        @default(0)
+  lastNudgedAt         DateTime?  @map("last_nudged_at")
+  createdAt            DateTime   @default(now()) @map("created_at")
+
+  slot             BlitzSignup @relation(fields: [blitzSlotId], references: [id], onDelete: Cascade)
+  escalationTarget User?       @relation("GateEscalationTarget", fields: [escalationTargetId], references: [id])
+
+  @@unique([blitzSlotId, gateId])
+  @@index([status, scheduledTriggerTime])
+  @@map("check_in_gates")
+}
+
+// §4.4 — per-gate completion record feeding the readiness score.
+model GateCompletion {
+  id             String      @id @default(cuid())
+  blitzSlotId    String      @map("blitz_slot_id")
+  gateId         String      @map("gate_id") // 'G0'..'G5'
+  completedAt    DateTime?   @map("completed_at")
+  onFirstPush    Boolean?    @map("on_first_push")
+  nudgesRequired Int         @default(0) @map("nudges_required")
+
+  slot BlitzSignup @relation(fields: [blitzSlotId], references: [id], onDelete: Cascade)
+
+  @@unique([blitzSlotId, gateId])
+  @@map("gate_completions")
+}
+
+enum WaiverStatus {
+  REQUESTED
+  APPROVED
+  DENIED
+}
+
+// #8 No-penalty request: rep asks to waive the readiness penalty for abandoning
+// a blitz; the manager approves with a reason. An APPROVED waiver makes
+// recomputeReadiness skip that (rep, blitz)'s missed gates.
+model PenaltyWaiver {
+  id          String       @id @default(cuid())
+  repId       String       @map("rep_id")
+  blitzId     String       @map("blitz_id")
+  reason      String
+  status      WaiverStatus @default(REQUESTED)
+  decidedById String?      @map("decided_by_id")
+  decidedAt   DateTime?    @map("decided_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  rep   User  @relation(fields: [repId], references: [id], onDelete: Cascade)
+  blitz Blitz @relation(fields: [blitzId], references: [id], onDelete: Cascade)
+
+  @@unique([repId, blitzId])
+  @@index([status])
+  @@map("penalty_waivers")
 }
 
 model BlitzExpense {
@@ -657,6 +956,8 @@ model GoBack {
   status           GoBackStatus @default(SCHEDULED)
   followUpDate     DateTime     @map("follow_up_date")
   notes            String?
+  // Set once a push reminder has been sent so the cron doesn't re-notify.
+  reminderSentAt   DateTime?    @map("reminder_sent_at")
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
 
@@ -670,6 +971,22 @@ model GoBack {
   @@index([status])
   @@index([followUpDate])
   @@map("go_backs")
+}
+
+// Web-push subscription for a rep's installed PWA (one per browser/device).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  repId     String   @map("rep_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  rep User @relation(fields: [repId], references: [id], onDelete: Cascade)
+
+  @@index([repId])
+  @@map("push_subscriptions")
 }
 
 model Sale {
@@ -715,6 +1032,9 @@ model InstallUpload {
   rowCount       Int      @map("row_count")
   matchedCount   Int      @default(0) @map("matched_count")
   unmatchedCount Int      @default(0) @map("unmatched_count")
+  exceptionCount Int      @default(0) @map("exception_count")
+  parseMethod    String?  @map("parse_method") // "tabular-mapping" | "document"
+  notes          String?  // AI parser caveats (ambiguous columns, etc.)
   uploadedAt     DateTime @default(now()) @map("uploaded_at")
 
   carrier    Carrier @relation(fields: [carrierId], references: [id])
@@ -735,9 +1055,19 @@ model InstallRecord {
   externalId      String?             @map("external_id")
   customerName    String              @map("customer_name")
   customerAddress String              @map("customer_address")
-  installDate     DateTime            @map("install_date")
+  installDate     DateTime?           @map("install_date") // nullable: unparseable dates are flagged, not faked
   status          InstallRecordStatus @default(UNMATCHED)
   matchedSaleId   String?             @unique @map("matched_sale_id")
+  matchScore           Float?         @map("match_score")            // 0–1 overall match score
+  matchConfidence      String?        @map("match_confidence")       // "high" | "medium"
+  extractionConfidence Float?         @map("extraction_confidence")  // AI extraction confidence 0–1
+  rawData              String?        @map("raw_data")               // original row / extract, for audit
+  // Rep attribution straight from the carrier report's rep/agent column, so
+  // installs can be credited per-rep without a matched Sale. repName = as
+  // extracted; repId = resolved user (scalar, no relation).
+  repName              String?        @map("rep_name")
+  repId                String?        @map("rep_id")
+  orderStatus          String?        @map("order_status") // carrier's order status text (ORDER COMPLETE, CANCELLED, …)
   createdAt       DateTime            @default(now()) @map("created_at")
 
   upload      InstallUpload @relation(fields: [uploadId], references: [id])
@@ -750,6 +1080,8 @@ model InstallRecord {
   @@index([carrierId])
   @@index([status])
   @@index([installDate])
+  @@index([repId])
+  @@index([carrierId, externalId])
   @@map("install_records")
 }
 
@@ -1031,10 +1363,28 @@ model DoorKnockLead {
   city            String
   state           String
   zip             String
+  // Geographic coordinates — required by the rep-assignment planner to
+  // build walkable territory clusters. Nullable because legacy / manual /
+  // CSV-imported leads may not have them.
+  lat             Float?
+  lng             Float?
+  // Coordinate provenance. When a rep dispositions a door, their phone GPS
+  // (if a good fix) overwrites lat/lng in place — the rep standing at the
+  // door is the most accurate source we have. coordSource records where the
+  // current lat/lng came from ("rep_gps" once verified in the field, else the
+  // import source) so a later bulk re-import never clobbers a rep-verified pin.
+  coordSource     String?              @map("coord_source")
+  coordsUpdatedAt DateTime?            @map("coords_updated_at")
   disposition     DoorKnockDisposition @default(PENDING)
   notes           String?
   assignedRepId   String?              @map("assigned_rep_id")
   blitzId         String?              @map("blitz_id")
+  // Suppression: when a lead's address matches a known current customer
+  // (existing install / sale / sold lead, or — later — a carrier partner
+  // export), it's flagged so reps don't waste time knocking a door that
+  // already has service. Hidden from reps; still visible to admins.
+  suppressed        Boolean            @default(false)
+  suppressionReason String?            @map("suppression_reason")
   goBackId        String?              @unique @map("go_back_id")
   uploadedById    String               @map("uploaded_by_id")
   uploadBatchId   String?              @map("upload_batch_id")
@@ -1046,13 +1396,80 @@ model DoorKnockLead {
   uploadedBy   User    @relation("UploadedDoorKnockLeads", fields: [uploadedById], references: [id])
   blitz        Blitz?  @relation(fields: [blitzId], references: [id])
   goBack       GoBack? @relation(fields: [goBackId], references: [id])
+  events       DoorKnockLeadEvent[]
 
   @@index([assignedRepId])
   @@index([blitzId])
   @@index([disposition])
   @@index([uploadBatchId])
   @@index([uploadedById])
+  @@index([suppressed])
   @@map("door_knock_leads")
+}
+
+// Per-lead action history — one row per disposition action so reps can
+// re-open a pin and see what was done and when.
+model DoorKnockLeadEvent {
+  id          String               @id @default(cuid())
+  leadId      String               @map("lead_id")
+  disposition DoorKnockDisposition
+  note        String?
+  createdById String?              @map("created_by_id")
+  createdAt   DateTime             @default(now()) @map("created_at")
+
+  lead DoorKnockLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("door_knock_lead_events")
+}
+
+// Cached per-address result of the Kinetic (gokinetic.com) availability
+// check. Keyed by canonical address (canonicalizeAddress(street)|zip5) so a
+// ZIP scanned for one blitz is reused by every other — the scan worker only
+// hits gokinetic for addresses with no fresh row here. `isCustomer` drives
+// lead suppression (reps don't knock current customers).
+model KineticAddressStatus {
+  id         String  @id @default(cuid())
+  addressKey String  @unique @map("address_key")
+
+  // Normalized signals
+  serviceable Boolean @default(false)
+  isCustomer  Boolean @default(false)
+  comingSoon  Boolean @default(false)
+
+  // Raw signals from the API, kept so we can re-derive the above if we
+  // refine which field means "current customer".
+  validationResult String? @map("validation_result")
+  maxQual          String? @map("max_qual")
+  techType         String? @map("tech_type")
+  billingStatus    String? @map("billing_status")
+  estCompletionDt  String? @map("est_completion_dt")
+  raw              String?
+
+  checkedAt DateTime @default(now()) @map("checked_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isCustomer])
+  @@index([serviceable])
+  @@index([checkedAt])
+  @@map("kinetic_address_status")
+}
+
+// Authoritative current-customer addresses from a carrier/partner export
+// (e.g. Teki's Chuzo customer list). Keyed by canonical address so it feeds
+// the suppression engine exactly like the in-DB sources. Re-importing an
+// updated export just upserts.
+model ServicedAddress {
+  id         String   @id @default(cuid())
+  addressKey String   @unique @map("address_key")
+  source     String   // e.g. "chuzo-2026-06-04"
+  rawAddress String?  @map("raw_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([source])
+  @@map("serviced_addresses")
 }
 
 model DevicePushToken {
@@ -1134,25 +1551,6 @@ model AgreementAcceptance {
   @@unique([userId, agreementId])
   @@index([userId])
   @@map("agreement_acceptances")
-}
-
-// GPS tracking sessions uploaded from the mobile app (one per door-knock shift).
-model GpsSession {
-  id              String   @id @default(cuid())
-  repId           String   @map("rep_id")
-  startedAt       DateTime @map("started_at")
-  endedAt         DateTime @map("ended_at")
-  durationSeconds Int      @default(0) @map("duration_seconds")
-  pausedSeconds   Int      @default(0) @map("paused_seconds")
-  knockCount      Int      @default(0) @map("knock_count")
-  routeMiles      Float    @default(0) @map("route_miles")
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  rep User @relation(fields: [repId], references: [id], onDelete: Cascade)
-
-  @@index([repId])
-  @@index([startedAt])
-  @@map("gps_sessions")
 }
 
 // ─── Stripe Connect payouts ─────────────────────────────────────────────────

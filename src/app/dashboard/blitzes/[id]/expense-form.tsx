@@ -31,14 +31,25 @@ const expenseSchema = z.object({
 type ExpenseFormInput = { category: "HOUSING" | "TRAVEL" | "OPERATIONAL" | "OTHER"; amount: string; description: string; date: string }
 type ExpenseFormValues = z.infer<typeof expenseSchema>
 
+interface ExistingExpense {
+  id: string
+  category: "HOUSING" | "TRAVEL" | "OPERATIONAL" | "OTHER"
+  amount: number
+  description: string
+  date: string | Date
+}
+
 interface ExpenseFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   blitzId: string
   onSuccess?: () => void
+  expense?: ExistingExpense | null
 }
 
-export function ExpenseForm({ open, onOpenChange, blitzId, onSuccess }: ExpenseFormProps) {
+export function ExpenseForm({ open, onOpenChange, blitzId, onSuccess, expense }: ExpenseFormProps) {
+  const isEdit = !!expense
+
   const {
     register,
     handleSubmit,
@@ -53,7 +64,16 @@ export function ExpenseForm({ open, onOpenChange, blitzId, onSuccess }: ExpenseF
   })
 
   React.useEffect(() => {
-    if (open) {
+    if (!open) return
+    if (expense) {
+      const d = typeof expense.date === "string" ? expense.date.slice(0, 10) : expense.date.toISOString().slice(0, 10)
+      reset({
+        category: expense.category,
+        date: d,
+        amount: String(expense.amount),
+        description: expense.description,
+      })
+    } else {
       reset({
         category: "OPERATIONAL",
         date: new Date().toISOString().split("T")[0],
@@ -61,11 +81,14 @@ export function ExpenseForm({ open, onOpenChange, blitzId, onSuccess }: ExpenseF
         description: "",
       })
     }
-  }, [open, reset])
+  }, [open, expense, reset])
 
   async function onSubmit(values: z.infer<typeof expenseSchema>) {
-    const res = await fetch(`/api/blitzes/${blitzId}/expenses`, {
-      method: "POST",
+    const url = expense
+      ? `/api/blitzes/${blitzId}/expenses/${expense.id}`
+      : `/api/blitzes/${blitzId}/expenses`
+    const res = await fetch(url, {
+      method: expense ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(values),
     })
@@ -84,7 +107,7 @@ export function ExpenseForm({ open, onOpenChange, blitzId, onSuccess }: ExpenseF
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent onClose={() => onOpenChange(false)} className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Expense</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit Expense" : "Add Expense"}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -151,7 +174,7 @@ export function ExpenseForm({ open, onOpenChange, blitzId, onSuccess }: ExpenseF
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Adding..." : "Add Expense"}
+              {isSubmitting ? "Saving..." : isEdit ? "Save Changes" : "Add Expense"}
             </Button>
           </DialogFooter>
         </form>

@@ -123,7 +123,7 @@ export default async function InstallsPage() {
         </div>
         <div className="flex gap-3">
           <Link
-            href="/installs/upload"
+            href="/dashboard/installs/upload"
             className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             <Upload className="h-4 w-4" />
@@ -152,9 +152,9 @@ export default async function InstallsPage() {
       {/* Quick Links */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { href: "/installs/upload", label: "Upload CSV", desc: "Import carrier install data" },
-          { href: "/installs/review", label: "Review Records", desc: "Match and resolve install records" },
-          { href: "/installs/exceptions", label: "Exception Queue", desc: "Manage disputed installs" },
+          { href: "/dashboard/installs/upload", label: "Upload CSV", desc: "Import carrier install data" },
+          { href: "/dashboard/installs/review", label: "Review Records", desc: "Match and resolve install records" },
+          { href: "/dashboard/installs/exceptions", label: "Exception Queue", desc: "Manage disputed installs" },
         ].map((link) => (
           <Link key={link.href} href={link.href}>
             <Card className="hover:border-primary/50 transition-colors cursor-pointer">

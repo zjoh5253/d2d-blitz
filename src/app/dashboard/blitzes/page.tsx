@@ -16,6 +16,27 @@ export default async function BlitzesPage() {
     orderBy: { createdAt: "desc" },
   })
 
+  // Per-blitz address counts for the list hover. Split by `suppressed` so we can
+  // show the FILTERED (knockable) count up front and the total/filtered-out
+  // breakdown on hover. One grouped query for the whole page.
+  const leadCounts = await db.doorKnockLead.groupBy({
+    by: ["blitzId", "suppressed"],
+    where: { blitzId: { in: blitzes.map((b) => b.id) } },
+    _count: { _all: true },
+  })
+  const countsByBlitz = new Map<string, { filtered: number; suppressed: number }>()
+  for (const c of leadCounts) {
+    if (!c.blitzId) continue
+    const e = countsByBlitz.get(c.blitzId) ?? { filtered: 0, suppressed: 0 }
+    if (c.suppressed) e.suppressed += c._count._all
+    else e.filtered += c._count._all
+    countsByBlitz.set(c.blitzId, e)
+  }
+  const blitzesWithCounts = blitzes.map((b) => {
+    const c = countsByBlitz.get(b.id) ?? { filtered: 0, suppressed: 0 }
+    return { ...b, addresses: { filtered: c.filtered, suppressed: c.suppressed, total: c.filtered + c.suppressed } }
+  })
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -32,7 +53,7 @@ export default async function BlitzesPage() {
         </Link>
       </div>
 
-      <BlitzesClient blitzes={blitzes as Parameters<typeof BlitzesClient>[0]["blitzes"]} />
+      <BlitzesClient blitzes={blitzesWithCounts as Parameters<typeof BlitzesClient>[0]["blitzes"]} />
     </div>
   )
 }

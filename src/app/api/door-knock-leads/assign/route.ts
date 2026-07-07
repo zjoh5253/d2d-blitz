@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { z } from "zod"
+import { activateRepOnBlitz } from "@/lib/blitz-activation"
 
 const assignSchema = z.object({
   leadIds: z.array(z.string()).min(1, "At least one lead is required"),
@@ -44,6 +45,14 @@ export async function PUT(request: NextRequest) {
       where: { id: { in: leadIds } },
       data: { assignedRepId: repId },
     })
+
+    // Job board: assigning territory to a rep who CLAIMED this blitz on the
+    // board activates their signup (mirror assignment + start gates). No signup
+    // (the old direct-assign flow) → helper no-ops, behavior unchanged.
+    if (result.count > 0) {
+      const lead = await db.doorKnockLead.findFirst({ where: { id: { in: leadIds } }, select: { blitzId: true } })
+      if (lead?.blitzId) await activateRepOnBlitz(lead.blitzId, repId, session.user.id)
+    }
 
     return NextResponse.json({
       assigned: result.count,

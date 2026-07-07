@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSessionFromRequest } from "@/lib/auth-mobile"
 import { db } from "@/lib/db"
+import { computeGpsPinCorrection } from "@/lib/gps-pin-correction"
 import type { DoorKnockDisposition } from "@prisma/client"
-import { z } from "zod"
-import { DoorKnockDispositionSchema } from "@/lib/validate"
 
 const VALID_DISPOSITIONS: DoorKnockDisposition[] = [
   "PENDING",
@@ -12,12 +11,6 @@ const VALID_DISPOSITIONS: DoorKnockDisposition[] = [
   "SOLD",
   "NOT_INTERESTED",
 ]
-
-const updateLeadSchema = z.object({
-  disposition: DoorKnockDispositionSchema.optional(),
-  notes: z.string().nullable().optional(),
-  goBackId: z.string().nullable().optional(),
-})
 
 export async function GET(
   request: NextRequest,
@@ -37,6 +30,11 @@ export async function GET(
         assignedRep: { select: { id: true, name: true } },
         blitz: { select: { id: true, name: true } },
         goBack: true,
+        events: {
+          orderBy: { createdAt: "desc" },
+          take: 25,
+          select: { id: true, disposition: true, note: true, createdAt: true },
+        },
       },
     })
 
@@ -74,14 +72,6 @@ export async function PUT(
 
     const { id } = await params
     const body = await request.json()
-    const parsed = updateLeadSchema.safeParse(body)
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Validation failed", issues: parsed.error.flatten() },
-        { status: 400 }
-      )
-    }
 
     const lead = await db.doorKnockLead.findUnique({ where: { id } })
     if (!lead) {
@@ -97,23 +87,75 @@ export async function PUT(
     }
 
     const data: Record<string, unknown> = {}
-    const validatedBody = parsed.data
 
-    if (validatedBody.disposition) {
-      data.disposition = validatedBody.disposition
-      if (validatedBody.disposition !== "PENDING") {
+    if (body.disposition && VALID_DISPOSITIONS.includes(body.disposition)) {
+      data.disposition = body.disposition
+      if (body.disposition !== "PENDING") {
         data.resolvedAt = new Date()
       } else {
         data.resolvedAt = null
       }
     }
 
-    if (validatedBody.notes !== undefined) {
-      data.notes = validatedBody.notes || null
+    if (body.notes !== undefined) {
+      data.notes = body.notes || null
     }
 
-    if (validatedBody.goBackId !== undefined) {
-      data.goBackId = validatedBody.goBackId
+    // Promote the rep's at-the-door GPS fix to the lead's canonical pin when it
+    // passes the accuracy + proximity gate (see computeGpsPinCorrection).
+    const pinUpdate = computeGpsPinCorrection({
+      isRealDisposition: !!data.disposition && data.disposition !== "PENDING",
+      leadLat: lead.lat,
+      leadLng: lead.lng,
+      gpsLat: body.gpsLat,
+      gpsLng: body.gpsLng,
+      gpsAccuracy: body.gpsAccuracy,
+    })
+    if (pinUpdate) {
+      data.lat = pinUpdate.lat
+      data.lng = pinUpdate.lng
+      data.coordSource = pinUpdate.coordSource
+      data.coordsUpdatedAt = pinUpdate.coordsUpdatedAt
+    }
+
+    if (body.goBackId !== undefined) {
+      data.goBackId = body.goBackId
+    }
+
+    // Go-back scheduling: when a lead is marked GO_BACK with a follow-up
+    // date/time (+ optional notes), create or update the linked GoBack so it
+    // shows up in the rep's go-backs list. Requires the lead to be on a blitz.
+    const gb = body.goBack as { followUpDate?: string; notes?: string } | undefined
+    if (data.disposition === "GO_BACK" && gb?.followUpDate && lead.blitzId) {
+      const followUpDate = new Date(gb.followUpDate)
+      if (!Number.isNaN(followUpDate.getTime())) {
+        const noteVal = gb.notes?.trim() ? gb.notes.trim() : null
+        if (lead.goBackId) {
+          await db.goBack.update({
+            where: { id: lead.goBackId },
+            data: { followUpDate, notes: noteVal, status: "SCHEDULED" },
+          })
+        } else {
+          const prospectName =
+            [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim() ||
+            `${lead.streetNumber} ${lead.streetName}`.trim()
+          const prospectAddress =
+            `${lead.streetNumber} ${lead.streetName}, ${lead.city}, ${lead.state} ${lead.zip}`.trim()
+          const created = await db.goBack.create({
+            data: {
+              repId: lead.assignedRepId ?? session.user.id,
+              blitzId: lead.blitzId,
+              prospectName,
+              prospectAddress,
+              followUpDate,
+              notes: noteVal,
+            },
+          })
+          data.goBackId = created.id
+        }
+        // Mirror the note onto the lead so it shows on the lead card too.
+        data.notes = noteVal
+      }
     }
 
     const updated = await db.doorKnockLead.update({
@@ -125,6 +167,18 @@ export async function PUT(
         goBack: true,
       },
     })
+
+    // Record the action in the lead's history so it can be reviewed later.
+    if (data.disposition) {
+      await db.doorKnockLeadEvent.create({
+        data: {
+          leadId: id,
+          disposition: data.disposition as DoorKnockDisposition,
+          note: (data.notes as string | null | undefined) ?? null,
+          createdById: session.user.id,
+        },
+      })
+    }
 
     return NextResponse.json(updated)
   } catch (error) {

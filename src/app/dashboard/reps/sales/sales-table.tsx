@@ -32,7 +32,7 @@ function getSaleStatusVariant(
   }
 }
 
-const columns = [
+const baseColumns = [
   {
     key: "customerName",
     label: "Customer",
@@ -73,13 +73,27 @@ const columns = [
   },
 ]
 
-export function SalesTable({ data }: { data: Record<string, unknown>[] }) {
+const repColumn = {
+  key: "rep.name",
+  label: "Rep",
+  sortable: true,
+  render: (value: unknown) => (value ? String(value) : "—"),
+}
+
+export function SalesTable({
+  data,
+  showRep = false,
+}: {
+  data: Record<string, unknown>[]
+  showRep?: boolean
+}) {
+  const columns = showRep ? [repColumn, ...baseColumns] : baseColumns
   return (
     <DataTable
       data={data}
       columns={columns}
       searchable
-      searchKeys={["customerName", "customerAddress", "orderConfirmation"]}
+      searchKeys={["customerName", "customerAddress", "orderConfirmation", "rep.name"]}
       pagination
       pageSize={15}
       emptyMessage="No sales found."

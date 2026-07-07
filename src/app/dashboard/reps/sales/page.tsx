@@ -27,6 +27,7 @@ interface SaleRow {
   submittedAt: Date
   carrier: { name: string }
   blitz: { name: string }
+  rep: { id: string; name: string | null; email: string }
 }
 
 export default async function RepSalesPage({
@@ -37,8 +38,10 @@ export default async function RepSalesPage({
   const session = await auth()
   if (!session?.user) redirect("/login")
 
-  const repId = session.user.id
   const { status: statusFilter } = await searchParams
+
+  const isManager =
+    session.user.role === "ADMIN" || session.user.role === "FIELD_MANAGER"
 
   const validStatuses: SaleStatus[] = [
     "SUBMITTED",
@@ -53,12 +56,19 @@ export default async function RepSalesPage({
       ? (statusFilter as SaleStatus)
       : undefined
 
+  // Admins and managers see all sales; reps see only their own. The
+  // sidebar exposes this page to all three roles so it has to handle the
+  // dual-purpose case.
   const sales = await db.sale.findMany({
     where: {
-      repId,
+      ...(isManager ? {} : { repId: session.user.id }),
       ...(whereStatus ? { status: whereStatus } : {}),
     },
-    include: { carrier: true, blitz: true },
+    include: {
+      carrier: true,
+      blitz: true,
+      rep: { select: { id: true, name: true, email: true } },
+    },
     orderBy: { submittedAt: "desc" },
   })
 
@@ -66,23 +76,30 @@ export default async function RepSalesPage({
     ...s,
     "carrier.name": s.carrier.name,
     "blitz.name": s.blitz.name,
+    "rep.name": s.rep.name ?? s.rep.email,
   })) as unknown as Record<string, unknown>[]
 
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">My Sales</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {isManager ? "Sales" : "My Sales"}
+          </h1>
           <p className="text-muted-foreground">
-            View and manage your submitted sales.
+            {isManager
+              ? "All sales submitted across the org."
+              : "View and manage your submitted sales."}
           </p>
         </div>
-        <Link href="/dashboard/reps/sales/new">
-          <Button>
-            <Plus className="h-4 w-4" />
-            New Sale
-          </Button>
-        </Link>
+        {!isManager && (
+          <Link href="/dashboard/reps/sales/new">
+            <Button>
+              <Plus className="h-4 w-4" />
+              New Sale
+            </Button>
+          </Link>
+        )}
       </div>
 
       {/* Status Filter */}
@@ -114,7 +131,7 @@ export default async function RepSalesPage({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <SalesTable data={tableData} />
+          <SalesTable data={tableData} showRep={isManager} />
         </CardContent>
       </Card>
     </div>

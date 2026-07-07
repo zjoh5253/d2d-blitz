@@ -22,6 +22,9 @@ import {
   X,
   LayoutDashboard,
   ClipboardList,
+  Timer,
+  Radar,
+  FileSpreadsheet,
   BanknoteArrowUp,
   Coins,
   Percent,
@@ -140,6 +143,12 @@ const NAV_GROUPS: NavGroup[] = [
         roles: ["ADMIN", "RECRUITER"],
       },
       {
+        title: "Approvals",
+        href: "/dashboard/onboarding",
+        icon: <UserPlus className="size-[18px]" />,
+        roles: ["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"],
+      },
+      {
         title: "Tiers",
         href: "/dashboard/governance",
         icon: <Shield className="size-[18px]" />,
@@ -217,6 +226,30 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/dashboard/manager/reps",
         icon: <Users className="size-[18px]" />,
         roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"],
+      },
+      {
+        title: "Rep Scorecards",
+        href: "/dashboard/manager/scorecards",
+        icon: <Timer className="size-[18px]" />,
+        roles: ["ADMIN", "FIELD_MANAGER"],
+      },
+      {
+        title: "Kinetic Intel",
+        href: "/dashboard/kinetic-intel",
+        icon: <Radar className="size-[18px]" />,
+        roles: ["ADMIN", "FIELD_MANAGER"],
+      },
+      {
+        title: "Sales Report (CSV)",
+        href: "/dashboard/reports/sales-activity",
+        icon: <FileSpreadsheet className="size-[18px]" />,
+        roles: ["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"],
+      },
+      {
+        title: "Time-Log Edits",
+        href: "/dashboard/manager/time-edits",
+        icon: <Timer className="size-[18px]" />,
+        roles: ["ADMIN", "FIELD_MANAGER"],
       },
       {
         title: "Manager Blitzes",
