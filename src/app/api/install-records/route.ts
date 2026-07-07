@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { z } from "zod";
+import { parseQuery, optionalId, InstallRecordStatusSchema } from "@/lib/validate";
+import { captureApiError } from "@/lib/sentry";
+
+const installRecordsQuerySchema = z.object({
+  uploadId: optionalId,
+  status: InstallRecordStatusSchema.optional(),
+  carrierId: optionalId,
+});
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,15 +18,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const ALLOWED_ROLES = ["ADMIN", "EXECUTIVE", "MARKET_OWNER", "FIELD_MANAGER"];
+    if (!ALLOWED_ROLES.includes(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
-    const uploadId = searchParams.get("uploadId");
-    const status = searchParams.get("status");
-    const carrierId = searchParams.get("carrierId");
+    const parsed = parseQuery(searchParams, installRecordsQuerySchema);
+
+    if (!parsed.success) {
+      return parsed.response;
+    }
+
+    const { uploadId, status, carrierId } = parsed.data;
 
     const records = await db.installRecord.findMany({
       where: {
         ...(uploadId ? { uploadId } : {}),
-        ...(status ? { status: status as "MATCHED" | "UNMATCHED" | "DISPUTED" } : {}),
+        ...(status ? { status } : {}),
         ...(carrierId ? { carrierId } : {}),
       },
       orderBy: { createdAt: "desc" },
@@ -35,6 +53,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(records);
   } catch (error) {
     console.error("[GET /api/install-records]", error);
+    captureApiError(error, "[GET /api/install-records]");
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

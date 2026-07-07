@@ -15,6 +15,7 @@ const ROLE_PROTECTED_ROUTES: Array<{ prefix: string; roles: string[] }> = [
   { prefix: "/dashboard/installs", roles: ["ADMIN"] },
   { prefix: "/dashboard/compensation", roles: ["ADMIN"] },
   { prefix: "/dashboard/governance", roles: ["ADMIN", "FIELD_MANAGER"] },
+  { prefix: "/dashboard/compliance/holds", roles: ["ADMIN", "EXECUTIVE"] },
   { prefix: "/dashboard/compliance", roles: ["ADMIN", "FIELD_MANAGER"] },
   { prefix: "/dashboard/inbound", roles: ["ADMIN", "CALL_CENTER"] },
   // Sales & Activity CSV report — managers need it too, so it's opened up

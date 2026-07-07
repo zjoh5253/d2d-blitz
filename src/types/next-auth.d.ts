@@ -5,11 +5,13 @@ declare module "next-auth" {
     user: {
       id: string;
       role: string;
-    } & DefaultSession["user"];
+      emailVerified: boolean;
+    } & Omit<NonNullable<DefaultSession["user"]>, "emailVerified">;
   }
 
   interface User {
     role: string;
+    emailVerified: boolean;
   }
 }
 
@@ -17,5 +19,6 @@ declare module "next-auth/jwt" {
   interface JWT extends DefaultJWT {
     id: string;
     role: string;
+    emailVerified: boolean;
   }
 }

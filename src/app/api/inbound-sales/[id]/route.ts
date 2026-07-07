@@ -28,6 +28,11 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const ALLOWED_ROLES = ["CALL_CENTER", "ADMIN", "EXECUTIVE", "FIELD_MANAGER"];
+    if (!ALLOWED_ROLES.includes(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { id } = await params;
 
     const sale = await db.inboundSale.findUnique({
@@ -69,6 +74,11 @@ export async function PUT(
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const ALLOWED_ROLES = ["CALL_CENTER", "ADMIN", "EXECUTIVE", "FIELD_MANAGER"];
+    if (!ALLOWED_ROLES.includes(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { id } = await params;

@@ -108,7 +108,7 @@ export default async function PublicBlitzCard({ params, searchParams }: Params) 
             <Link href="/rep/board" className="block rounded-xl bg-gray-900 px-4 py-3 text-center font-semibold text-white">
               Claim a slot
             </Link>
-            <Link href={`/onboarding?ref=${refParam}`} className="block rounded-xl border border-gray-300 bg-white px-4 py-3 text-center font-semibold text-gray-800">
+            <Link href={`/join?ref=${refParam}`} className="block rounded-xl border border-gray-300 bg-white px-4 py-3 text-center font-semibold text-gray-800">
               New to Fiber Blitz? Start here
             </Link>
           </div>

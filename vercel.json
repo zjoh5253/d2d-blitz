@@ -5,6 +5,9 @@
   "installCommand": "npm install",
   "crons": [
     { "path": "/api/cron/suppress", "schedule": "0 9 * * *" },
-    { "path": "/api/cron/precreate-scan", "schedule": "0 10 * * *" }
+    { "path": "/api/cron/precreate-scan", "schedule": "0 10 * * *" },
+    { "path": "/api/cron/payout-batch", "schedule": "0 2 * * *" },
+    { "path": "/api/cron/payout-sla-check", "schedule": "30 2 * * *" },
+    { "path": "/api/cron/holdback-release", "schedule": "0 3 * * *" }
   ]
 }

@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { DollarSign, Clock, CheckCircle, Settings } from "lucide-react";
+import { DollarSign, Clock, CheckCircle, Settings, Coins } from "lucide-react";
 import { format } from "date-fns";
 
 export default async function CompensationPage() {
@@ -54,6 +54,12 @@ export default async function CompensationPage() {
     }),
   ]);
 
+  const heldAgg = await db.holdback.aggregate({
+    where: { status: "HELD" },
+    _sum: { amount: true },
+  });
+  const heldTotal = heldAgg._sum.amount ?? 0;
+
   const totalPayable = commissions
     .filter((c) => c.status === "ELIGIBLE" || c.status === "PENDING")
     .reduce((sum, c) => sum + c.repPay, 0);
@@ -85,6 +91,12 @@ export default async function CompensationPage() {
       value: `$${paidThisPeriod.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: CheckCircle,
       color: "text-blue-500",
+    },
+    {
+      label: "Held (Retention)",
+      value: `$${heldTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      icon: Coins,
+      color: "text-amber-500",
     },
   ];
 
@@ -130,7 +142,7 @@ export default async function CompensationPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {stats.map((stat) => (
           <Card key={stat.label}>
             <CardContent className="pt-6">

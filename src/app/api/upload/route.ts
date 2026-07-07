@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import Papa from "papaparse";
+import { captureServerEvent } from "@/lib/posthog";
 
 type ColumnMapping = {
   customerName: string;
@@ -19,6 +20,11 @@ export async function POST(request: NextRequest) {
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const ALLOWED_ROLES = ["ADMIN", "EXECUTIVE", "MARKET_OWNER", "FIELD_MANAGER"];
+    if (!ALLOWED_ROLES.includes(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const formData = await request.formData();
@@ -196,6 +202,14 @@ export async function POST(request: NextRequest) {
       where: { id: upload.id },
       data: { matchedCount, unmatchedCount },
     });
+
+    captureServerEvent(session.user.id, "csv_import", {
+      upload_id: upload.id,
+      carrier_id: carrierId,
+      row_count: rowCount,
+      matched_count: matchedCount,
+      unmatched_count: unmatchedCount,
+    })
 
     return NextResponse.json({
       uploadId: upload.id,

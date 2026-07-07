@@ -1,41 +1,41 @@
-import { Zap, Trophy, DollarSign, MapPin, UserPlus, Smartphone } from "lucide-react";
+import { MapPin, Footprints, DollarSign, Trophy, CalendarClock, TrendingUp } from "lucide-react";
 
 const features = [
   {
-    icon: Zap,
-    title: "Blitz Command Center",
+    icon: MapPin,
+    title: "Find Your Next Blitz",
     description:
-      "Create, staff, and manage time-boxed door-to-door campaigns with military precision.",
+      "Browse active campaigns and see your market, carrier, dates, and housing before you commit.",
   },
   {
-    icon: Trophy,
-    title: "Real-Time Leaderboards",
+    icon: Footprints,
+    title: "Every Knock Counts",
     description:
-      "Podium-style rankings with market filters that drive healthy competition.",
+      "GPS-tracked shifts log your doors, miles, and hours automatically. Your hustle, on the record.",
   },
   {
     icon: DollarSign,
-    title: "Commission Engine",
+    title: "Real-Time Earnings",
     description:
-      "Auto-calculate earnings with configurable stacks, overrides, and payout batches.",
+      "Watch commissions build with every verified install — eligible, pending, and paid, plus your lifetime total.",
   },
   {
-    icon: MapPin,
-    title: "Field Intelligence",
+    icon: Trophy,
+    title: "Climb the Leaderboard",
     description:
-      "Territory management and geographic targeting to maximize door coverage.",
+      "Live rankings by verified installs. Week, month, season, or lifetime — see exactly where you stand.",
   },
   {
-    icon: UserPlus,
-    title: "Recruiting Pipeline",
+    icon: CalendarClock,
+    title: "Never Lose a Deal",
     description:
-      "Kanban-style pipeline from initial screening to fully onboarded field rep.",
+      "Go-back reminders and 48-hour / 24-hour / install-day nudges keep every customer on track to a paid install.",
   },
   {
-    icon: Smartphone,
-    title: "Mobile Companion",
+    icon: TrendingUp,
+    title: "Level Up Your Tier",
     description:
-      "Track doors knocked, conversations, and sales on the go with our native app.",
+      "Hit your install-rate targets and unlock a higher commission multiplier. Your performance sets your pay rate.",
   },
 ];
 
@@ -58,10 +58,10 @@ export function FeaturesSection() {
             className="font-heading font-bold text-3xl md:text-4xl text-slate-900"
             style={{ fontFamily: "var(--font-heading)" }}
           >
-            Everything you need to run world-class blitz campaigns
+            Everything a rep needs to knock more and earn more
           </h2>
           <p className="text-slate-500 text-lg mt-4 leading-relaxed">
-            From planning to payout, D2D Blitz handles every step.
+            From your first blitz to payday, D2D Blitz tracks the work so you can focus on the doors.
           </p>
         </div>
 

@@ -1,7 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { db } from "@/lib/db";
+import { checkRateLimit, getClientIp, registerLimiter } from "@/lib/rate-limit";
+import { sendVerificationEmail } from "@/lib/email";
+import { captureApiError } from "@/lib/sentry";
 
 const registerSchema = z.object({
   name: z.string().min(2),
@@ -10,7 +14,25 @@ const registerSchema = z.object({
   password: z.string().min(8),
 });
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  const rl = checkRateLimit(`register:${ip}`, registerLimiter);
+
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: "Too many registration attempts. Please try again later.", retryAfter: rl.retryAfterSeconds },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(rl.retryAfterSeconds),
+          "X-RateLimit-Limit": String(rl.limit),
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(Math.ceil(rl.resetAt / 1000)),
+        },
+      }
+    );
+  }
+
   try {
     const body = await request.json();
     const parsed = registerSchema.safeParse(body);
@@ -36,6 +58,10 @@ export async function POST(request: Request) {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
+    // Generate email verification token (24h TTL)
+    const emailVerificationToken = crypto.randomBytes(32).toString("hex");
+    const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
     // Create user with default FIELD_REP role
     await db.user.create({
       data: {
@@ -44,12 +70,20 @@ export async function POST(request: Request) {
         phone: phone ?? null,
         passwordHash,
         role: "FIELD_REP",
+        emailVerificationToken,
+        emailVerificationExpires,
       },
+    });
+
+    // Fire-and-forget — don't fail registration if email delivery fails
+    sendVerificationEmail(email, emailVerificationToken).catch((err) => {
+      console.error("[register] failed to send verification email:", err);
     });
 
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {
     console.error("[register] error:", error);
+    captureApiError(error, "[register] error");
     return NextResponse.json(
       { error: "Internal server error. Please try again." },
       { status: 500 }

@@ -67,6 +67,14 @@ enum BlitzSignupStatus {
   WITHDRAWN // rep backed out
 }
 
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  ONBOARDING
+  SUSPENDED
+  REJECTED
+}
+
 enum ExpenseCategory {
   HOUSING
   TRAVEL
@@ -88,6 +96,7 @@ enum SaleStatus {
   VERIFIED
   CANCELLED
   DISPUTED
+  CHARGEBACK
 }
 
 enum InstallRecordStatus {
@@ -108,6 +117,47 @@ enum PayoutBatchStatus {
   REVIEWED
   APPROVED
   PAID
+}
+
+enum StripeOnboardingStatus {
+  NOT_STARTED
+  PENDING
+  ACTIVE
+  RESTRICTED
+}
+
+enum TransferStatus {
+  PENDING
+  PAID
+  FAILED
+  REVERSED
+}
+
+enum HoldbackStatus {
+  HELD
+  RELEASED
+  CLAWED_BACK
+}
+
+enum ChargebackStatus {
+  OPEN
+  RECOVERED
+  WRITTEN_OFF
+}
+
+enum OverrideRole {
+  MANAGER_OVERRIDE
+  MARKET_OWNER_SPREAD
+}
+
+enum PayoutMethod {
+  STANDARD
+  INSTANT
+}
+
+enum RateSheetLevel {
+  OWNER
+  MANAGER
 }
 
 enum DeductionCategory {
@@ -141,6 +191,23 @@ enum DoorKnockDisposition {
   NOT_INTERESTED
 }
 
+enum TouchpointOutcome {
+  NO_ANSWER
+  NOT_INTERESTED
+  CALLBACK
+  PITCHED
+  SOLD
+  DO_NOT_KNOCK
+}
+
+enum TouchpointType {
+  DOOR_KNOCK
+  CONTACT
+  CONVERSATION
+  DEMO
+  CLOSE
+}
+
 enum CarrierStatus {
   ACTIVE
   INACTIVE
@@ -150,6 +217,13 @@ enum MarketStatus {
   ACTIVE
   INACTIVE
   PLANNING
+}
+
+enum AgreementType {
+  REP_AGREEMENT
+  GPS_CONSENT
+  TAX_W9
+  BACKGROUND_CHECK
 }
 
 // ─── NextAuth Models ──────────────────────────────────────────────────────────
@@ -221,7 +295,7 @@ model User {
   name             String?
   phone            String?
   role             Role
-  status           String    @default("ACTIVE")
+  status           UserStatus @default(ACTIVE)
   governanceTierId String?   @map("governance_tier_id")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
@@ -238,6 +312,15 @@ model User {
   referralSource       String? @map("referral_source")
   onboardingData       Json?   @map("onboarding_data") // prospective-rep intake (status ONBOARDING)
 
+  // Email verification
+  emailVerified             Boolean   @default(false) @map("email_verified")
+  emailVerificationToken    String?   @unique @map("email_verification_token")
+  emailVerificationExpires  DateTime? @map("email_verification_expires")
+
+  // Password reset
+  passwordResetToken        String?   @unique @map("password_reset_token")
+  passwordResetExpires      DateTime? @map("password_reset_expires")
+
   // NextAuth relations
   accounts Account[]
   sessions Session[]
@@ -250,6 +333,9 @@ model User {
 
   // Field manager side of leads
   managedLeads Lead[] @relation("FieldManagerLeads")
+
+  // Leads where this user was created via onboarding
+  onboardedLeads Lead[] @relation("OnboardedLeads")
 
   // Interviews conducted
   interviews Interview[]
@@ -297,7 +383,22 @@ model User {
   payoutLines PayoutLine[]
 
   // Approved payout batches
-  approvedBatches PayoutBatch[]
+  approvedBatches PayoutBatch[] @relation("ApprovedBatches")
+
+  // Payroll runs this user initiated (manager-initiated payroll)
+  initiatedBatches PayoutBatch[] @relation("InitiatedBatches")
+
+  // Override earnings (manager override / market-owner spread) payable to this user
+  overrideEarnings OverrideEarning[]
+
+  // Custom per-rep commission overrides
+  repCommissionOverrides RepCommissionOverride[]
+
+  // Hierarchical rate sheets granting this user (owner/manager) available revenue
+  rateSheets RateSheet[]
+
+  // Payout batch audit logs
+  payoutBatchAuditLogs PayoutBatchAuditLog[]
 
   // Governance periods
   governancePeriods GovernancePeriod[]
@@ -329,6 +430,30 @@ model User {
   timeLogReviews GpsSessionEdit[] @relation("TimeLogEditReviewer")
   pushSubscriptions PushSubscription[]
 
+  // Push notification tokens
+  devicePushTokens DevicePushToken[]
+
+  // Touchpoints logged by this rep
+  touchpoints Touchpoint[]
+
+  // Onboarding agreement acceptances
+  agreementAcceptances AgreementAcceptance[]
+
+  // Stripe Connect payout account (1:1)
+  stripeAccount StripeConnectedAccount?
+
+  // Stripe payout transfers received
+  payoutTransfers PayoutTransfer[]
+
+  // Commission holdbacks reserved for this rep
+  holdbacks Holdback[]
+
+  // Chargebacks against this rep's sales
+  chargebacks Chargeback[] @relation("RepChargebacks")
+
+  // Chargebacks this user recorded
+  recordedChargebacks Chargeback[] @relation("ChargebackCreator")
+
   @@index([role])
   @@index([status])
   @@index([governanceTierId])
@@ -352,7 +477,7 @@ model GpsSession {
   routeMiles      Float    @default(0) @map("route_miles")
   createdAt       DateTime @default(now()) @map("created_at")
 
-  rep   User   @relation(fields: [repId], references: [id])
+  rep   User   @relation(fields: [repId], references: [id], onDelete: Cascade)
   blitz Blitz? @relation(fields: [blitzId], references: [id])
   edits GpsSessionEdit[]
 
@@ -405,15 +530,17 @@ model Lead {
   recruiterId      String     @map("recruiter_id")
   fieldManagerId   String?    @map("field_manager_id")
   marketId         String?    @map("market_id")
+  onboardedUserId  String?    @map("onboarded_user_id")
   notes            String?
   travelCapable    Boolean    @map("travel_capable")
   commitmentLevel  String?    @map("commitment_level")
   createdAt        DateTime   @default(now()) @map("created_at")
   updatedAt        DateTime   @updatedAt @map("updated_at")
 
-  recruiter    User    @relation("RecruiterLeads", fields: [recruiterId], references: [id])
-  fieldManager User?   @relation("FieldManagerLeads", fields: [fieldManagerId], references: [id])
-  market       Market? @relation(fields: [marketId], references: [id])
+  recruiter      User    @relation("RecruiterLeads", fields: [recruiterId], references: [id])
+  fieldManager   User?   @relation("FieldManagerLeads", fields: [fieldManagerId], references: [id])
+  market         Market? @relation(fields: [marketId], references: [id])
+  onboardedUser  User?   @relation("OnboardedLeads", fields: [onboardedUserId], references: [id])
 
   interviews Interview[]
 
@@ -422,6 +549,7 @@ model Lead {
   @@index([recruiterId])
   @@index([fieldManagerId])
   @@index([marketId])
+  @@index([onboardedUserId])
   @@map("leads")
 }
 
@@ -451,6 +579,7 @@ model Carrier {
   id               String        @id @default(cuid())
   name             String
   revenuePerInstall Float        @map("revenue_per_install")
+  minMarginPercent Float         @default(0) @map("min_margin_percent")
   portalUrl        String?       @map("portal_url")
   status           CarrierStatus @default(ACTIVE)
   createdAt        DateTime      @default(now()) @map("created_at")
@@ -461,9 +590,40 @@ model Carrier {
   installUploads InstallUpload[]
   installRecords InstallRecord[]
   inboundSales   InboundSale[]
+  holdbackPolicies HoldbackPolicy[]
+  holdbacks      Holdback[]
+  chargebacks    Chargeback[]
+  products       Product[]
+  repCommissionOverrides RepCommissionOverride[]
+  rateSheets     RateSheet[]
 
   @@index([status])
   @@map("carriers")
+}
+
+// A carrier's product/plan catalog (e.g. 500 Mbps, 1 Gig). Each product has its
+// own per-install revenue; a sale may reference one (else the carrier default is
+// used). minMarginPercent overrides the carrier's for this product.
+model Product {
+  id               String   @id @default(cuid())
+  carrierId        String   @map("carrier_id")
+  name             String
+  revenue          Float
+  minMarginPercent Float?   @map("min_margin_percent")
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  carrier           Carrier            @relation(fields: [carrierId], references: [id])
+  sales             Sale[]
+  stackConfigs      StackConfig[]
+  commissionRecords CommissionRecord[]
+  repCommissionOverrides RepCommissionOverride[]
+  rateSheets        RateSheet[]
+
+  @@index([carrierId])
+  @@index([active])
+  @@map("products")
 }
 
 model Market {
@@ -563,6 +723,7 @@ model Blitz {
   commissionRecords CommissionRecord[]
   doorKnockLeads DoorKnockLead[]
   gpsSessions   GpsSession[]
+  touchpoints    Touchpoint[]
 
   @@index([marketId])
   @@index([managerId])
@@ -589,6 +750,8 @@ model BlitzAssignment {
   @@index([blitzId])
   @@index([repId])
   @@index([status])
+  // Partial unique index: blitz_assignments_one_active_per_rep ON (rep_id) WHERE status NOT IN ('DEPARTED','REMOVED')
+  // Added via raw SQL migration (Prisma does not support partial unique indexes in schema.prisma).
   @@map("blitz_assignments")
 }
 
@@ -831,6 +994,7 @@ model Sale {
   repId               String     @map("rep_id")
   blitzId             String     @map("blitz_id")
   carrierId           String     @map("carrier_id")
+  productId           String?    @map("product_id")
   customerName        String     @map("customer_name")
   customerPhone       String     @map("customer_phone")
   customerAddress     String     @map("customer_address")
@@ -841,13 +1005,15 @@ model Sale {
   submittedAt         DateTime   @default(now()) @map("submitted_at")
   updatedAt           DateTime   @updatedAt @map("updated_at")
 
-  rep     User    @relation(fields: [repId], references: [id])
-  blitz   Blitz   @relation(fields: [blitzId], references: [id])
-  carrier Carrier @relation(fields: [carrierId], references: [id])
+  rep     User     @relation(fields: [repId], references: [id])
+  blitz   Blitz    @relation(fields: [blitzId], references: [id])
+  carrier Carrier  @relation(fields: [carrierId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
 
   commissionRecord  CommissionRecord?
   matchedInstallRecord InstallRecord? @relation("MatchedSale")
   installExceptions InstallException[]
+  chargeback        Chargeback?
 
   @@index([repId])
   @@index([blitzId])
@@ -943,17 +1109,20 @@ model StackConfig {
   id                       String   @id @default(cuid())
   carrierId                String   @map("carrier_id")
   marketId                 String?  @map("market_id")
+  productId                String?  @map("product_id")
   companyFloorPercent      Float    @map("company_floor_percent")
   managerOverridePercent   Float    @map("manager_override_percent")
   marketOwnerSpreadPercent Float    @map("market_owner_spread_percent")
   effectiveDate            DateTime @map("effective_date")
   createdAt                DateTime @default(now()) @map("created_at")
 
-  carrier Carrier @relation(fields: [carrierId], references: [id])
-  market  Market? @relation(fields: [marketId], references: [id])
+  carrier Carrier  @relation(fields: [carrierId], references: [id])
+  market  Market?  @relation(fields: [marketId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
 
   @@index([carrierId])
   @@index([marketId])
+  @@index([productId])
   @@index([effectiveDate])
   @@map("stack_configs")
 }
@@ -970,12 +1139,19 @@ model CommissionRecord {
   marketOwnerSpread Float            @map("market_owner_spread")
   status            CommissionStatus @default(ELIGIBLE)
   governanceTierId  String?          @map("governance_tier_id")
+  productId         String?          @map("product_id")
+  repCommissionOverrideId String?     @map("rep_commission_override_id")
   createdAt         DateTime         @default(now()) @map("created_at")
 
   sale           Sale            @relation(fields: [saleId], references: [id])
   rep            User            @relation(fields: [repId], references: [id])
   blitz          Blitz           @relation(fields: [blitzId], references: [id])
   governanceTier GovernanceTier? @relation(fields: [governanceTierId], references: [id])
+  product        Product?        @relation(fields: [productId], references: [id])
+  repCommissionOverride RepCommissionOverride? @relation(fields: [repCommissionOverrideId], references: [id])
+  holdback       Holdback?
+  chargeback     Chargeback?
+  overrideEarnings OverrideEarning[]
 
   @@index([repId])
   @@index([blitzId])
@@ -1005,20 +1181,47 @@ model Deduction {
 }
 
 model PayoutBatch {
-  id           String            @id @default(cuid())
-  period       String
-  status       PayoutBatchStatus @default(DRAFT)
-  approvedById String?           @map("approved_by_id")
-  approvedAt   DateTime?         @map("approved_at")
-  createdAt    DateTime          @default(now()) @map("created_at")
+  id                String            @id @default(cuid())
+  period            String            @unique
+  status            PayoutBatchStatus @default(DRAFT)
+  approvedById      String?           @map("approved_by_id")
+  approvedAt        DateTime?         @map("approved_at")
+  totalInstalls     Int               @default(0) @map("total_installs")
+  matchedInstalls   Int               @default(0) @map("matched_installs")
+  reconciliationRate Float            @default(0) @map("reconciliation_rate")
+  slaDeadline       DateTime?         @map("sla_deadline")
+  slaAlertedAt      DateTime?         @map("sla_alerted_at")
+  initiatedById     String?           @map("initiated_by_id")
+  createdAt         DateTime          @default(now()) @map("created_at")
 
-  approvedBy User?        @relation(fields: [approvedById], references: [id])
+  approvedBy  User?                @relation("ApprovedBatches", fields: [approvedById], references: [id])
+  initiatedBy User?                @relation("InitiatedBatches", fields: [initiatedById], references: [id])
   payoutLines PayoutLine[]
+  auditLogs   PayoutBatchAuditLog[]
+  paidHoldbacks Holdback[]
+  overrideEarnings OverrideEarning[]
 
   @@index([status])
-  @@index([period])
   @@index([approvedById])
+  @@index([initiatedById])
   @@map("payout_batches")
+}
+
+model PayoutBatchAuditLog {
+  id             String    @id @default(cuid())
+  batchId        String    @map("batch_id")
+  action         String
+  performedById  String?   @map("performed_by_id")
+  totalPayout    Float?    @map("total_payout")
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  batch       PayoutBatch @relation(fields: [batchId], references: [id])
+  performedBy User?       @relation(fields: [performedById], references: [id])
+
+  @@index([batchId])
+  @@index([performedById])
+  @@map("payout_batch_audit_logs")
 }
 
 model PayoutLine {
@@ -1033,6 +1236,8 @@ model PayoutLine {
 
   batch PayoutBatch @relation(fields: [batchId], references: [id])
   rep   User        @relation(fields: [repId], references: [id])
+
+  payoutTransfer PayoutTransfer?
 
   @@index([batchId])
   @@index([repId])
@@ -1265,4 +1470,303 @@ model ServicedAddress {
 
   @@index([source])
   @@map("serviced_addresses")
+}
+
+model DevicePushToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String
+  platform  String   // "ios" | "android"
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, token])
+  @@index([userId])
+  @@map("device_push_tokens")
+}
+
+// ─── Touchpoints ─────────────────────────────────────────────────────────────
+
+model Touchpoint {
+  id        String             @id @default(cuid())
+  repId     String             @map("rep_id")
+  blitzId   String             @map("blitz_id")
+  type      TouchpointType     @default(DOOR_KNOCK)
+  address   String             @default("")
+  outcome   TouchpointOutcome  @default(NO_ANSWER)
+  notes     String?
+  latitude  Float?
+  longitude Float?
+  timestamp DateTime           @default(now())
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  rep   User  @relation(fields: [repId], references: [id])
+  blitz Blitz @relation(fields: [blitzId], references: [id])
+
+  @@index([repId])
+  @@index([blitzId])
+  @@index([type])
+  @@index([outcome])
+  @@index([timestamp])
+  @@map("touchpoints")
+}
+
+// ─── Onboarding Agreements ─────────────────────────────────────────────────────
+
+model Agreement {
+  id             String        @id @default(cuid())
+  type           AgreementType
+  title          String
+  body           String // markdown content
+  version        Int           @default(1)
+  required       Boolean       @default(true)
+  blocking       Boolean       @default(true) // gates app access when unaccepted
+  requiresUpload Boolean       @default(false) @map("requires_upload") // e.g. W-9 needs a file
+  isActive       Boolean       @default(true) @map("is_active") // the current version reps must accept
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  acceptances AgreementAcceptance[]
+
+  @@index([type])
+  @@index([isActive])
+  @@map("agreements")
+}
+
+model AgreementAcceptance {
+  id            String   @id @default(cuid())
+  agreementId   String   @map("agreement_id")
+  userId        String   @map("user_id")
+  version       Int
+  signatureName String   @map("signature_name")
+  documentUrl   String?  @map("document_url")
+  acceptedAt    DateTime @default(now()) @map("accepted_at")
+
+  agreement Agreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, agreementId])
+  @@index([userId])
+  @@map("agreement_acceptances")
+}
+
+// ─── Stripe Connect payouts ─────────────────────────────────────────────────
+
+// A rep's Stripe Connect Express account. Stripe collects bank/debit + KYC via
+// hosted onboarding; we store only the account id and Stripe's capability flags.
+model StripeConnectedAccount {
+  id               String                 @id @default(cuid())
+  userId           String                 @unique @map("user_id")
+  stripeAccountId  String                 @unique @map("stripe_account_id")
+  onboardingStatus StripeOnboardingStatus @default(NOT_STARTED) @map("onboarding_status")
+  detailsSubmitted Boolean                @default(false) @map("details_submitted")
+  chargesEnabled   Boolean                @default(false) @map("charges_enabled")
+  payoutsEnabled   Boolean                @default(false) @map("payouts_enabled")
+  payoutMethod     PayoutMethod           @default(STANDARD) @map("payout_method")
+  defaultCurrency  String                 @default("usd") @map("default_currency")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([stripeAccountId])
+  @@map("stripe_connected_accounts")
+}
+
+// One row per Stripe Transfer created when a PayoutBatch is marked PAID. Links a
+// domain PayoutLine to the money that actually moved. Idempotency key on create
+// is the payoutLineId, so retries never double-pay a rep.
+model PayoutTransfer {
+  id               String         @id @default(cuid())
+  payoutLineId     String         @unique @map("payout_line_id")
+  repId            String         @map("rep_id")
+  stripeAccountId  String         @map("stripe_account_id")
+  stripeTransferId String?        @unique @map("stripe_transfer_id")
+  amount           Float
+  currency         String         @default("usd")
+  status           TransferStatus @default(PENDING)
+  method           PayoutMethod   @default(STANDARD)
+  instantFee       Float?         @map("instant_fee")
+  stripePayoutId   String?        @unique @map("stripe_payout_id")
+  failureReason    String?        @map("failure_reason")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  payoutLine PayoutLine @relation(fields: [payoutLineId], references: [id])
+  rep        User       @relation(fields: [repId], references: [id])
+
+  @@index([repId])
+  @@index([status])
+  @@map("payout_transfers")
+}
+
+// ─── Holdback / retention-bonus + chargeback ────────────────────────────────
+
+// Configurable holdback rule. A row with a null carrierId is the global default;
+// a carrier-specific row overrides it. Historical commissions keep whatever rule
+// resolved when they were created. (A product dimension slots in here later.)
+model HoldbackPolicy {
+  id              String   @id @default(cuid())
+  carrierId       String?  @map("carrier_id")
+  holdbackPercent Float    @map("holdback_percent")
+  holdbackDays    Int      @map("holdback_days")
+  effectiveDate   DateTime @map("effective_date")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  carrier Carrier? @relation(fields: [carrierId], references: [id])
+
+  @@index([carrierId])
+  @@index([effectiveDate])
+  @@map("holdback_policies")
+}
+
+// The reserved slice of a rep commission, held for the retention period. Source
+// of truth for held funds. Released to a payout batch as a "retention bonus" if
+// the install survives; clawed back if a chargeback lands first.
+model Holdback {
+  id                 String         @id @default(cuid())
+  commissionRecordId String         @unique @map("commission_record_id")
+  repId              String         @map("rep_id")
+  carrierId          String         @map("carrier_id")
+  amount             Float
+  percent            Float
+  releaseAt          DateTime       @map("release_at")
+  status             HoldbackStatus @default(HELD)
+  releasedAt         DateTime?      @map("released_at")
+  payoutBatchId      String?        @map("payout_batch_id")
+  chargebackId       String?        @map("chargeback_id")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  commissionRecord CommissionRecord @relation(fields: [commissionRecordId], references: [id])
+  rep              User             @relation(fields: [repId], references: [id])
+  carrier          Carrier          @relation(fields: [carrierId], references: [id])
+  payoutBatch      PayoutBatch?     @relation(fields: [payoutBatchId], references: [id])
+  chargeback       Chargeback?      @relation(fields: [chargebackId], references: [id])
+
+  @@index([repId])
+  @@index([carrierId])
+  @@index([status])
+  @@index([releaseAt])
+  @@index([payoutBatchId])
+  @@map("holdbacks")
+}
+
+// Permanent audit record of a carrier chargeback. Held funds are applied first;
+// any shortfall is recorded as outstandingBalance (no automatic deduction).
+model Chargeback {
+  id                 String           @id @default(cuid())
+  saleId             String           @unique @map("sale_id")
+  commissionRecordId String?          @unique @map("commission_record_id")
+  repId              String           @map("rep_id")
+  carrierId          String           @map("carrier_id")
+  amount             Float
+  heldApplied        Float            @default(0) @map("held_applied")
+  outstandingBalance Float            @default(0) @map("outstanding_balance")
+  status             ChargebackStatus @default(OPEN)
+  reason             String
+  createdById        String?          @map("created_by_id")
+  createdAt          DateTime         @default(now()) @map("created_at")
+
+  sale             Sale              @relation(fields: [saleId], references: [id])
+  commissionRecord CommissionRecord? @relation(fields: [commissionRecordId], references: [id])
+  rep              User              @relation("RepChargebacks", fields: [repId], references: [id])
+  carrier          Carrier           @relation(fields: [carrierId], references: [id])
+  createdBy        User?             @relation("ChargebackCreator", fields: [createdById], references: [id])
+  holdbacks        Holdback[]
+
+  @@index([repId])
+  @@index([carrierId])
+  @@index([status])
+  @@map("chargebacks")
+}
+
+// ─── Manager / market-owner override earnings ───────────────────────────────
+
+// The override slice of a commission, payable to the blitz's manager
+// (MANAGER_OVERRIDE) or the market's owner (MARKET_OWNER_SPREAD). Mirrors the
+// rep-commission lifecycle (ELIGIBLE→PENDING→PAID) so overrides flow through the
+// same payout batches — but tracked separately so a manager can be paid
+// independently of the rep. One row per (commission, role).
+model OverrideEarning {
+  id                 String           @id @default(cuid())
+  commissionRecordId String           @map("commission_record_id")
+  payeeId            String           @map("payee_id")
+  role               OverrideRole
+  amount             Float
+  status             CommissionStatus @default(ELIGIBLE)
+  payoutBatchId      String?          @map("payout_batch_id")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  commissionRecord CommissionRecord @relation(fields: [commissionRecordId], references: [id])
+  payee            User             @relation(fields: [payeeId], references: [id])
+  payoutBatch      PayoutBatch?     @relation(fields: [payoutBatchId], references: [id])
+
+  @@unique([commissionRecordId, role])
+  @@index([payeeId])
+  @@index([status])
+  @@index([payoutBatchId])
+  @@map("override_earnings")
+}
+
+// ─── Custom per-rep commission overrides ────────────────────────────────────
+
+// A flat per-install commission for a specific rep, optionally scoped to a
+// product and/or carrier. When a matching override exists at calc time it
+// replaces the rep's computed pay (the governance-tier multiplier is bypassed).
+// Most-specific match wins: rep+product > rep+carrier > rep-global.
+model RepCommissionOverride {
+  id            String   @id @default(cuid())
+  repId         String   @map("rep_id")
+  carrierId     String?  @map("carrier_id")
+  productId     String?  @map("product_id")
+  amount        Float
+  effectiveDate DateTime @map("effective_date")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  rep               User               @relation(fields: [repId], references: [id])
+  carrier           Carrier?           @relation(fields: [carrierId], references: [id])
+  product           Product?           @relation(fields: [productId], references: [id])
+  commissionRecords CommissionRecord[]
+
+  @@index([repId])
+  @@index([active])
+  @@index([effectiveDate])
+  @@map("rep_commission_overrides")
+}
+
+// ─── Hierarchical rate sheets ───────────────────────────────────────────────
+
+// A master-granted "available revenue" for a level in the pricing chain. An
+// OWNER sheet grants a market owner the revenue they receive from the master;
+// a MANAGER sheet grants a manager the revenue they receive from the owner.
+// The commission slices (company floor / owner spread / manager override) are
+// derived by subtraction down the chain when a sheet resolves for a sale.
+model RateSheet {
+  id               String         @id @default(cuid())
+  level            RateSheetLevel
+  principalId      String         @map("principal_id")
+  carrierId        String?        @map("carrier_id")
+  productId        String?        @map("product_id")
+  availableRevenue Float          @map("available_revenue")
+  effectiveDate    DateTime       @map("effective_date")
+  active           Boolean        @default(true)
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  principal User     @relation(fields: [principalId], references: [id])
+  carrier   Carrier? @relation(fields: [carrierId], references: [id])
+  product   Product? @relation(fields: [productId], references: [id])
+
+  @@index([level])
+  @@index([principalId])
+  @@index([active])
+  @@index([effectiveDate])
+  @@map("rate_sheets")
 }

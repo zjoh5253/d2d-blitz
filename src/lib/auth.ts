@@ -1,12 +1,13 @@
 import NextAuth from "next-auth";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import type { Adapter } from "next-auth/adapters";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 
+// No adapter: JWT strategy + Credentials-only auth does not need a database
+// adapter. PrismaAdapter conflicts with this setup because our schema uses
+// emailVerified: Boolean (not DateTime), which causes NextAuth to fail its
+// internal user lookup and return false 401s for valid credentials.
 export const { auth, signIn, signOut, handlers } = NextAuth({
-  adapter: PrismaAdapter(db) as Adapter,
   session: { strategy: "jwt" },
   providers: [
     Credentials({
@@ -42,6 +43,7 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
           email: user.email,
           name: user.name,
           role: user.role,
+          emailVerified: user.emailVerified,
         };
       },
     }),
@@ -51,6 +53,7 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
       if (user) {
         token.id = user.id as string;
         token.role = (user as unknown as { role: string }).role;
+        token.emailVerified = (user as unknown as { emailVerified: boolean }).emailVerified;
       }
       return token;
     },
@@ -58,6 +61,8 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
       if (token) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (session.user as any).emailVerified = token.emailVerified;
       }
       return session;
     },

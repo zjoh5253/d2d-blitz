@@ -3,12 +3,14 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { Zap, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import { BlitzBolt } from "@/components/brand/blitz-bolt";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
-  { label: "Features", href: "#features" },
-  { label: "How It Works", href: "#how-it-works" },
+  { label: "For Reps", href: "/for-reps" },
+  { label: "For Teams", href: "/for-teams" },
+  { label: "Pricing", href: "/pricing" },
   { label: "FAQ", href: "/faq" },
 ];
 
@@ -44,7 +46,7 @@ export function MarketingNav() {
                   className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
                   style={{ background: "linear-gradient(135deg, #3B82F6, #1D4ED8)" }}
                 >
-                  <Zap className="w-5 h-5 text-white" fill="currentColor" />
+                  <BlitzBolt className="w-5 h-5 text-white" />
                 </div>
                 <span
                   className="text-slate-900 text-xl font-bold tracking-tight"
@@ -90,7 +92,7 @@ export function MarketingNav() {
                     Log In
                   </Link>
                   <Link
-                    href="/login"
+                    href="/register"
                     className="gradient-brand text-white text-sm font-semibold px-4 py-2 rounded-lg transition-opacity hover:opacity-90"
                   >
                     Get Started
@@ -153,7 +155,7 @@ export function MarketingNav() {
                     Log In
                   </Link>
                   <Link
-                    href="/login"
+                    href="/register"
                     onClick={closeMobile}
                     className="gradient-brand text-white text-sm font-semibold px-4 py-2.5 rounded-lg text-center transition-opacity hover:opacity-90"
                   >

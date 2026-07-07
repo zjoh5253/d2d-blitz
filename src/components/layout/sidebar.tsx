@@ -14,6 +14,7 @@ import {
   DollarSign,
   Shield,
   ClipboardCheck,
+  ShieldAlert,
   Trophy,
   PhoneIncoming,
   BarChart3,
@@ -24,7 +25,13 @@ import {
   Timer,
   Radar,
   FileSpreadsheet,
+  BanknoteArrowUp,
+  Coins,
+  Percent,
+  Wallet,
+  Package,
 } from "lucide-react";
+import { BlitzBolt } from "@/components/brand/blitz-bolt";
 
 interface NavItem {
   title: string;
@@ -47,6 +54,12 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/dashboard/reps/dashboard",
         icon: <LayoutDashboard className="size-[18px]" />,
         roles: ["ADMIN", "FIELD_MANAGER", "FIELD_REP"],
+      },
+      {
+        title: "Get Paid",
+        href: "/dashboard/payments",
+        icon: <BanknoteArrowUp className="size-[18px]" />,
+        roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER", "FIELD_REP"],
       },
     ],
   },
@@ -107,6 +120,12 @@ const NAV_GROUPS: NavGroup[] = [
         roles: ["ADMIN"],
       },
       {
+        title: "Holdbacks",
+        href: "/dashboard/compensation/holdbacks",
+        icon: <Coins className="size-[18px]" />,
+        roles: ["ADMIN"],
+      },
+      {
         title: "Inbound Leads",
         href: "/dashboard/inbound",
         icon: <PhoneIncoming className="size-[18px]" />,
@@ -140,6 +159,18 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/dashboard/compliance",
         icon: <ClipboardCheck className="size-[18px]" />,
         roles: ["ADMIN", "FIELD_MANAGER"],
+      },
+      {
+        title: "Hold Management",
+        href: "/dashboard/compliance/holds",
+        icon: <ShieldAlert className="size-[18px]" />,
+        roles: ["ADMIN", "EXECUTIVE"],
+      },
+      {
+        title: "Report Rates",
+        href: "/dashboard/compliance/daily-reports",
+        icon: <ClipboardCheck className="size-[18px]" />,
+        roles: ["ADMIN", "EXECUTIVE", "FIELD_MANAGER"],
       },
     ],
   },
@@ -232,6 +263,12 @@ const NAV_GROUPS: NavGroup[] = [
         icon: <Shield className="size-[18px]" />,
         roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"],
       },
+      {
+        title: "Payroll & Wallet",
+        href: "/dashboard/manager/payroll",
+        icon: <Wallet className="size-[18px]" />,
+        roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"],
+      },
     ],
   },
   {
@@ -250,6 +287,12 @@ const NAV_GROUPS: NavGroup[] = [
         roles: ["ADMIN"],
       },
       {
+        title: "Products",
+        href: "/dashboard/admin/products",
+        icon: <Package className="size-[18px]" />,
+        roles: ["ADMIN"],
+      },
+      {
         title: "Governance Config",
         href: "/dashboard/admin/governance",
         icon: <Settings className="size-[18px]" />,
@@ -258,6 +301,30 @@ const NAV_GROUPS: NavGroup[] = [
       {
         title: "Stack Config",
         href: "/dashboard/admin/stack",
+        icon: <Settings className="size-[18px]" />,
+        roles: ["ADMIN"],
+      },
+      {
+        title: "Holdback Config",
+        href: "/dashboard/admin/holdback",
+        icon: <Percent className="size-[18px]" />,
+        roles: ["ADMIN"],
+      },
+      {
+        title: "Rep Commissions",
+        href: "/dashboard/admin/rep-commissions",
+        icon: <DollarSign className="size-[18px]" />,
+        roles: ["ADMIN"],
+      },
+      {
+        title: "Rate Sheets",
+        href: "/dashboard/admin/rate-sheets",
+        icon: <Percent className="size-[18px]" />,
+        roles: ["ADMIN"],
+      },
+      {
+        title: "Agreements",
+        href: "/dashboard/admin/agreements",
         icon: <Settings className="size-[18px]" />,
         roles: ["ADMIN"],
       },
@@ -350,7 +417,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 boxShadow: "0 0 12px rgba(245,158,11,0.35)",
               }}
             >
-              <Zap className="size-4 text-white" fill="white" strokeWidth={0} />
+              <BlitzBolt className="size-4 text-white" />
             </div>
 
             {/* Wordmark */}

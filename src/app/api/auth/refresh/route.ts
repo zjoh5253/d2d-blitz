@@ -1,17 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
 import { encode, decode } from "next-auth/jwt";
 import { db } from "@/lib/db";
+import { checkRateLimit, getClientIp, refreshLimiter } from "@/lib/rate-limit";
+import { z } from "zod";
+
+const refreshSchema = z.object({
+  refreshToken: z.string().min(1),
+});
 
 export async function POST(req: NextRequest) {
-  try {
-    const { refreshToken } = await req.json();
+  const ip = getClientIp(req);
+  const rl = checkRateLimit(`refresh:${ip}`, refreshLimiter);
 
-    if (!refreshToken) {
+  if (!rl.success) {
+    return NextResponse.json(
+      { error: "Too many token refresh attempts. Please try again later.", retryAfter: rl.retryAfterSeconds },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(rl.retryAfterSeconds),
+          "X-RateLimit-Limit": String(rl.limit),
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(Math.ceil(rl.resetAt / 1000)),
+        },
+      }
+    );
+  }
+
+  try {
+    const body = await req.json();
+    const parsed = refreshSchema.safeParse(body);
+
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Refresh token is required" },
-        { status: 401 }
+        { error: "Validation failed", issues: parsed.error.flatten() },
+        { status: 400 }
       );
     }
+
+    const { refreshToken } = parsed.data;
 
     let decoded;
     try {

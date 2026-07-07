@@ -44,12 +44,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, revenuePerInstall, portalUrl, status } = parsed.data;
+    const { name, revenuePerInstall, minMarginPercent, portalUrl, status } = parsed.data;
 
     const carrier = await db.carrier.create({
       data: {
         name,
         revenuePerInstall,
+        minMarginPercent,
         portalUrl: portalUrl || null,
         status,
       },

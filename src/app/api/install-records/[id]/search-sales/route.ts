@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { z } from "zod";
+import { parseQuery } from "@/lib/validate";
+
+const searchSalesQuerySchema = z.object({
+  q: z.string().optional(),
+});
 
 export async function GET(
   request: NextRequest,
@@ -12,9 +18,20 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const ALLOWED_ROLES = ["ADMIN", "EXECUTIVE", "MARKET_OWNER", "FIELD_MANAGER"];
+    if (!ALLOWED_ROLES.includes(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { id } = await params;
     const { searchParams } = new URL(request.url);
-    const q = searchParams.get("q") ?? "";
+    const parsed = parseQuery(searchParams, searchSalesQuerySchema);
+
+    if (!parsed.success) {
+      return parsed.response;
+    }
+
+    const q = parsed.data.q ?? "";
 
     // Get the install record to know the carrier
     const record = await db.installRecord.findUnique({

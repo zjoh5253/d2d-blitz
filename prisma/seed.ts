@@ -8,7 +8,86 @@ dotenv.config();
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
+type AgreementSeed = {
+  type: "REP_AGREEMENT" | "GPS_CONSENT" | "TAX_W9" | "BACKGROUND_CHECK";
+  title: string;
+  body: string;
+  required: boolean;
+  blocking: boolean;
+  requiresUpload: boolean;
+};
+
+const AGREEMENT_SEEDS: AgreementSeed[] = [
+  {
+    type: "REP_AGREEMENT",
+    title: "Independent Rep Agreement",
+    body:
+      "## Independent Rep Agreement\n\nYou are engaged as an independent contractor, not an employee. " +
+      "Please review the terms governing commissions, conduct, and termination before signing.",
+    required: true,
+    blocking: true,
+    requiresUpload: false,
+  },
+  {
+    type: "GPS_CONSENT",
+    title: "GPS / Location Tracking Consent",
+    body:
+      "## GPS / Location Tracking Consent\n\nThe app tracks your location during active shifts to verify " +
+      "door-knock activity and route coverage. By accepting you consent to foreground and background " +
+      "location collection while on the clock.",
+    required: true,
+    blocking: true,
+    requiresUpload: false,
+  },
+  {
+    type: "BACKGROUND_CHECK",
+    title: "Background Check Consent",
+    body:
+      "## Background Check Consent\n\nYou authorize D2D Blitz to obtain a consumer/background report as " +
+      "permitted by law for the purpose of evaluating your engagement as a sales representative.",
+    required: true,
+    blocking: true,
+    requiresUpload: false,
+  },
+  {
+    type: "TAX_W9",
+    title: "W-9 Tax Form",
+    body:
+      "## W-9 Tax Form\n\nUpload a completed and signed IRS Form W-9. This is required so we can issue " +
+      "your 1099 at year end. Your document is stored securely and only visible to administrators.",
+    required: true,
+    blocking: false,
+    requiresUpload: true,
+  },
+];
+
+async function seedAgreements() {
+  for (const seed of AGREEMENT_SEEDS) {
+    // No natural unique key on (type, version); guard on the active row per type.
+    const existing = await prisma.agreement.findFirst({
+      where: { type: seed.type, isActive: true },
+    });
+    if (existing) continue;
+
+    await prisma.agreement.create({
+      data: {
+        type: seed.type,
+        title: seed.title,
+        body: seed.body,
+        version: 1,
+        required: seed.required,
+        blocking: seed.blocking,
+        requiresUpload: seed.requiresUpload,
+        isActive: true,
+      },
+    });
+  }
+}
+
 async function main() {
+  // Seed onboarding agreements (idempotent — safe to re-run)
+  await seedAgreements();
+
   // Create governance tiers
   const tierGold = await prisma.governanceTier.create({
     data: {
@@ -125,11 +204,12 @@ async function main() {
     },
   });
 
-  // Create carriers
+  // Create carriers (with a carrier-wide minimum retained margin)
   const carrier1 = await prisma.carrier.create({
     data: {
       name: "FiberMax ISP",
       revenuePerInstall: 250.0,
+      minMarginPercent: 20,
       portalUrl: "https://portal.fibermax.example.com",
       status: "ACTIVE",
     },
@@ -139,10 +219,59 @@ async function main() {
     data: {
       name: "SpeedNet Cable",
       revenuePerInstall: 200.0,
+      minMarginPercent: 15,
       portalUrl: "https://portal.speednet.example.com",
       status: "ACTIVE",
     },
   });
+
+  // Product catalog for carrier1 (each product has its own per-install revenue)
+  await prisma.product.createMany({
+    data: [
+      { carrierId: carrier1.id, name: "500 Mbps", revenue: 200.0 },
+      { carrierId: carrier1.id, name: "1 Gig", revenue: 300.0 },
+      { carrierId: carrier1.id, name: "2 Gig", revenue: 400.0, minMarginPercent: 25 },
+    ],
+  });
+
+  // Example custom per-rep commission override: rep1 earns a flat $150 on 1 Gig.
+  const oneGig = await prisma.product.findFirst({
+    where: { carrierId: carrier1.id, name: "1 Gig" },
+  });
+  if (oneGig) {
+    await prisma.repCommissionOverride.create({
+      data: {
+        repId: rep1.id,
+        carrierId: carrier1.id,
+        productId: oneGig.id,
+        amount: 150.0,
+        effectiveDate: new Date("2024-01-01"),
+      },
+    });
+
+    // Hierarchical rate sheets for FiberMax 1 Gig ($300 revenue): master grants
+    // the owner $250 (company keeps $50), owner grants the manager $180.
+    await prisma.rateSheet.createMany({
+      data: [
+        {
+          level: "OWNER",
+          principalId: marketOwner.id,
+          carrierId: carrier1.id,
+          productId: oneGig.id,
+          availableRevenue: 250.0,
+          effectiveDate: new Date("2024-01-01"),
+        },
+        {
+          level: "MANAGER",
+          principalId: fieldManager.id,
+          carrierId: carrier1.id,
+          productId: oneGig.id,
+          availableRevenue: 180.0,
+          effectiveDate: new Date("2024-01-01"),
+        },
+      ],
+    });
+  }
 
   // Create markets
   const market1 = await prisma.market.create({
@@ -186,6 +315,17 @@ async function main() {
       companyFloorPercent: 0.25,
       managerOverridePercent: 0.08,
       marketOwnerSpreadPercent: 0.05,
+      effectiveDate: new Date("2024-01-01"),
+    },
+  });
+
+  // Global-default holdback policy: reserve 10% of rep commission for 120 days,
+  // released as a retention bonus if the install survives. (carrierId null = default)
+  await prisma.holdbackPolicy.create({
+    data: {
+      carrierId: null,
+      holdbackPercent: 10,
+      holdbackDays: 120,
       effectiveDate: new Date("2024-01-01"),
     },
   });

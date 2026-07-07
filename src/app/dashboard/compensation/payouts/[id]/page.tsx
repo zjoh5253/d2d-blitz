@@ -30,6 +30,21 @@ const STATUS_BADGE: Record<string, string> = {
   PAID: "text-purple-700 bg-purple-100",
 };
 
+const TRANSFER_BADGE: Record<string, string> = {
+  PAID: "text-green-700 bg-green-100",
+  PENDING: "text-blue-700 bg-blue-100",
+  FAILED: "text-red-700 bg-red-100",
+  REVERSED: "text-amber-700 bg-amber-100",
+};
+
+const fmt = (n: number | null | undefined) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n ?? 0);
+
 interface PayoutDetailPageProps {
   params: Promise<{ id: string }>;
 }
@@ -44,9 +59,11 @@ export default async function PayoutDetailPage({ params }: PayoutDetailPageProps
     where: { id },
     include: {
       approvedBy: { select: { id: true, name: true } },
+      initiatedBy: { select: { id: true, name: true } },
       payoutLines: {
         include: {
           rep: { select: { id: true, name: true } },
+          payoutTransfer: true,
         },
         orderBy: { netPay: "desc" },
       },
@@ -67,7 +84,11 @@ export default async function PayoutDetailPage({ params }: PayoutDetailPageProps
           <p className="text-muted-foreground text-sm mt-1">
             Created {format(new Date(batch.createdAt), "MMMM d, yyyy")}
             {batch.approvedAt &&
-              ` &middot; Approved ${format(new Date(batch.approvedAt), "MMMM d, yyyy")}`}
+              ` · Approved ${format(new Date(batch.approvedAt), "MMMM d, yyyy")}`}
+            {" · "}
+            {batch.initiatedById
+              ? `Initiated by ${batch.initiatedBy?.name ?? "unknown"}`
+              : "Company batch"}
           </p>
         </div>
         <BatchStatusActions batchId={batch.id} currentStatus={batch.status} />
@@ -140,6 +161,7 @@ export default async function PayoutDetailPage({ params }: PayoutDetailPageProps
                   <TableHead>Net Pay</TableHead>
                   <TableHead>Compliance</TableHead>
                   <TableHead>Governance</TableHead>
+                  <TableHead>Payout</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -170,6 +192,46 @@ export default async function PayoutDetailPage({ params }: PayoutDetailPageProps
                       ) : (
                         <XCircle className="h-4 w-4 text-red-400" />
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        {line.payoutTransfer ? (
+                          <>
+                            <div className="flex items-center gap-1.5">
+                              <Badge
+                                variant="secondary"
+                                className={TRANSFER_BADGE[line.payoutTransfer.status]}
+                              >
+                                {line.payoutTransfer.status}
+                              </Badge>
+                              <Badge
+                                variant="secondary"
+                                className={
+                                  line.payoutTransfer.method === "INSTANT"
+                                    ? "text-amber-700 bg-amber-100"
+                                    : "text-muted-foreground bg-muted"
+                                }
+                              >
+                                {line.payoutTransfer.method === "INSTANT"
+                                  ? "Instant"
+                                  : "Standard"}
+                              </Badge>
+                            </div>
+                            {line.payoutTransfer.method === "INSTANT" &&
+                              line.payoutTransfer.instantFee != null && (
+                                <span className="text-xs text-muted-foreground">
+                                  fee: {fmt(-line.payoutTransfer.instantFee)}
+                                </span>
+                              )}
+                          </>
+                        ) : batch.status === "PAID" && line.netPay > 0 ? (
+                          <Badge variant="secondary" className="text-amber-700 bg-amber-100">
+                            Not connected
+                          </Badge>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -7,11 +7,68 @@ export const carrierSchema = z.object({
   revenuePerInstall: z.coerce
     .number({ error: "Must be a number" })
     .positive("Must be greater than 0"),
+  minMarginPercent: z.coerce
+    .number({ error: "Must be a number" })
+    .min(0, "Must be 0 or greater")
+    .max(100, "Must be 100 or less")
+    .default(0),
   portalUrl: z.string().url("Must be a valid URL").optional().or(z.literal("")),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
 });
 
 export type CarrierFormValues = z.infer<typeof carrierSchema>;
+
+// ─── Product ──────────────────────────────────────────────────────────────────
+
+export const productSchema = z.object({
+  carrierId: z.string().min(1, "Carrier is required"),
+  name: z.string().min(1, "Name is required"),
+  revenue: z.coerce
+    .number({ error: "Must be a number" })
+    .positive("Must be greater than 0"),
+  // Optional per-product minimum retained margin (overrides the carrier default).
+  minMarginPercent: z.coerce
+    .number({ error: "Must be a number" })
+    .min(0, "Must be 0 or greater")
+    .max(100, "Must be 100 or less")
+    .optional(),
+  active: z.boolean().default(true),
+});
+
+export type ProductFormValues = z.infer<typeof productSchema>;
+
+// ─── Rep commission override ────────────────────────────────────────────────
+
+export const repCommissionOverrideSchema = z.object({
+  repId: z.string().min(1, "Rep is required"),
+  carrierId: z.string().optional().or(z.literal("")),
+  productId: z.string().optional().or(z.literal("")),
+  amount: z.coerce
+    .number({ error: "Must be a number" })
+    .positive("Must be greater than 0"),
+  effectiveDate: z.string().min(1, "Effective date is required"),
+  active: z.boolean().default(true),
+});
+
+export type RepCommissionOverrideFormValues = z.infer<typeof repCommissionOverrideSchema>;
+
+// ─── Hierarchical rate sheet ────────────────────────────────────────────────
+
+export const rateSheetSchema = z.object({
+  level: z.enum(["OWNER", "MANAGER"]),
+  principalId: z.string().min(1, "Principal is required"),
+  carrierId: z.string().optional().or(z.literal("")),
+  productId: z.string().optional().or(z.literal("")),
+  availableRevenue: z.coerce
+    .number({ error: "Must be a number" })
+    .positive("Must be greater than 0"),
+  effectiveDate: z.string().min(1, "Effective date is required"),
+  active: z.boolean().default(true),
+  // Admin escape hatch to save an OWNER grant below the minimum company margin.
+  overrideMinMargin: z.boolean().optional().default(false),
+});
+
+export type RateSheetFormValues = z.infer<typeof rateSheetSchema>;
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 
@@ -77,6 +134,10 @@ export const stackConfigSchema = z
   .object({
     carrierId: z.string().min(1, "Carrier is required"),
     marketId: z.string().optional().or(z.literal("")),
+    // Optional: scope this rate sheet to a specific product.
+    productId: z.string().optional().or(z.literal("")),
+    // Admin escape hatch to save a rate sheet below the minimum retained margin.
+    overrideMinMargin: z.boolean().optional().default(false),
     companyFloorPercent: z.coerce
       .number({ error: "Must be a number" })
       .min(0, "Must be 0 or greater")
@@ -104,6 +165,37 @@ export const stackConfigSchema = z
   );
 
 export type StackConfigFormValues = z.infer<typeof stackConfigSchema>;
+
+// ─── Holdback Policy ──────────────────────────────────────────────────────────
+
+export const holdbackPolicySchema = z.object({
+  // Empty string = the global default policy (applies to all carriers).
+  carrierId: z.string().optional().or(z.literal("")),
+  holdbackPercent: z.coerce
+    .number({ error: "Must be a number" })
+    .min(0, "Must be 0 or greater")
+    .max(100, "Must be 100 or less"),
+  holdbackDays: z.coerce
+    .number({ error: "Must be a number" })
+    .int("Must be a whole number")
+    .min(0, "Must be 0 or greater")
+    .max(365, "Must be 365 or less"),
+  effectiveDate: z.string().min(1, "Effective date is required"),
+});
+
+export type HoldbackPolicyFormValues = z.infer<typeof holdbackPolicySchema>;
+
+// ─── Chargeback ───────────────────────────────────────────────────────────────
+
+export const chargebackSchema = z.object({
+  saleId: z.string().min(1, "Sale is required"),
+  amount: z.coerce
+    .number({ error: "Must be a number" })
+    .positive("Must be greater than 0"),
+  reason: z.string().min(1, "Reason is required"),
+});
+
+export type ChargebackFormValues = z.infer<typeof chargebackSchema>;
 
 // ─── Market ───────────────────────────────────────────────────────────────────
 
@@ -170,6 +262,7 @@ export const saleSchema = z.object({
   customerEmail: z.string().email("Must be a valid email").optional().or(z.literal("")),
   installDate: z.coerce.date(),
   carrierId: z.string().min(1, "Carrier is required"),
+  productId: z.string().optional().or(z.literal("")),
 });
 
 export type SaleFormValues = z.infer<typeof saleSchema>;
@@ -219,3 +312,22 @@ export const interviewSchema = z.object({
 });
 
 export type InterviewFormValues = z.infer<typeof interviewSchema>;
+
+// ─── Agreement ────────────────────────────────────────────────────────────────
+
+export const agreementSchema = z.object({
+  type: z.enum(["REP_AGREEMENT", "GPS_CONSENT", "TAX_W9", "BACKGROUND_CHECK"]),
+  title: z.string().min(1, "Title is required"),
+  body: z.string().min(1, "Body is required"),
+  version: z.coerce
+    .number({ error: "Must be a number" })
+    .int("Must be a whole number")
+    .positive("Must be greater than 0")
+    .default(1),
+  required: z.boolean().default(true),
+  blocking: z.boolean().default(true),
+  requiresUpload: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+});
+
+export type AgreementFormValues = z.infer<typeof agreementSchema>;

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -10,7 +10,9 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Mail, Lock, Zap, BarChart3, DollarSign, Map } from "lucide-react";
+import { Mail, Lock, BarChart3, DollarSign, Map } from "lucide-react";
+import { BlitzBolt } from "@/components/brand/blitz-bolt";
+import { formatCount } from "@/lib/format";
 
 /* ─── Zod schema ─────────────────────────────────────── */
 
@@ -24,14 +26,35 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 /* ─── Feature pills ──────────────────────────────────── */
 
 const features = [
-  { icon: BarChart3, label: "Real-time Leaderboards" },
-  { icon: DollarSign, label: "Instant Commissions" },
-  { icon: Map, label: "Field Intelligence" },
+  { icon: BarChart3, label: "Live leaderboards" },
+  { icon: DollarSign, label: "Real-time earnings" },
+  { icon: Map, label: "GPS door tracking" },
 ];
 
 /* ─── Decorative hero panel ──────────────────────────── */
 
 function HeroPanel() {
+  const [proof, setProof] = useState<{ fieldReps: number; activeMarkets: number } | null>(
+    null
+  );
+
+  useEffect(() => {
+    fetch("/api/public/stats")
+      .then((r) => r.json())
+      .then((data: { fieldReps?: number; activeMarkets?: number }) => {
+        if (
+          typeof data.fieldReps === "number" &&
+          typeof data.activeMarkets === "number" &&
+          data.fieldReps > 0
+        ) {
+          setProof({ fieldReps: data.fieldReps, activeMarkets: data.activeMarkets });
+        }
+      })
+      .catch(() => {
+        // leave the proof strip hidden on error
+      });
+  }, []);
+
   return (
     <div
       className="hidden lg:flex lg:flex-col lg:justify-between relative overflow-hidden"
@@ -78,7 +101,7 @@ function HeroPanel() {
             className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
             style={{ background: "linear-gradient(135deg, #3B82F6, #1D4ED8)" }}
           >
-            <Zap className="w-5 h-5 text-white" fill="currentColor" />
+            <BlitzBolt className="w-5 h-5 text-white" />
           </div>
           <span
             className="text-white text-xl font-bold tracking-tight"
@@ -92,7 +115,7 @@ function HeroPanel() {
         <div className="space-y-8">
           <div className="space-y-4">
             <p className="text-blue-400 text-sm font-semibold uppercase tracking-widest">
-              Sales Operations Platform
+              Built for door-to-door reps
             </p>
             <h1
               className="text-white leading-tight"
@@ -103,10 +126,10 @@ function HeroPanel() {
                 letterSpacing: "-0.02em",
               }}
             >
-              Powering the nation&apos;s top door-to-door sales teams
+              Track every door. Get paid for every deal.
             </h1>
             <p className="text-blue-200/70 text-base leading-relaxed max-w-xs">
-              From field to close — manage reps, track performance, and pay commissions in real time.
+              Log your knocks, watch your commissions add up in real time, and always know exactly what you&apos;ve earned.
             </p>
           </div>
 
@@ -130,28 +153,35 @@ function HeroPanel() {
           </div>
         </div>
 
-        {/* Bottom: social proof */}
-        <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl"
-          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
-        >
-          {/* Avatar stack */}
-          <div className="flex -space-x-2">
-            {["#3B82F6", "#F59E0B", "#10B981", "#8B5CF6"].map((bg, i) => (
-              <div
-                key={i}
-                className="w-7 h-7 rounded-full border-2 border-[#1E293B] flex items-center justify-center text-white text-[10px] font-bold"
-                style={{ background: bg }}
-              >
-                {["JT", "AM", "KR", "DS"][i]}
-              </div>
-            ))}
+        {/* Bottom: social proof — only rendered once live counts load */}
+        {proof ? (
+          <div
+            className="flex items-center gap-3 px-4 py-3 rounded-xl"
+            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+          >
+            {/* Avatar stack */}
+            <div className="flex -space-x-2">
+              {["#3B82F6", "#F59E0B", "#10B981", "#8B5CF6"].map((bg, i) => (
+                <div
+                  key={i}
+                  className="w-7 h-7 rounded-full border-2 border-[#1E293B] flex items-center justify-center text-white text-[10px] font-bold"
+                  style={{ background: bg }}
+                >
+                  {["JT", "AM", "KR", "DS"][i]}
+                </div>
+              ))}
+            </div>
+            <div>
+              <p className="text-white text-xs font-semibold">
+                {formatCount(proof.fieldReps)}+ reps on the platform
+              </p>
+              <p className="text-blue-300/60 text-[11px]">
+                across {proof.activeMarkets} active{" "}
+                {proof.activeMarkets === 1 ? "market" : "markets"} nationwide
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-white text-xs font-semibold">2,400+ reps active today</p>
-            <p className="text-blue-300/60 text-[11px]">across 38 markets nationwide</p>
-          </div>
-        </div>
+        ) : null}
       </div>
     </div>
   );
@@ -163,6 +193,9 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
+  const registered = searchParams.get("registered");
+  const verified = searchParams.get("verified");
+  const urlError = searchParams.get("error");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -201,6 +234,67 @@ function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      {/* Post-action status banners */}
+      {registered === "true" && (
+        <div
+          className="rounded-lg px-4 py-3 text-sm"
+          style={{
+            background: "rgba(16,185,129,0.06)",
+            border: "1px solid rgba(16,185,129,0.2)",
+            color: "#065F46",
+          }}
+        >
+          Account created! Check your email to verify your address before signing in.
+        </div>
+      )}
+      {verified === "true" && (
+        <div
+          className="rounded-lg px-4 py-3 text-sm"
+          style={{
+            background: "rgba(16,185,129,0.06)",
+            border: "1px solid rgba(16,185,129,0.2)",
+            color: "#065F46",
+          }}
+        >
+          Email verified! You can now sign in below.
+        </div>
+      )}
+      {verified === "already" && (
+        <div
+          className="rounded-lg px-4 py-3 text-sm"
+          style={{
+            background: "rgba(59,130,246,0.06)",
+            border: "1px solid rgba(59,130,246,0.2)",
+            color: "#1E40AF",
+          }}
+        >
+          Email already verified. Sign in below.
+        </div>
+      )}
+      {urlError === "invalid-verification-token" && (
+        <div
+          className="rounded-lg px-4 py-3 text-sm"
+          style={{
+            background: "rgba(244,63,94,0.05)",
+            border: "1px solid rgba(244,63,94,0.15)",
+            color: "#BE123C",
+          }}
+        >
+          Invalid verification link. Please request a new one from your dashboard.
+        </div>
+      )}
+      {urlError === "verification-token-expired" && (
+        <div
+          className="rounded-lg px-4 py-3 text-sm"
+          style={{
+            background: "rgba(244,63,94,0.05)",
+            border: "1px solid rgba(244,63,94,0.15)",
+            color: "#BE123C",
+          }}
+        >
+          Verification link expired. Sign in and request a new verification email from your dashboard.
+        </div>
+      )}
       {/* Email */}
       <div className="space-y-1.5">
         <Label
@@ -231,13 +325,21 @@ function LoginForm() {
 
       {/* Password */}
       <div className="space-y-1.5">
-        <Label
-          htmlFor="password"
-          className="text-sm font-medium"
-          style={{ color: "#334155" }}
-        >
-          Password
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label
+            htmlFor="password"
+            className="text-sm font-medium"
+            style={{ color: "#334155" }}
+          >
+            Password
+          </Label>
+          <Link
+            href="/forgot-password"
+            className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+          >
+            Forgot password?
+          </Link>
+        </div>
         <div className="relative">
           <Lock
             className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
@@ -327,7 +429,7 @@ export default function LoginPage() {
               className="w-8 h-8 rounded-lg flex items-center justify-center"
               style={{ background: "linear-gradient(135deg, #3B82F6, #1D4ED8)" }}
             >
-              <Zap className="w-4 h-4 text-white" fill="currentColor" />
+              <BlitzBolt className="w-4 h-4 text-white" />
             </div>
             <span
               className="text-slate-900 text-lg font-bold tracking-tight"

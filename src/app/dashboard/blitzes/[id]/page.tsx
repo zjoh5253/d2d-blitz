@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { db } from "@/lib/db"
-import type { BlitzExpense, BlitzAssignment, Sale, CommissionRecord, User } from "@prisma/client"
+import type { BlitzExpense, BlitzAssignment, Sale, CommissionRecord, User, Touchpoint } from "@prisma/client"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { BlitzTabs } from "./blitz-tabs"
 import { ShareCardButton } from "./share-card-button"
@@ -15,7 +15,7 @@ interface BlitzPageProps {
 export default async function BlitzPage({ params }: BlitzPageProps) {
   const { id } = await params
 
-  const [blitz, availableReps] = await Promise.all([
+  const [blitz, availableReps, touchpoints] = await Promise.all([
     db.blitz.findUnique({
       where: { id },
       include: {
@@ -41,6 +41,13 @@ export default async function BlitzPage({ params }: BlitzPageProps) {
       where: { role: "FIELD_REP" },
       orderBy: { name: "asc" },
       select: { id: true, name: true, email: true, role: true },
+    }),
+    db.touchpoint.findMany({
+      where: { blitzId: id },
+      include: {
+        rep: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { timestamp: "desc" },
     }),
   ])
 
@@ -73,6 +80,15 @@ export default async function BlitzPage({ params }: BlitzPageProps) {
     })),
   }
 
+  const serializedTouchpoints = touchpoints.map(
+    (t: Touchpoint & { rep: Pick<User, "id" | "name" | "email"> }) => ({
+      ...t,
+      timestamp: t.timestamp.toISOString(),
+      createdAt: t.createdAt.toISOString(),
+      updatedAt: t.updatedAt.toISOString(),
+    })
+  )
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -100,6 +116,7 @@ export default async function BlitzPage({ params }: BlitzPageProps) {
       <BlitzTabs
         blitz={serializedBlitz as Parameters<typeof BlitzTabs>[0]["blitz"]}
         availableReps={availableReps}
+        touchpoints={serializedTouchpoints as Parameters<typeof BlitzTabs>[0]["touchpoints"]}
       />
     </div>
   )

@@ -21,6 +21,7 @@ interface CarrierRow {
   id: string;
   name: string;
   revenuePerInstall: number;
+  minMarginPercent: number;
   portalUrl: string | null;
   status: "ACTIVE" | "INACTIVE";
 }
@@ -47,6 +48,7 @@ export function CarrierForm({ open, onOpenChange, carrier }: CarrierFormProps) {
     defaultValues: {
       name: carrier?.name ?? "",
       revenuePerInstall: carrier?.revenuePerInstall ?? 0,
+      minMarginPercent: carrier?.minMarginPercent ?? 0,
       portalUrl: carrier?.portalUrl ?? "",
       status: carrier?.status ?? "ACTIVE",
     },
@@ -117,6 +119,24 @@ export function CarrierForm({ open, onOpenChange, carrier }: CarrierFormProps) {
             {errors.revenuePerInstall && (
               <p className="text-xs text-destructive">
                 {errors.revenuePerInstall.message}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="minMarginPercent">Minimum retained margin (%)</Label>
+            <Input
+              id="minMarginPercent"
+              type="number"
+              step="0.01"
+              min="0"
+              max="100"
+              placeholder="e.g. 20"
+              {...register("minMarginPercent")}
+            />
+            {errors.minMarginPercent && (
+              <p className="text-xs text-destructive">
+                {errors.minMarginPercent.message}
               </p>
             )}
           </div>

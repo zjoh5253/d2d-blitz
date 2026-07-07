@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
+import { captureServerEvent } from "@/lib/posthog";
+import { payBatchViaStripe } from "@/lib/services/stripe-payout";
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ["REVIEWED"],
   REVIEWED: ["APPROVED"],
   APPROVED: ["PAID"],
-  PAID: [],
+  // PAID -> PAID is allowed as an idempotent retry: reps who onboard to Stripe
+  // after the first run can still be paid (transfers are keyed by payout line).
+  PAID: ["PAID"],
 };
 
 const updateSchema = z.object({
@@ -22,6 +26,10 @@ export async function GET(
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!["ADMIN", "EXECUTIVE"].includes(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { id } = await params;
@@ -102,17 +110,38 @@ export async function PUT(
       updateData.approvedAt = new Date();
     }
 
+    // Move real money via Stripe BEFORE flipping commission records, so only reps
+    // who were actually paid are marked PAID. Reps who can't be paid yet (not
+    // onboarded, on compliance hold, zero net) are reported back, not dropped.
+    let stripeResult: Awaited<ReturnType<typeof payBatchViaStripe>> | undefined;
     if (newStatus === "PAID") {
-      // Mark all PENDING commission records for reps in this batch as PAID
-      const lines = await db.payoutLine.findMany({
-        where: { batchId: id },
-        select: { repId: true },
-      });
-      const repIds = lines.map((l) => l.repId);
-      await db.commissionRecord.updateMany({
-        where: { repId: { in: repIds }, status: "PENDING" },
-        data: { status: "PAID" },
-      });
+      stripeResult = await payBatchViaStripe(id);
+
+      // "repId" on a payout line is really the payee id — reps, managers, and
+      // market owners all appear here.
+      const paidPayeeIds = [
+        ...stripeResult.transferred.map((t) => t.repId),
+        ...stripeResult.skipped
+          .filter((s) => s.reason === "already_transferred")
+          .map((s) => s.repId),
+      ];
+
+      if (paidPayeeIds.length > 0) {
+        await db.commissionRecord.updateMany({
+          where: { repId: { in: paidPayeeIds }, status: "PENDING" },
+          data: { status: "PAID" },
+        });
+
+        // Mark this batch's override earnings PAID for payees actually transferred.
+        await db.overrideEarning.updateMany({
+          where: {
+            payoutBatchId: id,
+            payeeId: { in: paidPayeeIds },
+            status: "PENDING",
+          },
+          data: { status: "PAID" },
+        });
+      }
     }
 
     const updated = await db.payoutBatch.update({
@@ -128,7 +157,24 @@ export async function PUT(
       },
     });
 
-    return NextResponse.json(updated);
+    if (newStatus === "APPROVED") {
+      captureServerEvent(session.user.id, "payout_approved", {
+        batch_id: id,
+        payout_lines: updated.payoutLines.length,
+      })
+    }
+
+    if (newStatus === "PAID" && stripeResult) {
+      captureServerEvent(session.user.id, "payout_paid", {
+        batch_id: id,
+        transferred: stripeResult.transferred.length,
+        skipped: stripeResult.skipped.length,
+      });
+    }
+
+    return NextResponse.json(
+      stripeResult ? { ...updated, stripeResult } : updated
+    );
   } catch (error) {
     console.error("[PUT /api/payouts/[id]]", error);
     return NextResponse.json(

@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { z } from "zod";
+import { parseQuery, optionalId } from "@/lib/validate";
+
+const governancePeriodsQuerySchema = z.object({
+  repId: optionalId,
+  month: z.coerce.number().int().min(1).max(12).optional(),
+  year: z.coerce.number().int().min(2020).max(2100).optional(),
+});
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,13 +18,18 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const repId = searchParams.get("repId") ?? undefined;
-    const month = searchParams.get("month")
-      ? parseInt(searchParams.get("month")!)
-      : undefined;
-    const year = searchParams.get("year")
-      ? parseInt(searchParams.get("year")!)
-      : undefined;
+    const parsed = parseQuery(searchParams, governancePeriodsQuerySchema);
+
+    if (!parsed.success) {
+      return parsed.response;
+    }
+
+    const MANAGER_ROLES = ["ADMIN", "EXECUTIVE", "FIELD_MANAGER", "MARKET_OWNER"];
+    const isManager = MANAGER_ROLES.includes(session.user.role);
+    // Non-managers (FIELD_REP, RECRUITER, CALL_CENTER) can only see their own records
+    const repId = isManager ? parsed.data.repId : session.user.id;
+    const month = parsed.data.month;
+    const year = parsed.data.year;
 
     const periods = await db.governancePeriod.findMany({
       where: {

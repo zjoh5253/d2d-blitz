@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { canSeeUpstreamMargin } from "@/lib/services/commission-visibility"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,6 +27,7 @@ type SaleStatus =
   | "VERIFIED"
   | "CANCELLED"
   | "DISPUTED"
+  | "CHARGEBACK"
 
 function getSaleStatusVariant(
   status: SaleStatus
@@ -38,6 +40,8 @@ function getSaleStatusVariant(
     case "CANCELLED":
       return "destructive"
     case "DISPUTED":
+      return "destructive"
+    case "CHARGEBACK":
       return "destructive"
     default:
       return "outline"
@@ -99,6 +103,7 @@ export default async function SaleDetailPage({
       carrier: true,
       blitz: { include: { market: true } },
       commissionRecord: { include: { governanceTier: true } },
+      product: { select: { name: true } },
     },
   })
 
@@ -168,6 +173,10 @@ export default async function SaleDetailPage({
             <div>
               <p className="text-muted-foreground">Carrier</p>
               <p className="font-medium">{sale.carrier.name}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Product</p>
+              <p className="font-medium">{sale.product?.name ?? "—"}</p>
             </div>
             <div>
               <p className="text-muted-foreground">Install Date</p>
@@ -309,12 +318,14 @@ export default async function SaleDetailPage({
                   {sale.commissionRecord.status}
                 </Badge>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Carrier Payout</p>
-                <p className="text-sm font-medium">
-                  ${sale.commissionRecord.carrierPayout.toFixed(2)}
-                </p>
-              </div>
+              {canSeeUpstreamMargin(session.user.role) && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Carrier Payout</p>
+                  <p className="text-sm font-medium">
+                    ${sale.commissionRecord.carrierPayout.toFixed(2)}
+                  </p>
+                </div>
+              )}
               {sale.commissionRecord.governanceTier && (
                 <div>
                   <p className="text-xs text-muted-foreground">

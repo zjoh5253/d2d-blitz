@@ -19,14 +19,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Upload, CheckCircle, XCircle, ArrowRight } from "lucide-react";
-import { format } from "date-fns";
+import { Upload, CheckCircle, XCircle, ArrowRight, AlertTriangle, DollarSign } from "lucide-react";
+import { format, subHours } from "date-fns";
 
 export default async function InstallsPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  const [uploads, totalRecords, matchedRecords, unmatchedRecords] =
+  const cutoff24h = subHours(new Date(), 24);
+
+  const [uploads, totalRecords, matchedRecords, unmatchedRecords, matchedWithCommission, flaggedUnreconciled] =
     await Promise.all([
       db.installUpload.findMany({
         orderBy: { uploadedAt: "desc" },
@@ -39,12 +41,43 @@ export default async function InstallsPage() {
       db.installRecord.count(),
       db.installRecord.count({ where: { status: "MATCHED" } }),
       db.installRecord.count({ where: { status: "UNMATCHED" } }),
+      // Matched installs that also have a commission record
+      db.installRecord.count({
+        where: {
+          status: "MATCHED",
+          matchedSale: { commissionRecord: { isNot: null } },
+        },
+      }),
+      // Matched installs older than 24h with NO commission record yet
+      db.installRecord.findMany({
+        where: {
+          status: "MATCHED",
+          createdAt: { lt: cutoff24h },
+          matchedSale: { commissionRecord: null },
+        },
+        include: {
+          carrier: { select: { name: true } },
+          matchedSale: {
+            select: {
+              customerName: true,
+              rep: { select: { name: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+        take: 20,
+      }),
     ]);
 
   const matchRate =
     totalRecords > 0
       ? Math.round((matchedRecords / totalRecords) * 100)
       : 0;
+
+  const reconciliationRate =
+    matchedRecords > 0
+      ? Math.round((matchedWithCommission / matchedRecords) * 100)
+      : 100;
 
   const stats = [
     {
@@ -71,6 +104,12 @@ export default async function InstallsPage() {
       icon: ArrowRight,
       color: "text-yellow-500",
     },
+    {
+      label: "Commission Rate",
+      value: `${reconciliationRate}%`,
+      icon: DollarSign,
+      color: reconciliationRate >= 95 ? "text-emerald-500" : "text-red-500",
+    },
   ];
 
   return (
@@ -94,7 +133,7 @@ export default async function InstallsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         {stats.map((stat) => (
           <Card key={stat.label}>
             <CardContent className="pt-6">
@@ -127,6 +166,42 @@ export default async function InstallsPage() {
           </Link>
         ))}
       </div>
+
+      {/* Reconciliation Alert */}
+      {flaggedUnreconciled.length > 0 && (
+        <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-4 w-4" />
+              {flaggedUnreconciled.length} Install{flaggedUnreconciled.length !== 1 ? "s" : ""} Without Commission (&gt;24h)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Rep</TableHead>
+                  <TableHead>Carrier</TableHead>
+                  <TableHead>Matched At</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {flaggedUnreconciled.map((r) => (
+                  <TableRow key={r.id} className="text-sm">
+                    <TableCell className="font-medium">{r.customerName}</TableCell>
+                    <TableCell>{r.matchedSale?.rep?.name ?? "—"}</TableCell>
+                    <TableCell>{r.carrier.name}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {format(new Date(r.createdAt), "MMM d, yyyy h:mm a")}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Recent Uploads */}
       <Card>

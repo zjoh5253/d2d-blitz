@@ -12,6 +12,7 @@ interface CarrierRow {
   id: string;
   name: string;
   revenuePerInstall: number;
+  minMarginPercent: number;
   portalUrl: string | null;
   status: "ACTIVE" | "INACTIVE";
 }

@@ -9,6 +9,11 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Profit/margin exposes carrier revenue + company margin — ADMIN/EXECUTIVE only (PRD §16).
+    if (!["ADMIN", "EXECUTIVE"].includes(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const blitzes = await db.blitz.findMany({
       include: {
         market: {
