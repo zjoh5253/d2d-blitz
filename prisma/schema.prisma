@@ -1266,3 +1266,24 @@ model ServicedAddress {
   @@index([source])
   @@map("serviced_addresses")
 }
+
+// Partner API keys (Coastside two-way integration + future partners). A key is
+// high-entropy and stored only as a sha256 hash; the plaintext is shown once at
+// mint. `scopes` gates which /api/v1 resources a key may read ("installs:read",
+// "field-logs:read", "carriers:read", "reps:read"; "*" = all). Auth in
+// src/lib/api-key.ts. Revoke by setting active=false / revokedAt.
+model ApiKey {
+  id          String    @id @default(cuid())
+  name        String // partner label, e.g. "Coastside"
+  keyPrefix   String    @map("key_prefix") // first chars, for identification in UI/logs
+  keyHash     String    @unique @map("key_hash") // sha256 of the full key
+  scopes      String[] // e.g. ["installs:read", "carriers:read"]; "*" = all
+  active      Boolean   @default(true)
+  lastUsedAt  DateTime? @map("last_used_at")
+  createdById String?   @map("created_by_id")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([active])
+  @@map("api_keys")
+}
