@@ -84,57 +84,65 @@ export type SuppressReason = string
 // Two kinds: current customers (installs/sales/sold/gokinetic/partner exports)
 // and addresses Kinetic does NOT serve (gokinetic serviceable=false). Both are
 // "not blitz-ready"; distinct reason strings keep them separable/reversible.
-export async function gatherKnownCustomerKeys(): Promise<Map<string, SuppressReason>> {
+export async function gatherKnownCustomerKeys(
+  opts: { includeKinetic?: boolean } = {}
+): Promise<Map<string, SuppressReason>> {
+  // Kinetic (gokinetic) serviceability + customer data is Kinetic-SPECIFIC and
+  // must NOT be applied to non-Kinetic blitzes (Wire3, AT&T, …): every address
+  // there fails a Kinetic check and would be wrongly suppressed as "Not
+  // Kinetic-serviceable", zeroing the whole blitz. Callers pass
+  // includeKinetic=false for non-Kinetic carriers. Defaults true (backward compat).
+  const includeKinetic = opts.includeKinetic ?? true
   const keys = new Map<string, SuppressReason>()
   const add = (k: string | null, reason: SuppressReason) => {
     if (k && !keys.has(k)) keys.set(k, reason)
   }
 
-  const [installs, sales, soldLeads, kineticCustomers, servicedAddresses, nonFiberReady] = await Promise.all([
+  const [installs, sales, soldLeads, servicedAddresses] = await Promise.all([
     db.installRecord.findMany({ select: { customerAddress: true } }),
     db.sale.findMany({ select: { customerAddress: true } }),
     db.doorKnockLead.findMany({
       where: { disposition: "SOLD" },
       select: { streetNumber: true, streetName: true, zip: true },
     }),
-    // Addresses the Kinetic (gokinetic) scan flagged as current customers.
-    // addressKey is already the canonical key, so it drops straight in.
-    db.kineticAddressStatus.findMany({
-      where: { isCustomer: true },
-      select: { addressKey: true },
-    }),
     // Authoritative partner/carrier exports (e.g. Chuzo for Kinetic, a
     // CrowdFiber export for RightFiber). addressKey is already canonical;
     // `source` tags which export it came from so reasons stay distinguishable.
     db.servicedAddress.findMany({ select: { addressKey: true, source: true } }),
-    // Addresses the gokinetic scan affirmatively says Kinetic does NOT serve.
-    // Not a "customer" — but equally not blitz-ready, so reps shouldn't knock
-    // them. `comingSoon` (future fiber) gets a distinct reason so those can be
-    // un-suppressed when the area goes live. Distinct reason strings keep these
-    // separable from customer suppressions for one-query reversal.
-    db.$queryRaw<
-      Array<{
-        addressKey: string
-        serviceable: boolean
-        comingSoon: boolean
-        maxQual: string | null
-        techType: string | null
-      }>
-    >`
-      SELECT
-        address_key AS "addressKey",
-        serviceable,
-        "comingSoon",
-        max_qual AS "maxQual",
-        tech_type AS "techType"
-      FROM kinetic_address_status
-      WHERE serviceable = false
-        OR NOT (
-          COALESCE(UPPER(tech_type), '') LIKE '%FIBER%'
-          OR COALESCE(UPPER(max_qual), '') LIKE '%FIBER%'
-        )
-    `,
   ])
+
+  // Kinetic-only sources — skipped entirely for non-Kinetic carriers.
+  // Addresses the Kinetic (gokinetic) scan flagged as current customers.
+  const kineticCustomers = includeKinetic
+    ? await db.kineticAddressStatus.findMany({ where: { isCustomer: true }, select: { addressKey: true } })
+    : []
+  // Addresses the gokinetic scan affirmatively says Kinetic does NOT serve.
+  // Not a "customer" — but equally not blitz-ready. `comingSoon` (future fiber)
+  // gets a distinct reason so those can be un-suppressed when the area goes live.
+  const nonFiberReady = includeKinetic
+    ? await db.$queryRaw<
+        Array<{
+          addressKey: string
+          serviceable: boolean
+          comingSoon: boolean
+          maxQual: string | null
+          techType: string | null
+        }>
+      >`
+        SELECT
+          address_key AS "addressKey",
+          serviceable,
+          "comingSoon",
+          max_qual AS "maxQual",
+          tech_type AS "techType"
+        FROM kinetic_address_status
+        WHERE serviceable = false
+          OR NOT (
+            COALESCE(UPPER(tech_type), '') LIKE '%FIBER%'
+            OR COALESCE(UPPER(max_qual), '') LIKE '%FIBER%'
+          )
+      `
+    : []
 
   for (const r of installs) add(keyFromFullAddress(r.customerAddress), "Current customer (install on record)")
   for (const s of sales) add(keyFromFullAddress(s.customerAddress), "Current customer (sale on record)")
@@ -168,7 +176,18 @@ export async function applyCustomerSuppression(
   opts: { dryRun?: boolean; blitzId?: string } = {}
 ): Promise<SuppressionResult> {
   const dryRun = opts.dryRun ?? false
-  const known = await gatherKnownCustomerKeys()
+  // Kinetic serviceability suppression only applies to Kinetic-carrier blitzes.
+  // Determine the blitz's carrier so a non-Kinetic blitz isn't wiped out by
+  // Kinetic gokinetic data. (No blitzId = global run → keep prior behavior.)
+  let includeKinetic = true
+  if (opts.blitzId) {
+    const b = await db.blitz.findUnique({
+      where: { id: opts.blitzId },
+      select: { market: { select: { carrier: { select: { name: true } } } } },
+    })
+    includeKinetic = !!b && b.market.carrier.name.toLowerCase().includes("kinetic")
+  }
+  const known = await gatherKnownCustomerKeys({ includeKinetic })
 
   // Only scan unworked, not-already-suppressed leads — these are the doors a
   // rep would actually knock.
