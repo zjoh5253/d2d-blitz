@@ -24,6 +24,8 @@ const saleSchema = z.object({
     .or(z.literal("")),
   installDate: z.string().min(1, "Install date is required"),
   orderConfirmation: z.string().optional().or(z.literal("")),
+  // Units this deal covers (1 = single home; N = apartment/bulk deal). MDU model.
+  unitsSold: z.coerce.number().int().positive().optional().default(1),
 })
 
 const validStatuses: SaleStatus[] = [
@@ -117,6 +119,7 @@ export async function POST(request: NextRequest) {
       customerEmail,
       installDate,
       orderConfirmation,
+      unitsSold,
     } = parsed.data
 
     const repId = session.user.id
@@ -167,6 +170,7 @@ export async function POST(request: NextRequest) {
         customerEmail: customerEmail || null,
         installDate: parseISO(installDate),
         orderConfirmation: orderConfirmation || null,
+        unitsSold: unitsSold ?? 1,
       },
     })
 

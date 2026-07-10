@@ -90,6 +90,8 @@ export default function NewSalePage() {
   const [valueAdded, setValueAdded] = useState(false);
   const [installDate, setInstallDate] = useState("");
   const [orderConfirmation, setOrderConfirmation] = useState("");
+  // Units this deal covers — 1 for a single home, N for an apartment/bulk deal.
+  const [unitsSold, setUnitsSold] = useState("1");
   const [notes, setNotes] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
@@ -241,6 +243,7 @@ export default function NewSalePage() {
         customerEmail: email.trim() || undefined,
         installDate,
         orderConfirmation: orderInfoParts.join(" · ") || undefined,
+        unitsSold: Number(unitsSold) || 1,
       };
       const res = await fetch(saleId ? `/api/sales/${saleId}` : "/api/sales", {
         method: saleId ? "PUT" : "POST",
@@ -378,6 +381,10 @@ export default function NewSalePage() {
 
         <Section label="Order confirmation">
           <Input value={orderConfirmation} onChange={setOrderConfirmation} placeholder="optional" />
+        </Section>
+
+        <Section label="Units sold">
+          <Input value={unitsSold} onChange={setUnitsSold} placeholder="1 (use the unit count for an apartment/bulk deal)" />
         </Section>
 
         <Section label="Notes">

@@ -24,6 +24,8 @@ interface Lead {
   disposition: Disposition;
   notes: string | null;
   blitzId: string | null;
+  isMdu: boolean;
+  unitCount: number | null;
 }
 
 interface LeadEvent {
@@ -434,6 +436,11 @@ export default function RepLeadsPage() {
               <div>
                 <div className="font-semibold">{selectedLead.streetNumber} {selectedLead.streetName}</div>
                 <div className="text-xs text-gray-500">{selectedLead.city}, {selectedLead.state} {selectedLead.zip}</div>
+                {selectedLead.isMdu && (
+                  <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">
+                    🏢 {selectedLead.unitCount ?? "?"} units — knock the leasing office
+                  </div>
+                )}
               </div>
               <button onClick={closeSheet} className="text-gray-500">
                 <X className="size-5" />
