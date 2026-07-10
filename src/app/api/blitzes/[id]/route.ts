@@ -65,8 +65,13 @@ export async function PUT(
 ) {
   try {
     const session = await auth()
-    if (!session) {
+    if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+    // Editing a blitz (details or status) is restricted to admins and field
+    // managers, matching the create endpoint.
+    if (session.user.role !== "ADMIN" && session.user.role !== "FIELD_MANAGER") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
     const { id } = await params
