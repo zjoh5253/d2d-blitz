@@ -108,10 +108,31 @@ export async function POST(request: Request) {
       }
     }
 
+    // Idempotency: the map-scanner "Create blitz" button opens a new tab per
+    // click and auto-creates on load, so repeated clicks / retries were minting
+    // duplicate blitzes for the same ZIP (e.g. 7x "FL Blitz"). If an active
+    // (non-CLOSED) blitz already exists for this market + ZIP, return it instead
+    // of creating another. Keyed on ZIP, so two DIFFERENT ZIPs in the same
+    // market still create separate blitzes.
+    if (sourceZip) {
+      const existing = await db.blitz.findFirst({
+        where: { marketId, leadPrepZip: sourceZip, status: { not: "CLOSED" } },
+        include: {
+          market: { include: { carrier: true } },
+          manager: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      })
+      if (existing) return NextResponse.json(existing, { status: 200 })
+    }
+
     const blitz = await db.blitz.create({
       data: {
         name,
         marketId,
+        // Store the source ZIP now (not just later in the prep step) so the
+        // dedup guard above can reliably match a same-ZIP blitz.
+        leadPrepZip: sourceZip ?? undefined,
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         repCap,
