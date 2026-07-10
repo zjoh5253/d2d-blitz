@@ -304,62 +304,84 @@ export async function importScannerInventory(opts: {
 
   const uploadBatchId = `area_${Date.now()}_${randomUUID().slice(0, 8)}`
   const client = opts.dbClient ?? db
+  // MDU model (docs/MDU_MODEL_SPEC.md): a building with MORE than this many
+  // distinct units collapses to ONE leasing-office lead (honest knock count),
+  // tagged with its unit count. Buildings at/under it keep individual doors.
+  const MDU_UNIT_THRESHOLD = 4
   const imported = await client.$executeRaw`
-    WITH source AS (
-      SELECT DISTINCT ON (UPPER(TRIM(a.street)))
+    WITH addr AS (
+      SELECT
         TRIM(a.street) AS street,
+        UPPER(TRIM(a.street)) AS street_key,
+        COALESCE(NULLIF(TRIM(a.unit), ''), '') AS unit,
         COALESCE(NULLIF(TRIM(a.city), ''), '') AS city,
         COALESCE(NULLIF(TRIM(a.state), ''), '') AS state,
         a.zip_code AS zip,
         a.lat,
-        a.lng
+        a.lng,
+        a.id
       FROM scanner_addresses a
       WHERE a.zip_code = ${zip}
         AND a.street IS NOT NULL
         AND TRIM(a.street) ~ '^[0-9]+[A-Za-z-]*[[:space:]]+.+'
         AND a.lat IS NOT NULL
         AND a.lng IS NOT NULL
-      ORDER BY UPPER(TRIM(a.street)), a.id
+    ),
+    unit_counts AS (
+      SELECT street_key, count(DISTINCT unit) FILTER (WHERE unit <> '') AS unit_n
+      FROM addr GROUP BY street_key
+    ),
+    -- Big complexes (> threshold units): one leasing-office lead per building.
+    mdu AS (
+      SELECT DISTINCT ON (a.street_key)
+        a.street, ''::text AS unit, a.city, a.state, a.zip, a.lat, a.lng,
+        TRUE AS is_mdu, uc.unit_n::int AS unit_count
+      FROM addr a JOIN unit_counts uc ON uc.street_key = a.street_key
+      WHERE uc.unit_n > ${MDU_UNIT_THRESHOLD}
+      ORDER BY a.street_key, a.id
+    ),
+    -- Single-family + small multiplexes (<= threshold): one lead per unit/door.
+    nonmdu AS (
+      SELECT DISTINCT ON (a.street_key, a.unit)
+        a.street, a.unit, a.city, a.state, a.zip, a.lat, a.lng,
+        FALSE AS is_mdu, NULL::int AS unit_count
+      FROM addr a JOIN unit_counts uc ON uc.street_key = a.street_key
+      WHERE uc.unit_n <= ${MDU_UNIT_THRESHOLD}
+      ORDER BY a.street_key, a.unit, a.id
+    ),
+    source AS (
+      SELECT * FROM mdu UNION ALL SELECT * FROM nonmdu
     )
     INSERT INTO door_knock_leads (
-      id,
-      first_name,
-      last_name,
-      street_number,
-      street_name,
-      city,
-      state,
-      zip,
-      lat,
-      lng,
-      disposition,
-      notes,
-      assigned_rep_id,
-      blitz_id,
-      suppressed,
-      suppression_reason,
-      uploaded_by_id,
-      upload_batch_id,
-      created_at,
-      updated_at
+      id, first_name, last_name, street_number, street_name, city, state, zip,
+      lat, lng, disposition, notes, assigned_rep_id, blitz_id, suppressed,
+      suppression_reason, is_mdu, unit_count, uploaded_by_id, upload_batch_id,
+      created_at, updated_at
     )
     SELECT
       gen_random_uuid()::text,
       NULL,
       NULL,
       SUBSTRING(source.street FROM '^([0-9]+[A-Za-z-]*)'),
-      REGEXP_REPLACE(source.street, '^[0-9]+[A-Za-z-]*[[:space:]]+', ''),
+      REGEXP_REPLACE(source.street, '^[0-9]+[A-Za-z-]*[[:space:]]+', '') ||
+        CASE WHEN source.unit = '' THEN ''
+             WHEN source.unit ~ '^[0-9]' THEN ' Unit ' || source.unit
+             ELSE ' ' || source.unit END,
       source.city,
       source.state,
       source.zip,
       source.lat,
       source.lng,
       'PENDING',
-      'Source: Map Scanner address inventory',
+      CASE WHEN source.is_mdu
+           THEN 'Source: Map Scanner (apartment/MDU — ' || source.unit_count::text || ' units — knock the leasing office)'
+           ELSE 'Source: Map Scanner address inventory' END,
       NULL,
       ${opts.blitzId},
       FALSE,
       NULL,
+      source.is_mdu,
+      source.unit_count,
       ${opts.uploadedById},
       ${uploadBatchId},
       NOW(),

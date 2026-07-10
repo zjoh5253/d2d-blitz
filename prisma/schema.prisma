@@ -837,6 +837,9 @@ model Sale {
   customerEmail       String?    @map("customer_email")
   installDate         DateTime   @map("install_date")
   orderConfirmation   String?    @map("order_confirmation")
+  // Units this deal covers: 1 = single home, N = apartment/bulk deal. Scales
+  // revenue + leaderboard impact (MDU model, docs/MDU_MODEL_SPEC.md).
+  unitsSold           Int        @default(1) @map("units_sold")
   status              SaleStatus @default(SUBMITTED)
   submittedAt         DateTime   @default(now()) @map("submitted_at")
   updatedAt           DateTime   @updatedAt @map("updated_at")
@@ -1180,6 +1183,11 @@ model DoorKnockLead {
   // already has service. Hidden from reps; still visible to admins.
   suppressed        Boolean            @default(false)
   suppressionReason String?            @map("suppression_reason")
+  // MDU (apartment / multi-dwelling): a large complex is ONE leasing-office lead
+  // (honest knock count) tagged with its unit count; small multiplexes stay as
+  // individual unit doors. See docs/MDU_MODEL_SPEC.md.
+  isMdu             Boolean            @default(false) @map("is_mdu")
+  unitCount         Int?               @map("unit_count")
   goBackId        String?              @unique @map("go_back_id")
   uploadedById    String               @map("uploaded_by_id")
   uploadBatchId   String?              @map("upload_batch_id")
