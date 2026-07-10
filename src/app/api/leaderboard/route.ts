@@ -47,10 +47,43 @@ function getPeriodDates(period: string): { start: Date; end: Date } {
 type Metric = "installs" | "sales" | "knocks" | "sph" | "points";
 const METRICS: Metric[] = ["installs", "sales", "knocks", "sph", "points"];
 
-// Gamified score: every door knocked is worth a point, a submitted sale 50,
-// and a verified install another 50 on top (so a closed-and-installed deal = 100).
-function pointsFor(d: { sales: number; verifiedInstalls: number; knocks: number }): number {
-  return d.knocks * 1 + d.sales * 50 + d.verifiedInstalls * 50;
+// Diminishing-returns weight (MDU model, P3): a big apartment deal should rank
+// high without erasing the field. sqrt so 1u→1, 4u→2, 100u→10, 1000u→~32.
+// A single-home deal (1 unit) is a no-op — installWeight(1) === 1.
+function installWeight(units: number): number {
+  return Math.sqrt(Math.max(1, units));
+}
+
+// Gamified score: every door knocked is worth a point, a submitted sale 50, and
+// a verified install another 50 on top — but an MDU install contributes its
+// *curved* unit weight (installWeight summed per deal), not raw units, so one
+// mega-deal can't dominate the points board. A single-home closed-and-installed
+// deal still = 100 (1 knock-equivalent aside).
+function pointsFor(d: { sales: number; curvedInstalls: number; knocks: number }): number {
+  return d.knocks * 1 + d.sales * 50 + d.curvedInstalls * 50;
+}
+
+// Per-rep verified-install metrics pulled from the raw verified sales, so we can
+// expose BOTH true unit impact (units) and the curved competitive weight
+// (curved), plus the deal count (for install rate). One query, reduced in JS
+// because the curve is non-linear and can't be expressed as a SQL aggregate.
+async function verifiedMetrics(
+  where: Record<string, unknown>
+): Promise<Map<string, { units: number; deals: number; curved: number }>> {
+  const sales = await db.sale.findMany({
+    where: { status: "VERIFIED", ...where },
+    select: { repId: true, unitsSold: true },
+  });
+  const m = new Map<string, { units: number; deals: number; curved: number }>();
+  for (const s of sales) {
+    const u = s.unitsSold ?? 1;
+    const cur = m.get(s.repId) ?? { units: 0, deals: 0, curved: 0 };
+    cur.units += u;
+    cur.deals += 1;
+    cur.curved += installWeight(u);
+    m.set(s.repId, cur);
+  }
+  return m;
 }
 
 // UTC day key — used for streak bucketing (motivational, not financial, so a
@@ -61,14 +94,14 @@ function dayKey(d: Date): string {
 
 // Shared sort for a given metric, used by both the live board and the
 // previous-period ranking that drives the movement (▲/▼) arrows.
-type Rankable = { sales: number; verifiedInstalls: number; knocks: number; salesPerHour: number | null };
+type Rankable = { sales: number; verifiedInstalls: number; curvedInstalls: number; knocks: number; salesPerHour: number | null };
 function cmpFor(metric: Metric): (a: Rankable, b: Rankable) => number {
   switch (metric) {
     case "sales": return (a, b) => b.sales - a.sales || b.verifiedInstalls - a.verifiedInstalls;
     case "knocks": return (a, b) => b.knocks - a.knocks || b.sales - a.sales;
     case "sph": return (a, b) => (b.salesPerHour ?? -1) - (a.salesPerHour ?? -1) || b.sales - a.sales;
     case "points": return (a, b) => pointsFor(b) - pointsFor(a) || b.verifiedInstalls - a.verifiedInstalls;
-    default: return (a, b) => b.verifiedInstalls - a.verifiedInstalls || b.sales - a.sales; // installs
+    default: return (a, b) => b.verifiedInstalls - a.verifiedInstalls || b.sales - a.sales; // installs (unit-weighted)
   }
 }
 
@@ -83,20 +116,19 @@ async function rankWindow(
 ): Promise<Map<string, number>> {
   const [sales, verified, gps] = await Promise.all([
     db.sale.groupBy({ by: ["repId"], where: { submittedAt: { gte: start, lte: end }, ...scope }, _count: { id: true } }),
-    db.sale.groupBy({ by: ["repId"], where: { status: "VERIFIED", submittedAt: { gte: start, lte: end }, ...scope }, _count: { id: true } }),
+    verifiedMetrics({ submittedAt: { gte: start, lte: end }, ...scope }),
     db.gpsSession.groupBy({ by: ["repId"], where: { startedAt: { gte: start, lte: end }, ...scope }, _sum: { durationSeconds: true, knockCount: true } }),
   ]);
   const sMap = new Map(sales.map((r) => [r.repId, r._count.id]));
-  const vMap = new Map(verified.map((r) => [r.repId, r._count.id]));
   const gMap = new Map(gps.map((r) => [r.repId, { secs: r._sum.durationSeconds ?? 0, knocks: r._sum.knockCount ?? 0 }]));
   const ids = new Set<string>([...sMap.keys(), ...gMap.keys()]);
   for (const id of excluded) ids.delete(id);
   const rows = [...ids].map((id) => {
     const sales = sMap.get(id) ?? 0;
-    const verifiedInstalls = vMap.get(id) ?? 0;
+    const v = verified.get(id) ?? { units: 0, deals: 0, curved: 0 };
     const g = gMap.get(id) ?? { secs: 0, knocks: 0 };
     const hours = g.secs / 3600;
-    return { id, sales, verifiedInstalls, knocks: g.knocks, salesPerHour: hours > 0 ? sales / hours : null };
+    return { id, sales, verifiedInstalls: v.units, curvedInstalls: v.curved, knocks: g.knocks, salesPerHour: hours > 0 ? sales / hours : null };
   });
   rows.sort(cmpFor(metric));
   return new Map(rows.map((r, i) => [r.id, i + 1]));
@@ -145,9 +177,10 @@ export async function GET(request: NextRequest) {
       ...(repId ? { repId } : {}),
     };
 
-    const [totalSalesByRep, verifiedByRep, gpsByRep, assigned] = await Promise.all([
+    const [totalSalesByRep, verifiedMap, gpsByRep, assigned] = await Promise.all([
       db.sale.groupBy({ by: ["repId"], where: { submittedAt: { gte: start, lte: end }, ...scope }, _count: { id: true } }),
-      db.sale.groupBy({ by: ["repId"], where: { status: "VERIFIED", submittedAt: { gte: start, lte: end }, ...scope }, _count: { id: true } }),
+      // repId → { units, deals, curved } for verified sales in scope.
+      verifiedMetrics({ submittedAt: { gte: start, lte: end }, ...scope }),
       db.gpsSession.groupBy({ by: ["repId"], where: { startedAt: { gte: start, lte: end }, ...scope }, _sum: { durationSeconds: true, knockCount: true } }),
       // Universe of "active" reps for this scope, so everyone gets a rank to
       // climb (not just reps who already sold). Reps on a blitz in scope.
@@ -155,7 +188,6 @@ export async function GET(request: NextRequest) {
     ]);
 
     const salesMap = new Map(totalSalesByRep.map((r) => [r.repId, r._count.id]));
-    const verifiedMap = new Map(verifiedByRep.map((r) => [r.repId, r._count.id]));
     const gpsMap = new Map(gpsByRep.map((r) => [r.repId, { secs: r._sum.durationSeconds ?? 0, knocks: r._sum.knockCount ?? 0 }]));
 
     const now = new Date();
@@ -213,21 +245,25 @@ export async function GET(request: NextRequest) {
 
     let rows = reps.map((rep) => {
       const sales = salesMap.get(rep.id) ?? 0;
-      const verifiedInstalls = verifiedMap.get(rep.id) ?? 0;
+      const v = verifiedMap.get(rep.id) ?? { units: 0, deals: 0, curved: 0 };
       const gps = gpsMap.get(rep.id) ?? { secs: 0, knocks: 0 };
       const hours = gps.secs / 3600;
       const knocks = gps.knocks;
       const salesPerHour = hours > 0 ? Math.round((sales / hours) * 100) / 100 : null;
+      // verifiedInstalls = true unit impact (an MDU deal shows its full size);
+      // installRate stays deal-based (deals that installed / deals sold, ≤1);
+      // curvedInstalls feeds the points curve so a mega-deal can't run away.
       return {
         repId: rep.id,
         repName: rep.name ?? "Unknown",
         sales,
-        verifiedInstalls,
-        installRate: sales > 0 ? verifiedInstalls / sales : 0,
+        verifiedInstalls: v.units,
+        curvedInstalls: Math.round(v.curved * 100) / 100,
+        installRate: sales > 0 ? v.deals / sales : 0,
         knocks,
         hours: Math.round(hours * 10) / 10,
         salesPerHour,
-        points: pointsFor({ sales, verifiedInstalls, knocks }),
+        points: Math.round(pointsFor({ sales, curvedInstalls: v.curved, knocks })),
         streak: streakFor(rep.id),
         prevRank: prevRankMap.get(rep.id) ?? null,
         tier: rep.governanceTier?.name ?? null,

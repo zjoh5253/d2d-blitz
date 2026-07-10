@@ -127,9 +127,18 @@ while preserving a competitive board.
     Weighting the leaderboard installs by units without a curve would let one
     mega-deal dominate the board (the exact concern raised) — so all leaderboard
     unit-weighting moves to P3 and ships together with the fairness curve.
-- **P3 — Leaderboard:** unit-weighted installs on the board + points curve
-  (diminishing returns so a 1,000-unit deal doesn't nuke the standings) + surface
-  MDU wins distinctly.
+- **P3 — Leaderboard (SHIPPED):** `src/app/api/leaderboard/route.ts`. The
+  **installs** metric now counts activated units (`SUM(units_sold)`) — a big
+  apartment deal shows its true impact on the board. **Points** use a
+  diminishing-returns curve: each verified deal contributes `√units × 50` (not
+  raw units × 50), so `installWeight(1)=1` (single homes unchanged), a 200-unit
+  deal earns ~757 pts and a 1,000-unit deal ~1,631 pts — high, but ~16 single
+  installs (1,631 pts) still match it, so no single mega-deal runs away with the
+  standings. **Install rate** stays deal-based (`verifiedDeals / sales`, ≤1).
+  Curve + per-deal metrics live in a shared `verifiedMetrics()` helper used by
+  both the live board and the previous-period movement ranking, so ▲/▼ arrows
+  stay consistent.
 
-P1 alone fixes the original concern (apartments captured, knocks honest). P2 makes
-the money/impact numbers correct; P3 makes the competitive board fair.
+P1 fixes the original concern (apartments captured, knocks honest). P2 makes the
+money/impact numbers correct; P3 makes the competitive board fair. **All three
+shipped.**
