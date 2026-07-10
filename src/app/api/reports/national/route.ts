@@ -9,15 +9,21 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // MDU model (P2): "installs" on the impact reports counts activated units
+    // (units_sold), so an apartment deal registers its true size. unitsSold is 1
+    // for a single-home sale, so single-family numbers are unchanged.
     const [
-      totalVerifiedInstalls,
+      verifiedUnitsAgg,
       activeReps,
       activeBlitzes,
       allSales,
       monthlyCounts,
       byCarrier,
     ] = await Promise.all([
-      db.sale.count({ where: { status: "VERIFIED" } }),
+      db.sale.aggregate({
+        where: { status: "VERIFIED" },
+        _sum: { unitsSold: true },
+      }),
       db.user.count({ where: { status: "ACTIVE", role: "FIELD_REP" } }),
       db.blitz.count({ where: { status: "ACTIVE" } }),
       db.sale.findMany({
@@ -28,7 +34,7 @@ export async function GET() {
       }),
       db.$queryRaw<Array<{ month: string; count: bigint }>>`
         SELECT TO_CHAR(DATE_TRUNC('month', "submitted_at"), 'Mon YYYY') AS month,
-               COUNT(*) AS count
+               COALESCE(SUM("units_sold"), 0) AS count
         FROM sales
         WHERE status = 'VERIFIED'
         GROUP BY DATE_TRUNC('month', "submitted_at")
@@ -36,7 +42,7 @@ export async function GET() {
         LIMIT 12
       `,
       db.$queryRaw<Array<{ carrier: string; installs: bigint }>>`
-        SELECT c.name AS carrier, COUNT(*) AS installs
+        SELECT c.name AS carrier, COALESCE(SUM(s."units_sold"), 0) AS installs
         FROM sales s
         JOIN carriers c ON s."carrier_id" = c.id
         WHERE s.status = 'VERIFIED'
@@ -45,9 +51,11 @@ export async function GET() {
       `,
     ]);
 
-    // Calculate total revenue from verified installs
+    const totalVerifiedInstalls = verifiedUnitsAgg._sum.unitsSold ?? 0;
+
+    // Total revenue from verified installs, scaled by units per deal.
     const totalRevenue = allSales.reduce(
-      (sum, s) => sum + s.carrier.revenuePerInstall,
+      (sum, s) => sum + s.carrier.revenuePerInstall * (s.unitsSold ?? 1),
       0
     );
 

@@ -20,7 +20,7 @@ export async function GET() {
         expenses: { select: { amount: true } },
         sales: {
           where: { status: "VERIFIED" },
-          select: { id: true },
+          select: { id: true, unitsSold: true },
         },
         assignments: {
           where: { status: { not: "REMOVED" } },
@@ -32,7 +32,12 @@ export async function GET() {
 
     const blitzData = blitzes.map((blitz) => {
       const totalExpenses = blitz.expenses.reduce((s, e) => s + e.amount, 0);
-      const verifiedInstalls = blitz.sales.length;
+      // MDU model (P2): an apartment/bulk deal installs N units, so revenue and
+      // the install count scale by unitsSold (1 for a single-home sale).
+      const verifiedInstalls = blitz.sales.reduce(
+        (s, sale) => s + (sale.unitsSold ?? 1),
+        0
+      );
       const revenue =
         verifiedInstalls * blitz.market.carrier.revenuePerInstall;
       const profit = revenue - totalExpenses;

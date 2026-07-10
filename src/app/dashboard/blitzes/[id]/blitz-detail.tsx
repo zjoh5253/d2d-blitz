@@ -62,6 +62,7 @@ interface Sale {
   status: string
   installDate: string | Date
   submittedAt: string | Date
+  unitsSold: number
   rep: { id: string; name: string | null }
   commissionRecord: CommissionRecord | null
 }
@@ -464,8 +465,12 @@ function PandLTab({
   expenses: Expense[]
   revenuePerInstall: number
 }) {
-  const verifiedSales = sales.filter((s) => s.status === "VERIFIED").length
-  const totalRevenue = verifiedSales * revenuePerInstall
+  // MDU model (P2): revenue and the install tally count activated units
+  // (units_sold), so an apartment deal reflects its true size. 1 per single home.
+  const verifiedUnits = sales
+    .filter((s) => s.status === "VERIFIED")
+    .reduce((sum, s) => sum + (s.unitsSold ?? 1), 0)
+  const totalRevenue = verifiedUnits * revenuePerInstall
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0)
   const totalRepPay = sales
     .filter((s) => s.commissionRecord)
@@ -486,8 +491,8 @@ function PandLTab({
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Verified installs</span>
-              <span>{verifiedSales}</span>
+              <span className="text-muted-foreground">Verified installs (units)</span>
+              <span>{verifiedUnits}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Revenue per install</span>

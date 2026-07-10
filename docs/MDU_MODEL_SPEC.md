@@ -117,8 +117,19 @@ while preserving a competitive board.
 - **P1 — Capture (no leaderboard changes):** schema (`isMdu`, `unitCount`,
   `unitsSold`), import collapse-vs-expand by threshold, MDU badge on the pin,
   `unitsSold` field on the sale form. Ships the honest-knock + opportunity view.
-- **P2 — Impact:** revenue = `unitsSold × per-unit`; installs count per-unit.
-- **P3 — Leaderboard:** points curve + surface MDU wins distinctly.
+- **P2 — Impact (SHIPPED):** revenue = `unitsSold × per-unit` everywhere money is
+  computed — commission engine (`commission.ts`, `commissions/calculate`) and the
+  revenue/impact reports (`blitz-profitability`, `national`, `margins`,
+  `public/stats`, blitz P&L tab). "Installs" on the impact reports now counts
+  activated units (`SUM(units_sold)`), so an apartment deal shows its true size.
+  Single-home sales are unchanged (`unitsSold` defaults to 1).
+  - Deliberately **NOT** in P2: the competitive **leaderboard** ranking/points.
+    Weighting the leaderboard installs by units without a curve would let one
+    mega-deal dominate the board (the exact concern raised) — so all leaderboard
+    unit-weighting moves to P3 and ships together with the fairness curve.
+- **P3 — Leaderboard:** unit-weighted installs on the board + points curve
+  (diminishing returns so a 1,000-unit deal doesn't nuke the standings) + surface
+  MDU wins distinctly.
 
-P1 alone fixes the original concern (apartments captured, knocks honest). P2/P3
-add the impact/leaderboard payoff.
+P1 alone fixes the original concern (apartments captured, knocks honest). P2 makes
+the money/impact numbers correct; P3 makes the competitive board fair.

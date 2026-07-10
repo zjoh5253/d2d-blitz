@@ -14,8 +14,9 @@ export async function GET() {
       }),
     ]);
 
+    // MDU model (P2): revenue scales by units_sold (1 for a single-home sale).
     const totalRevenue = verifiedSales.reduce(
-      (sum, sale) => sum + sale.carrier.revenuePerInstall,
+      (sum, sale) => sum + sale.carrier.revenuePerInstall * (sale.unitsSold ?? 1),
       0
     );
 

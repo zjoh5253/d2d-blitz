@@ -24,8 +24,8 @@ export async function GET() {
         Array<{ carrier: string; revenue: number; installs: bigint }>
       >`
         SELECT c.name AS carrier,
-               SUM(c."revenue_per_install") AS revenue,
-               COUNT(*) AS installs
+               COALESCE(SUM(c."revenue_per_install" * s."units_sold"), 0) AS revenue,
+               COALESCE(SUM(s."units_sold"), 0) AS installs
         FROM sales s
         JOIN carriers c ON s."carrier_id" = c.id
         WHERE s.status = 'VERIFIED'
@@ -47,7 +47,7 @@ export async function GET() {
         year: "numeric",
       });
       const existing = monthlyMap.get(key) ?? { month: label, revenue: 0, expenses: 0 };
-      existing.revenue += sale.carrier.revenuePerInstall;
+      existing.revenue += sale.carrier.revenuePerInstall * (sale.unitsSold ?? 1);
       monthlyMap.set(key, existing);
     }
 
@@ -74,7 +74,7 @@ export async function GET() {
 
     // Total stats
     const totalRevenue = sales.reduce(
-      (s, sale) => s + sale.carrier.revenuePerInstall,
+      (s, sale) => s + sale.carrier.revenuePerInstall * (sale.unitsSold ?? 1),
       0
     );
     const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);

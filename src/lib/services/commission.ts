@@ -31,7 +31,9 @@ export async function calculateCommission(saleId: string) {
 
   if (!stackConfig) throw new Error("No stack configuration found");
 
-  const carrierPayout = sale.carrier.revenuePerInstall;
+  // MDU model (P2): a deal covering N units is worth N × the per-install revenue.
+  // unitsSold defaults to 1 for a single-home sale, so this is a no-op there.
+  const carrierPayout = sale.carrier.revenuePerInstall * (sale.unitsSold ?? 1);
   const companyFloor = carrierPayout * stackConfig.companyFloorPercent;
   const remaining = carrierPayout - companyFloor;
   const managerOverride = remaining * stackConfig.managerOverridePercent;

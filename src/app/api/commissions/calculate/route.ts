@@ -83,7 +83,10 @@ export async function POST() {
           continue;
         }
 
-        const carrierPayout = sale.carrier.revenuePerInstall;
+        // MDU model (P2): a deal covering N units pays N × the per-install
+        // revenue. unitsSold defaults to 1, so single-home payouts are unchanged.
+        const carrierPayout =
+          sale.carrier.revenuePerInstall * (sale.unitsSold ?? 1);
         const companyFloor =
           (activeConfig.companyFloorPercent / 100) * carrierPayout;
         const managerOverride =
