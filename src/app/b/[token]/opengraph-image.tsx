@@ -13,7 +13,7 @@ export default async function Image({ params }: { params: Promise<{ token: strin
   const title = data?.blitzName ?? "Fiber Blitz";
   const carrier = data?.carrierName ?? "";
   const dates = data ? formatDateRange(data.startDate, data.endDate) : "";
-  const seats = data ? (data.expired ? "Filled" : `${data.seatsRemaining} seats open`) : "";
+  const seats = data ? (data.full ? "Filled" : data.ended ? "Ended" : `${data.seatsRemaining} seats open`) : "";
 
   return new ImageResponse(
     (

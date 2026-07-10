@@ -55,9 +55,11 @@ export default async function PublicBlitzCard({ params, searchParams }: Params) 
           </div>
           <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-sm font-medium">
             <Users className="size-4" />
-            {data.expired
+            {data.full
               ? "Filled — no open seats"
-              : `${data.seatsRemaining} of ${data.seatsTotal} seats open`}
+              : data.ended
+                ? "This blitz has ended"
+                : `${data.seatsRemaining} of ${data.seatsTotal} seats open`}
           </div>
         </div>
 

@@ -26,7 +26,11 @@ export interface PublicCardData {
   housingPlan: string | null;
   coverageArea: string | null;
   manager: { name: string | null; phone: string | null };
-  // Card "expires" (shows the closed state) once the blitz fills or starts.
+  // full = no seats left; ended = past the blitz end date. `expired` = either
+  // (card is no longer claimable). Kept separate so the card shows the RIGHT
+  // reason — a started-but-not-ended blitz with open seats is still joinable.
+  full: boolean;
+  ended: boolean;
   expired: boolean;
 }
 
@@ -46,7 +50,12 @@ export async function getPublicCardData(token: string): Promise<PublicCardData |
 
   const taken = blitz.signups.length;
   const seatsRemaining = Math.max(0, blitz.repCap - taken);
-  const expired = seatsRemaining <= 0 || new Date() > blitz.startDate;
+  // "Filled" is a STAFFING state (no seats), not a date. A blitz that has
+  // started but not ended with open seats is still claimable — reps can join an
+  // in-progress blitz. Only truly-ended (past endDate) blitzes stop taking reps.
+  const full = seatsRemaining <= 0;
+  const ended = new Date() > blitz.endDate;
+  const expired = full || ended;
 
   return {
     token,
@@ -64,6 +73,8 @@ export async function getPublicCardData(token: string): Promise<PublicCardData |
     housingPlan: blitz.housingPlan,
     coverageArea: blitz.market.coverageArea,
     manager: { name: blitz.manager.name, phone: blitz.manager.phone },
+    full,
+    ended,
     expired,
   };
 }
