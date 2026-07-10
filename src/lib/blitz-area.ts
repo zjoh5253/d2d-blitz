@@ -57,7 +57,7 @@ export async function inventoryForZip(zip: string): Promise<AreaCandidate | null
       a.zip_code AS zip,
       MAX(NULLIF(a.city, '')) AS city,
       MAX(a.state) AS state,
-      COUNT(DISTINCT (UPPER(TRIM(a.street)), UPPER(TRIM(COALESCE(a.unit, '')))))::int AS "addressCount"
+      COUNT(DISTINCT UPPER(TRIM(a.street)))::int AS "addressCount"
     FROM scanner_addresses a
     WHERE a.zip_code = ${zip}
       AND a.street IS NOT NULL
@@ -87,7 +87,7 @@ async function searchInventoryByTown(town: string, state: string): Promise<AreaC
           a.zip_code AS zip,
           MAX(NULLIF(a.city, '')) AS city,
           MAX(a.state) AS state,
-          COUNT(DISTINCT (UPPER(TRIM(a.street)), UPPER(TRIM(COALESCE(a.unit, '')))))::int AS "addressCount"
+          COUNT(DISTINCT UPPER(TRIM(a.street)))::int AS "addressCount"
         FROM scanner_addresses a
         WHERE UPPER(a.city) LIKE ${townPattern}
           AND UPPER(a.state) = ${state}
@@ -105,7 +105,7 @@ async function searchInventoryByTown(town: string, state: string): Promise<AreaC
           a.zip_code AS zip,
           MAX(NULLIF(a.city, '')) AS city,
           MAX(a.state) AS state,
-          COUNT(DISTINCT (UPPER(TRIM(a.street)), UPPER(TRIM(COALESCE(a.unit, '')))))::int AS "addressCount"
+          COUNT(DISTINCT UPPER(TRIM(a.street)))::int AS "addressCount"
         FROM scanner_addresses a
         WHERE UPPER(a.city) LIKE ${townPattern}
           AND a.street IS NOT NULL
@@ -306,9 +306,8 @@ export async function importScannerInventory(opts: {
   const client = opts.dbClient ?? db
   const imported = await client.$executeRaw`
     WITH source AS (
-      SELECT DISTINCT ON (UPPER(TRIM(a.street)), UPPER(TRIM(COALESCE(a.unit, ''))))
+      SELECT DISTINCT ON (UPPER(TRIM(a.street)))
         TRIM(a.street) AS street,
-        COALESCE(NULLIF(TRIM(a.unit), ''), '') AS unit,
         COALESCE(NULLIF(TRIM(a.city), ''), '') AS city,
         COALESCE(NULLIF(TRIM(a.state), ''), '') AS state,
         a.zip_code AS zip,
@@ -320,9 +319,7 @@ export async function importScannerInventory(opts: {
         AND TRIM(a.street) ~ '^[0-9]+[A-Za-z-]*[[:space:]]+.+'
         AND a.lat IS NOT NULL
         AND a.lng IS NOT NULL
-      -- Dedupe by street + unit so each apartment door is its own lead (a 50-unit
-      -- complex → 50 leads, not 1). Was DISTINCT ON street, which dropped MDUs.
-      ORDER BY UPPER(TRIM(a.street)), UPPER(TRIM(COALESCE(a.unit, ''))), a.id
+      ORDER BY UPPER(TRIM(a.street)), a.id
     )
     INSERT INTO door_knock_leads (
       id,
@@ -351,12 +348,7 @@ export async function importScannerInventory(opts: {
       NULL,
       NULL,
       SUBSTRING(source.street FROM '^([0-9]+[A-Za-z-]*)'),
-      REGEXP_REPLACE(source.street, '^[0-9]+[A-Za-z-]*[[:space:]]+', '') ||
-        CASE
-          WHEN source.unit = '' THEN ''
-          WHEN source.unit ~ '^[0-9]' THEN ' Unit ' || source.unit
-          ELSE ' ' || source.unit
-        END,
+      REGEXP_REPLACE(source.street, '^[0-9]+[A-Za-z-]*[[:space:]]+', ''),
       source.city,
       source.state,
       source.zip,
