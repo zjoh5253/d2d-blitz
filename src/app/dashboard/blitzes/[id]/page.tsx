@@ -5,6 +5,7 @@ import type { BlitzExpense, BlitzAssignment, Sale, CommissionRecord, User } from
 import { StatusBadge } from "@/components/ui/status-badge"
 import { BlitzTabs } from "./blitz-tabs"
 import { ShareCardButton } from "./share-card-button"
+import { EditBlitzButton } from "./edit-blitz-button"
 
 export const dynamic = "force-dynamic"
 
@@ -91,6 +92,7 @@ export default async function BlitzPage({ params }: BlitzPageProps) {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
+          <EditBlitzButton blitzId={b.id} name={b.name} startDate={b.startDate} endDate={b.endDate} repCap={b.repCap} housingPlan={b.housingPlan} />
           <ShareCardButton blitzId={b.id} initialToken={b.publicCardToken} initialEnabled={b.publicCardEnabled} />
           <StatusBadge status={b.status} />
         </div>
