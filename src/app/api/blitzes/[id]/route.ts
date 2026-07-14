@@ -100,6 +100,17 @@ export async function PUT(
       },
     })
 
+    // When a blitz stops accepting reps, revoke its still-pending invites so
+    // they don't linger in reps' inboxes looking acceptable (accepting would
+    // just fail the claimSpot guard with a confusing error). Only touches
+    // SENT/VIEWED — accepted/declined/expired are terminal.
+    if (rest.status === "CLOSED" || rest.status === "REVIEW") {
+      await db.blitzInvite.updateMany({
+        where: { blitzId: id, status: { in: ["SENT", "VIEWED"] } },
+        data: { status: "EXPIRED" },
+      })
+    }
+
     return NextResponse.json(blitz)
   } catch (error) {
     console.error("[blitzes/[id] PUT]", error)

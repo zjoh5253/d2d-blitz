@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
       include: {
         blitz: {
           select: {
-            id: true, name: true, startDate: true, endDate: true, repCap: true,
+            id: true, name: true, status: true, startDate: true, endDate: true, repCap: true,
             market: { select: { name: true, carrier: { select: { name: true } } } },
           },
         },
@@ -33,7 +33,13 @@ export async function GET(request: NextRequest) {
 
     const rows = invites.map((i) => ({
       id: i.id,
-      status: effectiveStatus(i),
+      // A CLOSED/REVIEW blitz no longer accepts reps, so its invites aren't
+      // actionable regardless of the invite's own state — surface them as
+      // expired so the app doesn't offer an Accept that would fail server-side.
+      status:
+        i.blitz.status === "CLOSED" || i.blitz.status === "REVIEW"
+          ? "expired"
+          : effectiveStatus(i),
       expiresAt: i.expiresAt,
       blitz: {
         id: i.blitz.id,
