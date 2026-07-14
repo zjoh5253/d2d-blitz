@@ -269,6 +269,18 @@ const NAV_GROUPS: NavGroup[] = [
         icon: <Wallet className="size-[18px]" />,
         roles: ["ADMIN", "FIELD_MANAGER", "MARKET_OWNER"],
       },
+      {
+        title: "Manager Rates",
+        href: "/dashboard/manager/manager-rates",
+        icon: <Percent className="size-[18px]" />,
+        roles: ["ADMIN", "MARKET_OWNER"],
+      },
+      {
+        title: "Rep Pay",
+        href: "/dashboard/manager/rep-pay",
+        icon: <DollarSign className="size-[18px]" />,
+        roles: ["ADMIN", "FIELD_MANAGER"],
+      },
     ],
   },
   {

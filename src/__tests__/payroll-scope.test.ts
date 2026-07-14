@@ -10,7 +10,7 @@ const mockDb = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
 
-import { getPayrollScope } from "@/lib/services/payroll-scope";
+import { getPayrollScope, getManagerScope } from "@/lib/services/payroll-scope";
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -52,5 +52,28 @@ describe("getPayrollScope", () => {
     const scope = await getPayrollScope({ id: "mgr-x", role: "FIELD_MANAGER" });
     expect(scope.repIds).toEqual([]);
     expect(mockDb.blitzAssignment.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("getManagerScope", () => {
+  it("returns the managers of a MARKET_OWNER's blitzes (deduped)", async () => {
+    mockDb.blitz.findMany.mockResolvedValueOnce([
+      { managerId: "mgr-1" },
+      { managerId: "mgr-2" },
+      { managerId: "mgr-1" },
+    ]);
+
+    const scope = await getManagerScope({ id: "owner-1", role: "MARKET_OWNER" });
+
+    expect(mockDb.blitz.findMany.mock.calls[0][0].where).toEqual({
+      market: { ownerId: "owner-1" },
+    });
+    expect(scope.managerIds.sort()).toEqual(["mgr-1", "mgr-2"]);
+  });
+
+  it("returns an empty scope for non-owner roles", async () => {
+    const scope = await getManagerScope({ id: "mgr-1", role: "FIELD_MANAGER" });
+    expect(scope.managerIds).toEqual([]);
+    expect(mockDb.blitz.findMany).not.toHaveBeenCalled();
   });
 });

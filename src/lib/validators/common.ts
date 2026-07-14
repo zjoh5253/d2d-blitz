@@ -48,6 +48,8 @@ export const repCommissionOverrideSchema = z.object({
     .positive("Must be greater than 0"),
   effectiveDate: z.string().min(1, "Effective date is required"),
   active: z.boolean().default(true),
+  // Manager escape hatch to pay a rep above the manager's own available revenue.
+  overrideMinMargin: z.boolean().optional().default(false),
 });
 
 export type RepCommissionOverrideFormValues = z.infer<typeof repCommissionOverrideSchema>;
