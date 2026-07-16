@@ -176,18 +176,32 @@ export async function applyCustomerSuppression(
   opts: { dryRun?: boolean; blitzId?: string } = {}
 ): Promise<SuppressionResult> {
   const dryRun = opts.dryRun ?? false
-  // Kinetic serviceability suppression only applies to Kinetic-carrier blitzes.
-  // Determine the blitz's carrier so a non-Kinetic blitz isn't wiped out by
-  // Kinetic gokinetic data. (No blitzId = global run → keep prior behavior.)
-  let includeKinetic = true
-  if (opts.blitzId) {
-    const b = await db.blitz.findUnique({
-      where: { id: opts.blitzId },
-      select: { market: { select: { carrier: { select: { name: true } } } } },
-    })
-    includeKinetic = !!b && b.market.carrier.name.toLowerCase().includes("kinetic")
-  }
-  const known = await gatherKnownCustomerKeys({ includeKinetic })
+
+  // Kinetic serviceability suppression only applies to Kinetic-carrier blitzes,
+  // and a run can span MANY carriers at once — the nightly cron sweeps every
+  // blitz in one call. So carrier scoping is decided PER LEAD (via its blitz),
+  // never once for the whole run: a single global includeKinetic=true is what
+  // stamped "Not Kinetic-serviceable" across non-Kinetic blitzes and hid most
+  // of their doors.
+  const blitzes = await db.blitz.findMany({
+    where: opts.blitzId ? { id: opts.blitzId } : {},
+    select: { id: true, market: { select: { carrier: { select: { name: true } } } } },
+  })
+  const kineticBlitzIds = new Set(
+    blitzes
+      .filter((b) => (b.market?.carrier?.name ?? "").toLowerCase().includes("kinetic"))
+      .map((b) => b.id)
+  )
+
+  // Two key sets. `neutralKeys` is carrier-agnostic (our own installs/sales/
+  // sold leads/partner exports) and is safe for ANY blitz. `kineticKeys` adds
+  // the gokinetic serviceability + customer data and is used only for leads on
+  // a Kinetic-carrier blitz. A lead with no blitz has an unknown carrier, so it
+  // gets the neutral set — we never hide a door on Kinetic data we can't tie to
+  // a Kinetic blitz.
+  const neutralKeys = await gatherKnownCustomerKeys({ includeKinetic: false })
+  const kineticKeys =
+    kineticBlitzIds.size > 0 ? await gatherKnownCustomerKeys({ includeKinetic: true }) : neutralKeys
 
   // Only scan unworked, not-already-suppressed leads — these are the doors a
   // rep would actually knock.
@@ -197,7 +211,7 @@ export async function applyCustomerSuppression(
       suppressed: false,
       ...(opts.blitzId ? { blitzId: opts.blitzId } : {}),
     },
-    select: { id: true, streetNumber: true, streetName: true, zip: true },
+    select: { id: true, streetNumber: true, streetName: true, zip: true, blitzId: true },
   })
 
   const byReason: Record<string, number> = {}
@@ -205,6 +219,7 @@ export async function applyCustomerSuppression(
   for (const l of leads) {
     const k = keyFromParts(l.streetNumber, l.streetName, l.zip)
     if (!k) continue
+    const known = l.blitzId && kineticBlitzIds.has(l.blitzId) ? kineticKeys : neutralKeys
     const reason = known.get(k)
     if (reason) {
       toUpdate.push({ id: l.id, reason })
@@ -234,7 +249,9 @@ export async function applyCustomerSuppression(
   }
 
   return {
-    knownCustomerKeys: known.size,
+    // Distinct addresses considered across both key sets (kineticKeys is a
+    // superset of neutralKeys whenever any Kinetic blitz is in scope).
+    knownCustomerKeys: Math.max(neutralKeys.size, kineticKeys.size),
     scanned: leads.length,
     matched: toUpdate.length,
     updated,
