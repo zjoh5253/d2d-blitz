@@ -2,9 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "buildCommand": "npx prisma generate && next build",
-  "installCommand": "npm install",
-  "crons": [
-    { "path": "/api/cron/suppress", "schedule": "0 9 * * *" },
-    { "path": "/api/cron/precreate-scan", "schedule": "0 10 * * *" }
-  ]
+  "installCommand": "npm install"
 }
